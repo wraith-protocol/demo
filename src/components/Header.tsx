@@ -12,10 +12,11 @@ export function Header() {
 
   return (
     <header className="border-b border-outline-variant bg-surface">
-      <div className="mx-auto flex max-w-[720px] flex-col gap-4 px-6 py-4">
+      <div className="mx-auto flex max-w-[720px] flex-col gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between">
           <Link to="/send" className="flex items-center gap-2">
-            <span className="font-heading text-lg font-bold uppercase tracking-widest text-primary">
+            <img src="/logo.png" alt="Wraith" className="h-6 w-6" />
+            <span className="font-heading text-sm font-bold uppercase tracking-widest text-primary sm:text-lg">
               Wraith Demo
             </span>
           </Link>
@@ -23,12 +24,12 @@ export function Header() {
         </div>
         <div className="flex items-center justify-between">
           <ChainSwitcher />
-          <nav className="flex gap-4">
+          <nav className="flex gap-3 sm:gap-4">
             {navLinks.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
-                className={`font-heading text-xs uppercase tracking-widest transition-colors ${
+                className={`font-heading text-[10px] uppercase tracking-widest transition-colors sm:text-xs ${
                   location.pathname === link.to
                     ? 'text-primary'
                     : 'text-on-surface-variant hover:text-primary'

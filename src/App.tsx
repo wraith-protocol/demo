@@ -9,7 +9,7 @@ export function App() {
     <div className="flex min-h-screen flex-col">
       <Header />
       <AutoSign />
-      <main className="mx-auto w-full max-w-[720px] flex-1 px-6 pb-24 pt-10">
+      <main className="mx-auto w-full max-w-[720px] flex-1 px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10">
         <Routes>
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />

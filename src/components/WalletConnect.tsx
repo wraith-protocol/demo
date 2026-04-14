@@ -3,9 +3,9 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useChain } from '@/context/ChainContext';
 
 const btnBase =
-  'border border-outline-variant px-4 py-2 font-heading text-xs uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50';
+  'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
 const btnConnected =
-  'border border-outline-variant px-4 py-2 font-mono text-xs text-primary transition-colors hover:bg-surface-bright';
+  'bg-transparent border border-outline-variant px-3 py-1.5 font-mono text-[10px] text-primary transition-colors hover:bg-surface-bright sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
 
 function HorizenButton() {
   return (
