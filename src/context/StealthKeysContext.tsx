@@ -18,22 +18,18 @@ interface StealthKeysContextValue {
 const StealthKeysContext = createContext<StealthKeysContextValue | null>(null);
 
 export function StealthKeysProvider({ children }: { children: React.ReactNode }) {
-  const [evmKeys, setEvmKeysState] = useState<EVMStealthKeys | null>(null);
-  const [evmMetaAddress, setEvmMetaAddressState] = useState<string | null>(null);
-  const [stellarKeys, setStellarKeysState] = useState<StellarStealthKeys | null>(null);
-  const [stellarMetaAddress, setStellarMetaAddressState] = useState<string | null>(null);
+  const [evmKeys, setEvmKeys] = useState<EVMStealthKeys | null>(null);
+  const [evmMetaAddress, setEvmMetaAddress] = useState<string | null>(null);
+  const [stellarKeys, setStellarKeys] = useState<StellarStealthKeys | null>(null);
+  const [stellarMetaAddress, setStellarMetaAddress] = useState<string | null>(null);
 
-  const setEvmKeys = useCallback((k: EVMStealthKeys) => setEvmKeysState(k), []);
-  const setEvmMetaAddress = useCallback((m: string) => setEvmMetaAddressState(m), []);
-  const setStellarKeys = useCallback((k: StellarStealthKeys) => setStellarKeysState(k), []);
-  const setStellarMetaAddress = useCallback((m: string) => setStellarMetaAddressState(m), []);
   const clearEvm = useCallback(() => {
-    setEvmKeysState(null);
-    setEvmMetaAddressState(null);
+    setEvmKeys(null);
+    setEvmMetaAddress(null);
   }, []);
   const clearStellar = useCallback(() => {
-    setStellarKeysState(null);
-    setStellarMetaAddressState(null);
+    setStellarKeys(null);
+    setStellarMetaAddress(null);
   }, []);
 
   return (

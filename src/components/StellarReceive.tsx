@@ -21,34 +21,12 @@ import {
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { CopyButton } from '@/components/CopyButton';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
-
-function explorerTxUrl(hash: string) {
-  return `${STELLAR_NETWORK.explorerUrl}/tx/${hash}`;
-}
-
-function explorerAddrUrl(addr: string) {
-  return `${STELLAR_NETWORK.explorerUrl}/account/${addr}`;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }}
-      className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-    >
-      {copied ? 'Copied' : 'Copy'}
-    </button>
-  );
-}
 
 async function fetchAnnouncementEvents(
   rpcUrl: string,
@@ -265,7 +243,7 @@ function StellarStealthRow({
             Stealth Address
           </span>
           <a
-            href={explorerAddrUrl(match.stealthAddress)}
+            href={stellarAddrUrl(match.stealthAddress)}
             target="_blank"
             rel="noopener noreferrer"
             className="block truncate font-mono text-xs text-primary underline"
@@ -305,7 +283,7 @@ function StellarStealthRow({
           <span className="text-[10px] text-on-surface-variant">
             Withdrawn —{' '}
             <a
-              href={explorerTxUrl(withdrawHash)}
+              href={stellarTxUrl(withdrawHash)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline"
@@ -353,6 +331,47 @@ export function StellarReceive() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
+  const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+
+  // Check if already registered on-chain
+  useEffect(() => {
+    if (!address) return;
+
+    (async () => {
+      try {
+        const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
+        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+
+        const accountResponse = await soroban.getAccount(address);
+        const sourceAccount = new Account(
+          accountResponse.accountId(),
+          accountResponse.sequenceNumber(),
+        );
+
+        const contract = new Contract(REGISTRY_CONTRACT);
+        const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
+          .addOperation(
+            contract.call(
+              'stealth_meta_address_of',
+              new Address(address).toScVal(),
+              nativeToScVal(SCHEME_ID, { type: 'u32' }),
+            ),
+          )
+          .setTimeout(30)
+          .build();
+
+        const simulated = await soroban.simulateTransaction(tx);
+        if (!('error' in simulated) && 'result' in simulated) {
+          setIsAlreadyRegistered(true);
+        }
+      } catch {
+        // Not registered or contract not available
+      }
+    })();
+  }, [address]);
+
+  const registered = isAlreadyRegistered || isRegSuccess;
 
   const deriveKeysFromWallet = useCallback(async () => {
     setIsDerivingKeys(true);
@@ -525,7 +544,7 @@ export function StellarReceive() {
             <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
               On-Chain Registration
             </span>
-            {isRegSuccess ? (
+            {registered ? (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-sm text-tertiary">[+]</span>
                 <span className="text-xs text-on-surface-variant">
@@ -534,7 +553,7 @@ export function StellarReceive() {
                     <>
                       {' — '}
                       <a
-                        href={explorerTxUrl(regHash)}
+                        href={stellarTxUrl(regHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline"

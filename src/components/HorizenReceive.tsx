@@ -21,31 +21,9 @@ import {
 } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { CopyButton } from '@/components/CopyButton';
+import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
-
-function explorerTxUrl(hash: string) {
-  return `${horizenTestnet.blockExplorers.default.url}/tx/${hash}`;
-}
-
-function explorerAddrUrl(addr: string) {
-  return `${horizenTestnet.blockExplorers.default.url}/address/${addr}`;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }}
-      className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-    >
-      {copied ? 'Copied' : 'Copy'}
-    </button>
-  );
-}
 
 function StealthRow({
   match,
@@ -125,7 +103,7 @@ function StealthRow({
             Stealth Address
           </span>
           <a
-            href={explorerAddrUrl(match.stealthAddress)}
+            href={horizenAddrUrl(match.stealthAddress)}
             target="_blank"
             rel="noopener noreferrer"
             className="block truncate font-mono text-xs text-primary underline"
@@ -165,7 +143,7 @@ function StealthRow({
           <span className="text-[10px] text-on-surface-variant">
             Withdrawn —{' '}
             <a
-              href={explorerTxUrl(withdrawHash)}
+              href={horizenTxUrl(withdrawHash)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline"
@@ -352,7 +330,7 @@ export function HorizenReceive() {
                     <>
                       {' — '}
                       <a
-                        href={explorerTxUrl(regHash)}
+                        href={horizenTxUrl(regHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline"

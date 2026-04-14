@@ -2,15 +2,8 @@ import { useState } from 'react';
 import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
+import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
-
-function explorerTxUrl(hash: string) {
-  return `${horizenTestnet.blockExplorers.default.url}/tx/${hash}`;
-}
-
-function explorerAddrUrl(addr: string) {
-  return `${horizenTestnet.blockExplorers.default.url}/address/${addr}`;
-}
 
 export function HorizenSend() {
   const { isConnected } = useAccount();
@@ -168,7 +161,7 @@ export function HorizenSend() {
                 Stealth Address
               </span>
               <a
-                href={explorerAddrUrl(stealthResult.stealthAddress)}
+                href={horizenAddrUrl(stealthResult.stealthAddress)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block truncate font-mono text-xs text-primary underline"
@@ -183,7 +176,7 @@ export function HorizenSend() {
                   Transaction
                 </span>
                 <a
-                  href={explorerTxUrl(txHash)}
+                  href={horizenTxUrl(txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block truncate font-mono text-xs text-primary underline"

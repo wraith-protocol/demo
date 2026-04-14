@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 export type Chain = 'horizen' | 'stellar';
 
@@ -10,12 +10,7 @@ interface ChainContextValue {
 const ChainContext = createContext<ChainContextValue | null>(null);
 
 export function ChainProvider({ children }: { children: React.ReactNode }) {
-  const [chain, setChainState] = useState<Chain>('horizen');
-
-  const setChain = useCallback((c: Chain) => {
-    setChainState(c);
-  }, []);
-
+  const [chain, setChain] = useState<Chain>('horizen');
   return <ChainContext.Provider value={{ chain, setChain }}>{children}</ChainContext.Provider>;
 }
 

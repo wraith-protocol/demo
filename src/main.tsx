@@ -1,3 +1,6 @@
+import { Buffer } from 'buffer';
+(window as unknown as Record<string, unknown>).Buffer = Buffer;
+
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

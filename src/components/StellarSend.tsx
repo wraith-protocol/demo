@@ -15,17 +15,10 @@ import {
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
-
-function explorerTxUrl(hash: string) {
-  return `${STELLAR_NETWORK.explorerUrl}/tx/${hash}`;
-}
-
-function explorerAddrUrl(addr: string) {
-  return `${STELLAR_NETWORK.explorerUrl}/account/${addr}`;
-}
 
 export function StellarSend() {
   const { address, isConnected, signTransaction } = useStellarWallet();
@@ -252,7 +245,7 @@ export function StellarSend() {
                 Stealth Address
               </span>
               <a
-                href={explorerAddrUrl(stealthResult.stealthAddress)}
+                href={stellarAddrUrl(stealthResult.stealthAddress)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block truncate font-mono text-xs text-primary underline"
@@ -267,7 +260,7 @@ export function StellarSend() {
                   Transaction
                 </span>
                 <a
-                  href={explorerTxUrl(txHash)}
+                  href={stellarTxUrl(txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block truncate font-mono text-xs text-primary underline"

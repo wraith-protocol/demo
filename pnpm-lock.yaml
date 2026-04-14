@@ -23,6 +23,9 @@ importers:
       '@wraith-protocol/sdk':
         specifier: ^1.1.0
         version: 1.1.0(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.3.6)
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
       react:
         specifier: ^19.0.0
         version: 19.2.5

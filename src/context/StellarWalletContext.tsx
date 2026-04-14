@@ -63,16 +63,40 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
 
       if (!signedMessage) throw new Error('Signing failed: no signature returned');
 
-      // Freighter v3 returns Buffer, v4 returns base64 string
-      if (typeof signedMessage !== 'string') {
-        return new Uint8Array(signedMessage);
+      // Freighter returns different types depending on version:
+      // - v3: Buffer (may arrive as serialized {type:'Buffer', data:[...]} through extension messaging)
+      // - v4: base64 string
+      // - could also be a raw Uint8Array/Buffer instance
+      const msg = signedMessage as unknown;
+
+      if (msg instanceof Uint8Array) {
+        return msg;
       }
-      const binaryString = atob(signedMessage);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+
+      if (typeof msg === 'string') {
+        // base64 string
+        const binaryString = atob(msg);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes;
       }
-      return bytes;
+
+      // Serialized Buffer: {type: 'Buffer', data: [1, 2, 3, ...]}
+      if (
+        msg &&
+        typeof msg === 'object' &&
+        'data' in msg &&
+        Array.isArray((msg as Record<string, unknown>).data)
+      ) {
+        return new Uint8Array((msg as { data: number[] }).data);
+      }
+
+      // Last resort: try to convert whatever it is
+      throw new Error(
+        `Unexpected signedMessage type: ${typeof msg} — ${JSON.stringify(msg).slice(0, 200)}`,
+      );
     },
     [address],
   );
