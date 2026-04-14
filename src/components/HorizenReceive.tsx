@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useState, useEffect } from 'react';
+import {
+  useAccount,
+  useSignMessage,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useReadContract,
+} from 'wagmi';
 import { createWalletClient, createPublicClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
@@ -16,9 +22,6 @@ import {
 import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { horizenTestnet } from '@/config';
-
-const SUBGRAPH_URL =
-  'https://api.goldsky.com/api/public/project_cmhp1xyw0qu8901xcdayke69d/subgraphs/wraith-stealth-horizen-testnet-horizen-testnet/2.0.0/gn';
 
 function explorerTxUrl(hash: string) {
   return `${horizenTestnet.blockExplorers.default.url}/tx/${hash}`;
@@ -59,7 +62,7 @@ function StealthRow({
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     (async () => {
       try {
         const client = createPublicClient({ chain: horizenTestnet, transport: http() });
@@ -71,7 +74,7 @@ function StealthRow({
         setLoadingBal(false);
       }
     })();
-  });
+  }, [match.stealthAddress]);
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -200,7 +203,7 @@ function StealthRow({
 }
 
 export function HorizenReceive() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
 
@@ -210,12 +213,29 @@ export function HorizenReceive() {
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
 
-  // On-chain registration
   const deployment = getDeployment('horizen');
+
+  // Check if already registered on-chain
+  const { data: registeredMeta } = useReadContract({
+    address: deployment.contracts.registry as `0x${string}`,
+    abi: REGISTRY_ABI,
+    functionName: 'stealthMetaAddressOf',
+    args: address ? [address, SCHEME_ID] : undefined,
+    query: { enabled: !!address },
+  });
+
+  const isAlreadyRegistered =
+    !!registeredMeta &&
+    (registeredMeta as string) !== '0x' &&
+    (registeredMeta as string).length > 2;
+
+  // Registration tx
   const { writeContract, data: regHash, isPending: isRegPending } = useWriteContract();
   const { isLoading: isRegConfirming, isSuccess: isRegSuccess } = useWaitForTransactionReceipt({
     hash: regHash,
   });
+
+  const registered = isAlreadyRegistered || isRegSuccess;
 
   const deriveKeys = async () => {
     setIsDerivingKeys(true);
@@ -249,7 +269,7 @@ export function HorizenReceive() {
     setIsScanning(true);
     setError('');
     try {
-      const announcements = await fetchAnnouncements('horizen', SUBGRAPH_URL);
+      const announcements = await fetchAnnouncements('horizen');
       const results = scanAnnouncements(
         announcements,
         evmKeys.viewingKey,
@@ -318,20 +338,23 @@ export function HorizenReceive() {
             <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
               On-Chain Registration
             </span>
-            {isRegSuccess ? (
+            {registered ? (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-sm text-tertiary">[+]</span>
                 <span className="text-xs text-on-surface-variant">
-                  Registered —{' '}
+                  Meta-address registered on-chain
                   {regHash && (
-                    <a
-                      href={explorerTxUrl(regHash)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline"
-                    >
-                      {regHash.slice(0, 14)}...
-                    </a>
+                    <>
+                      {' — '}
+                      <a
+                        href={explorerTxUrl(regHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        {regHash.slice(0, 14)}...
+                      </a>
+                    </>
                   )}
                 </span>
               </div>
