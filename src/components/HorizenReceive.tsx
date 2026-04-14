@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useAccount, useSignMessage } from 'wagmi';
+import { useState } from 'react';
+import { useAccount, useSignMessage, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { createWalletClient, createPublicClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import {
@@ -8,8 +8,13 @@ import {
   fetchAnnouncements,
   scanAnnouncements,
   STEALTH_SIGNING_MESSAGE,
+  SCHEME_ID,
+  metaAddressToBytes,
+  REGISTRY_ABI,
+  getDeployment,
 } from '@wraith-protocol/sdk/chains/evm';
-import type { HexString, StealthKeys, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
+import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
+import { useStealthKeys } from '@/context/StealthKeysContext';
 import { horizenTestnet } from '@/config';
 
 function explorerTxUrl(hash: string) {
@@ -44,29 +49,25 @@ function StealthRow({
   onWithdrawn: (hash: string) => void;
 }) {
   const [balance, setBalance] = useState<string | null>(null);
-  const [loadingBal, setLoadingBal] = useState(false);
+  const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
 
-  const fetchBalance = useCallback(async () => {
-    setLoadingBal(true);
-    try {
-      const client = createPublicClient({ chain: horizenTestnet, transport: http() });
-      const bal = await client.getBalance({ address: match.stealthAddress as `0x${string}` });
-      const eth = Number(bal) / 1e18;
-      setBalance(eth.toFixed(6));
-    } catch {
-      setBalance('0');
-    } finally {
-      setLoadingBal(false);
-    }
-  }, [match.stealthAddress]);
-
   useState(() => {
-    fetchBalance();
+    (async () => {
+      try {
+        const client = createPublicClient({ chain: horizenTestnet, transport: http() });
+        const bal = await client.getBalance({ address: match.stealthAddress as `0x${string}` });
+        setBalance((Number(bal) / 1e18).toFixed(6));
+      } catch {
+        setBalance('0');
+      } finally {
+        setLoadingBal(false);
+      }
+    })();
   });
 
   const handleWithdraw = async () => {
@@ -93,7 +94,6 @@ function StealthRow({
       const gasPrice = await publicClient.getGasPrice();
       const gasCost = (gasEstimate * gasPrice * 150n) / 100n;
       const sendAmount = bal - gasCost;
-
       if (sendAmount <= 0n) throw new Error('Balance too low to cover gas');
 
       const hash = await walletClient.sendTransaction({
@@ -128,7 +128,7 @@ function StealthRow({
           </a>
         </div>
         <span className="font-heading text-lg font-bold text-on-surface">
-          {loadingBal ? '...' : balance ? `${balance} ETH` : 'Empty'}
+          {loadingBal ? '...' : balance && parseFloat(balance) > 0 ? `${balance} ETH` : 'Empty'}
         </span>
       </div>
 
@@ -199,14 +199,20 @@ function StealthRow({
 export function HorizenReceive() {
   const { isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
+  const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
 
-  const [keys, setKeys] = useState<StealthKeys | null>(null);
-  const [metaAddress, setMetaAddress] = useState('');
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  // On-chain registration
+  const deployment = getDeployment('horizen');
+  const { writeContract, data: regHash, isPending: isRegPending } = useWriteContract();
+  const { isLoading: isRegConfirming, isSuccess: isRegSuccess } = useWaitForTransactionReceipt({
+    hash: regHash,
+  });
 
   const deriveKeys = async () => {
     setIsDerivingKeys(true);
@@ -214,9 +220,9 @@ export function HorizenReceive() {
     try {
       const signature = await signMessageAsync({ message: STEALTH_SIGNING_MESSAGE });
       const derived = deriveStealthKeys(signature as HexString);
-      setKeys(derived);
+      setEvmKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
-      setMetaAddress(meta);
+      setEvmMetaAddress(meta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Key derivation failed');
     } finally {
@@ -224,17 +230,28 @@ export function HorizenReceive() {
     }
   };
 
+  const registerOnChain = () => {
+    if (!evmMetaAddress) return;
+    const metaBytes = metaAddressToBytes(evmMetaAddress);
+    writeContract({
+      address: deployment.contracts.registry as `0x${string}`,
+      abi: REGISTRY_ABI,
+      functionName: 'registerKeys',
+      args: [SCHEME_ID, metaBytes as `0x${string}`],
+    });
+  };
+
   const scanPayments = async () => {
-    if (!keys) return;
+    if (!evmKeys) return;
     setIsScanning(true);
     setError('');
     try {
       const announcements = await fetchAnnouncements('horizen');
       const results = scanAnnouncements(
         announcements,
-        keys.viewingKey,
-        keys.spendingPubKey,
-        keys.spendingKey,
+        evmKeys.viewingKey,
+        evmKeys.spendingPubKey,
+        evmKeys.spendingKey,
       );
       setMatched(results);
       setHasScanned(true);
@@ -265,11 +282,11 @@ export function HorizenReceive() {
           Receive
         </h1>
         <p className="text-sm text-on-surface-variant">
-          Derive your stealth keys, then scan for incoming payments.
+          Derive your stealth keys, register on-chain, then scan for payments.
         </p>
       </div>
 
-      {!keys && (
+      {!evmKeys && (
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeys}
@@ -282,16 +299,57 @@ export function HorizenReceive() {
         </div>
       )}
 
-      {keys && (
+      {evmKeys && evmMetaAddress && (
         <>
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
               </span>
-              <CopyButton text={metaAddress} />
+              <CopyButton text={evmMetaAddress} />
             </div>
-            <code className="break-all font-mono text-xs text-primary">{metaAddress}</code>
+            <code className="break-all font-mono text-xs text-primary">{evmMetaAddress}</code>
+          </div>
+
+          <div className="border border-outline-variant bg-surface-container p-5">
+            <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+              On-Chain Registration
+            </span>
+            {isRegSuccess ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-tertiary">[+]</span>
+                <span className="text-xs text-on-surface-variant">
+                  Registered —{' '}
+                  {regHash && (
+                    <a
+                      href={explorerTxUrl(regHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline"
+                    >
+                      {regHash.slice(0, 14)}...
+                    </a>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="mb-3 text-xs text-on-surface-variant">
+                  Register your meta-address so senders can look you up by wallet address.
+                </p>
+                <button
+                  onClick={registerOnChain}
+                  disabled={isRegPending || isRegConfirming}
+                  className="w-full border border-outline-variant py-3 font-heading text-sm font-bold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  {isRegPending
+                    ? 'Confirm in wallet...'
+                    : isRegConfirming
+                      ? 'Confirming...'
+                      : 'Register on-chain'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

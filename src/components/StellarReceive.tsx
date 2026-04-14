@@ -1,5 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TransactionBuilder, Operation, Account, Asset, xdr, Address } from '@stellar/stellar-sdk';
+import {
+  TransactionBuilder,
+  Operation,
+  Account,
+  Asset,
+  Contract,
+  xdr,
+  nativeToScVal,
+  Address,
+} from '@stellar/stellar-sdk';
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
@@ -7,15 +16,14 @@ import {
   signStellarTransaction,
   bytesToHex,
   STEALTH_SIGNING_MESSAGE,
+  SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
-import type {
-  StealthKeys,
-  Announcement,
-  MatchedAnnouncement,
-} from '@wraith-protocol/sdk/chains/stellar';
+import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
+import { useStealthKeys } from '@/context/StealthKeysContext';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
+const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
 function explorerTxUrl(hash: string) {
   return `${STELLAR_NETWORK.explorerUrl}/tx/${hash}`;
@@ -105,7 +113,7 @@ async function fetchAnnouncementEvents(
           const ann = parseAnnouncementEvent(event);
           if (ann) all.push(ann);
         } catch {
-          // Skip malformed events
+          // Skip malformed
         }
       }
 
@@ -207,20 +215,12 @@ function StellarStealthRow({
       const subentryCount = account.subentry_count ?? 0;
       const reserve = (2 + subentryCount) * 0.5;
       const sendableAmount = (parseFloat(xlmBal.balance) - reserve - 0.00001).toFixed(7);
-
       if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
-      const tx = new TransactionBuilder(sourceAccount, {
-        fee: '100',
-        networkPassphrase,
-      })
+      const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
         .addOperation(
-          Operation.payment({
-            destination: dest,
-            asset: Asset.native(),
-            amount: sendableAmount,
-          }),
+          Operation.payment({ destination: dest, asset: Asset.native(), amount: sendableAmount }),
         )
         .setTimeout(30)
         .build();
@@ -341,13 +341,17 @@ function StellarStealthRow({
 
 export function StellarReceive() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [keys, setKeys] = useState<StealthKeys | null>(null);
-  const [metaAddress, setMetaAddress] = useState('');
+  const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
+    useStealthKeys();
+
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isRegSuccess, setIsRegSuccess] = useState(false);
+  const [regHash, setRegHash] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -384,18 +388,101 @@ export function StellarReceive() {
       }
 
       const derived = deriveStealthKeys(bytes);
-      setKeys(derived);
+      setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
-      setMetaAddress(meta);
+      setStellarMetaAddress(meta);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Key derivation failed');
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [walletAddress]);
+  }, [walletAddress, setStellarKeys, setStellarMetaAddress]);
+
+  const registerOnChain = useCallback(async () => {
+    if (!stellarKeys || !walletAddress) return;
+    setIsRegistering(true);
+    setError('');
+    try {
+      const freighter = await import('@stellar/freighter-api');
+      const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
+      const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+
+      const accountResponse = await soroban.getAccount(walletAddress);
+      const sourceAccount = new Account(
+        accountResponse.accountId(),
+        accountResponse.sequenceNumber(),
+      );
+
+      const contract = new Contract(REGISTRY_CONTRACT);
+      const metaAddressBytes = new Uint8Array(64);
+      metaAddressBytes.set(stellarKeys.spendingPubKey, 0);
+      metaAddressBytes.set(stellarKeys.viewingPubKey, 32);
+
+      const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
+        .addOperation(
+          contract.call(
+            'register_keys',
+            new Address(walletAddress).toScVal(),
+            nativeToScVal(SCHEME_ID, { type: 'u32' }),
+            xdr.ScVal.scvBytes(Buffer.from(metaAddressBytes)),
+          ),
+        )
+        .setTimeout(30)
+        .build();
+
+      const simulated = await soroban.simulateTransaction(tx);
+      if ('error' in simulated) {
+        throw new Error((simulated as { error: string }).error || 'Simulation failed');
+      }
+
+      const assembled = rpcMod
+        .assembleTransaction(tx, simulated as Parameters<typeof rpcMod.assembleTransaction>[1])
+        .build();
+
+      const { signedTxXdr } = await freighter.signTransaction(assembled.toXDR(), {
+        address: walletAddress,
+        networkPassphrase,
+      });
+
+      const response = await soroban.sendTransaction(
+        TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase),
+      );
+
+      if (response.status === 'ERROR') throw new Error('Transaction submission failed');
+
+      setRegHash(response.hash);
+
+      let attempts = 0;
+      while (attempts < 30) {
+        try {
+          const result = await soroban.getTransaction(response.hash);
+          if (result.status === 'NOT_FOUND') {
+            attempts++;
+            await new Promise((r) => setTimeout(r, 1000));
+            continue;
+          }
+          if (result.status === 'SUCCESS') {
+            setIsRegSuccess(true);
+          }
+          break;
+        } catch (pollErr: unknown) {
+          if (pollErr instanceof Error && pollErr.message?.includes('Bad union switch')) {
+            setIsRegSuccess(true);
+            break;
+          }
+          throw pollErr;
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Registration failed');
+    } finally {
+      setIsRegistering(false);
+    }
+  }, [stellarKeys, walletAddress]);
 
   const scanPayments = useCallback(async () => {
-    if (!keys) return;
+    if (!stellarKeys) return;
     setIsScanning(true);
     setError('');
     try {
@@ -405,9 +492,9 @@ export function StellarReceive() {
       );
       const results = scanAnnouncements(
         announcements,
-        keys.viewingKey,
-        keys.spendingPubKey,
-        keys.spendingScalar,
+        stellarKeys.viewingKey,
+        stellarKeys.spendingPubKey,
+        stellarKeys.spendingScalar,
       );
       setMatched(results);
       setHasScanned(true);
@@ -416,7 +503,7 @@ export function StellarReceive() {
     } finally {
       setIsScanning(false);
     }
-  }, [keys]);
+  }, [stellarKeys]);
 
   if (!walletAddress) {
     return (
@@ -438,11 +525,11 @@ export function StellarReceive() {
           Receive
         </h1>
         <p className="text-sm text-on-surface-variant">
-          Derive your stealth keys, then scan for incoming payments.
+          Derive your stealth keys, register on-chain, then scan for payments.
         </p>
       </div>
 
-      {!keys && (
+      {!stellarKeys && (
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeysFromWallet}
@@ -455,16 +542,56 @@ export function StellarReceive() {
         </div>
       )}
 
-      {keys && (
+      {stellarKeys && stellarMetaAddress && (
         <>
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
               </span>
-              <CopyButton text={metaAddress} />
+              <CopyButton text={stellarMetaAddress} />
             </div>
-            <code className="break-all font-mono text-xs text-primary">{metaAddress}</code>
+            <code className="break-all font-mono text-xs text-primary">{stellarMetaAddress}</code>
+          </div>
+
+          <div className="border border-outline-variant bg-surface-container p-5">
+            <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+              On-Chain Registration
+            </span>
+            {isRegSuccess ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm text-tertiary">[+]</span>
+                <span className="text-xs text-on-surface-variant">
+                  Registered
+                  {regHash && (
+                    <>
+                      {' — '}
+                      <a
+                        href={explorerTxUrl(regHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        {regHash.slice(0, 14)}...
+                      </a>
+                    </>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="mb-3 text-xs text-on-surface-variant">
+                  Register your meta-address so senders can look you up by wallet address.
+                </p>
+                <button
+                  onClick={registerOnChain}
+                  disabled={isRegistering}
+                  className="w-full border border-outline-variant py-3 font-heading text-sm font-bold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  {isRegistering ? 'Registering...' : 'Register on-chain'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

@@ -5,6 +5,7 @@ import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChainProvider } from '@/context/ChainContext';
+import { StealthKeysProvider } from '@/context/StealthKeysContext';
 import { wagmiConfig } from '@/config';
 import { App } from './App';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -24,7 +25,9 @@ function Providers({ children }: { children: React.ReactNode }) {
             fontStack: 'system',
           })}
         >
-          <ChainProvider>{children}</ChainProvider>
+          <ChainProvider>
+            <StealthKeysProvider>{children}</StealthKeysProvider>
+          </ChainProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
