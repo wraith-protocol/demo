@@ -20,6 +20,7 @@ import {
 } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
@@ -340,7 +341,7 @@ function StellarStealthRow({
 }
 
 export function StellarReceive() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
 
@@ -353,47 +354,12 @@ export function StellarReceive() {
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const freighter = await import('@stellar/freighter-api');
-        const { isConnected } = await freighter.isConnected();
-        if (isConnected) {
-          const { address } = await freighter.getAddress();
-          if (address) setWalletAddress(address);
-        }
-      } catch {
-        // Freighter not available
-      }
-    })();
-  }, []);
-
   const deriveKeysFromWallet = useCallback(async () => {
-    if (!walletAddress) return;
     setIsDerivingKeys(true);
     setError('');
     try {
-      const freighter = await import('@stellar/freighter-api');
-      const { signedMessage } = await freighter.signMessage(STEALTH_SIGNING_MESSAGE, {
-        address: walletAddress,
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-      });
-
-      if (!signedMessage) throw new Error('Signing failed');
-      let bytes: Uint8Array;
-      if (signedMessage instanceof Uint8Array) {
-        bytes = signedMessage;
-      } else if (typeof signedMessage === 'string') {
-        const binaryString = atob(signedMessage);
-        bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-      } else {
-        bytes = new Uint8Array(signedMessage as ArrayBuffer);
-      }
-
-      const derived = deriveStealthKeys(bytes);
+      const signature = await signMessage(STEALTH_SIGNING_MESSAGE);
+      const derived = deriveStealthKeys(signature);
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
@@ -402,19 +368,18 @@ export function StellarReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [walletAddress, setStellarKeys, setStellarMetaAddress]);
+  }, [signMessage, setStellarKeys, setStellarMetaAddress]);
 
   const registerOnChain = useCallback(async () => {
-    if (!stellarKeys || !walletAddress) return;
+    if (!stellarKeys || !address) return;
     setIsRegistering(true);
     setError('');
     try {
-      const freighter = await import('@stellar/freighter-api');
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
       const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountResponse = await soroban.getAccount(walletAddress);
+      const accountResponse = await soroban.getAccount(address);
       const sourceAccount = new Account(
         accountResponse.accountId(),
         accountResponse.sequenceNumber(),
@@ -429,7 +394,7 @@ export function StellarReceive() {
         .addOperation(
           contract.call(
             'register_keys',
-            new Address(walletAddress).toScVal(),
+            new Address(address).toScVal(),
             nativeToScVal(SCHEME_ID, { type: 'u32' }),
             xdr.ScVal.scvBytes(Buffer.from(metaAddressBytes)),
           ),
@@ -446,13 +411,9 @@ export function StellarReceive() {
         .assembleTransaction(tx, simulated as Parameters<typeof rpcMod.assembleTransaction>[1])
         .build();
 
-      const { signedTxXdr } = await freighter.signTransaction(assembled.toXDR(), {
-        address: walletAddress,
-        networkPassphrase,
-      });
-
+      const signedXdr = await signTransaction(assembled.toXDR());
       const response = await soroban.sendTransaction(
-        TransactionBuilder.fromXDR(signedTxXdr, networkPassphrase),
+        TransactionBuilder.fromXDR(signedXdr, networkPassphrase),
       );
 
       if (response.status === 'ERROR') throw new Error('Transaction submission failed');
@@ -485,7 +446,7 @@ export function StellarReceive() {
     } finally {
       setIsRegistering(false);
     }
-  }, [stellarKeys, walletAddress]);
+  }, [stellarKeys, address, signTransaction]);
 
   const scanPayments = useCallback(async () => {
     if (!stellarKeys) return;
@@ -511,7 +472,7 @@ export function StellarReceive() {
     }
   }, [stellarKeys]);
 
-  if (!walletAddress) {
+  if (!isConnected) {
     return (
       <section>
         <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
@@ -568,7 +529,7 @@ export function StellarReceive() {
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-sm text-tertiary">[+]</span>
                 <span className="text-xs text-on-surface-variant">
-                  Registered
+                  Meta-address registered on-chain
                   {regHash && (
                     <>
                       {' — '}

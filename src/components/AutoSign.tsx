@@ -12,8 +12,8 @@ import {
   STEALTH_SIGNING_MESSAGE as STELLAR_SIGNING_MESSAGE,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useChain } from '@/context/ChainContext';
-import { STELLAR_NETWORK } from '@/config';
 
 function HorizenAutoSign() {
   const { isConnected, address, connector } = useAccount();
@@ -68,88 +68,51 @@ function HorizenAutoSign() {
 }
 
 function StellarAutoSign() {
-  const { stellarKeys, setStellarKeys, setStellarMetaAddress } = useStealthKeys();
+  const { isConnected, address, signMessage } = useStellarWallet();
+  const { stellarKeys, setStellarKeys, setStellarMetaAddress, clearStellar } = useStealthKeys();
   const prompted = useRef<string | null>(null);
+  const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-
-  // Poll for Freighter connection
-  useEffect(() => {
-    let cancelled = false;
-
-    const check = async () => {
-      try {
-        const freighter = await import('@stellar/freighter-api');
-        const { isConnected } = await freighter.isConnected();
-        if (isConnected && !cancelled) {
-          const { address } = await freighter.getAddress();
-          if (address && !cancelled) {
-            setWalletAddress(address);
-          }
-        }
-      } catch {
-        // Freighter not available
-      }
-    };
-
-    check();
-    const interval = setInterval(check, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
 
   useEffect(() => {
-    if (!walletAddress) return;
+    if (isConnected && address) {
+      const timer = setTimeout(() => setReady(true), 500);
+      return () => clearTimeout(timer);
+    }
+    setReady(false);
+  }, [isConnected, address]);
+
+  useEffect(() => {
+    if (!ready || !address) return;
     if (stellarKeys) return;
     if (isLoading.current) return;
-    if (prompted.current === walletAddress) return;
+    if (prompted.current === address) return;
 
-    // Small delay to let Freighter settle
-    const timer = setTimeout(() => {
-      if (isLoading.current) return;
-      if (prompted.current === walletAddress) return;
+    prompted.current = address;
+    isLoading.current = true;
 
-      prompted.current = walletAddress;
-      isLoading.current = true;
+    (async () => {
+      try {
+        const signature = await signMessage(STELLAR_SIGNING_MESSAGE);
+        const keys = deriveStellarKeys(signature);
+        const meta = encodeStellarMeta(keys.spendingPubKey, keys.viewingPubKey);
+        setStellarKeys(keys);
+        setStellarMetaAddress(meta);
+      } catch {
+        // User rejected or error
+      } finally {
+        isLoading.current = false;
+      }
+    })();
+  }, [ready, address, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
 
-      (async () => {
-        try {
-          const freighter = await import('@stellar/freighter-api');
-          const { signedMessage } = await freighter.signMessage(STELLAR_SIGNING_MESSAGE, {
-            address: walletAddress,
-            networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-          });
-
-          if (!signedMessage) return;
-          let bytes: Uint8Array;
-          if (signedMessage instanceof Uint8Array) {
-            bytes = signedMessage;
-          } else if (typeof signedMessage === 'string') {
-            const binaryString = atob(signedMessage);
-            bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-          } else {
-            bytes = new Uint8Array(signedMessage as ArrayBuffer);
-          }
-
-          const keys = deriveStellarKeys(bytes);
-          const meta = encodeStellarMeta(keys.spendingPubKey, keys.viewingPubKey);
-          setStellarKeys(keys);
-          setStellarMetaAddress(meta);
-        } catch {
-          // User rejected or error
-        } finally {
-          isLoading.current = false;
-        }
-      })();
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [walletAddress, stellarKeys, setStellarKeys, setStellarMetaAddress]);
+  useEffect(() => {
+    if (!isConnected) {
+      prompted.current = null;
+      setReady(false);
+      clearStellar();
+    }
+  }, [isConnected, clearStellar]);
 
   return null;
 }

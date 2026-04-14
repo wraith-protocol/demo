@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useChain } from '@/context/ChainContext';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 
 const btnBase =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
@@ -37,47 +37,9 @@ function HorizenButton() {
 }
 
 function FreighterButton() {
-  const [address, setAddress] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { address, isConnected, connect, disconnect } = useStellarWallet();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const freighter = await import('@stellar/freighter-api');
-        const { isConnected } = await freighter.isConnected();
-        if (isConnected) {
-          const { address: addr } = await freighter.getAddress();
-          if (addr) setAddress(addr);
-        }
-      } catch {
-        // Freighter not available
-      }
-    })();
-  }, []);
-
-  const connect = useCallback(async () => {
-    setLoading(true);
-    try {
-      const freighter = await import('@stellar/freighter-api');
-      const { isConnected } = await freighter.isConnected();
-      if (!isConnected) {
-        throw new Error('Freighter not found. Install the browser extension.');
-      }
-      await freighter.requestAccess();
-      const { address: addr } = await freighter.getAddress();
-      if (addr) setAddress(addr);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const disconnect = useCallback(() => {
-    setAddress(null);
-  }, []);
-
-  if (address) {
+  if (isConnected && address) {
     return (
       <button onClick={disconnect} className={btnConnected}>
         {address.slice(0, 4)}...{address.slice(-4)}
@@ -86,8 +48,8 @@ function FreighterButton() {
   }
 
   return (
-    <button onClick={connect} disabled={loading} className={btnBase}>
-      {loading ? '...' : 'Connect Wallet'}
+    <button onClick={connect} className={btnBase}>
+      Connect Wallet
     </button>
   );
 }

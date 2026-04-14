@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   TransactionBuilder,
   Account,
@@ -14,6 +14,7 @@ import {
   decodeStealthMetaAddress,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
@@ -27,7 +28,7 @@ function explorerAddrUrl(addr: string) {
 }
 
 export function StellarSend() {
-  const [address, setAddress] = useState<string | null>(null);
+  const { address, isConnected, signTransaction } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -39,21 +40,6 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const freighter = await import('@stellar/freighter-api');
-        const { isConnected } = await freighter.isConnected();
-        if (isConnected) {
-          const { address: addr } = await freighter.getAddress();
-          if (addr) setAddress(addr);
-        }
-      } catch {
-        // Freighter not available
-      }
-    })();
-  }, []);
 
   const handleSend = useCallback(async () => {
     if (!address) {
@@ -90,10 +76,7 @@ export function StellarSend() {
 
       let classicTx;
       if (stealthExists) {
-        classicTx = new TransactionBuilder(sourceAccount, {
-          fee: '100',
-          networkPassphrase,
-        })
+        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
           .addOperation(
             Operation.payment({
               destination: result.stealthAddress,
@@ -104,10 +87,7 @@ export function StellarSend() {
           .setTimeout(30)
           .build();
       } else {
-        classicTx = new TransactionBuilder(sourceAccount, {
-          fee: '100',
-          networkPassphrase,
-        })
+        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
           .addOperation(
             Operation.createAccount({
               destination: result.stealthAddress,
@@ -118,16 +98,12 @@ export function StellarSend() {
           .build();
       }
 
-      const freighter = await import('@stellar/freighter-api');
-      const { signedTxXdr } = await freighter.signTransaction(classicTx.toXDR(), {
-        address,
-        networkPassphrase,
-      });
+      const signedXdr = await signTransaction(classicTx.toXDR());
 
       const submitRes = await fetch(`${horizonUrl}/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(signedTxXdr)}`,
+        body: `tx=${encodeURIComponent(signedXdr)}`,
       });
 
       const submitData = await submitRes.json();
@@ -149,10 +125,7 @@ export function StellarSend() {
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
-        const announceTx = new TransactionBuilder(freshAccount, {
-          fee: '100',
-          networkPassphrase,
-        })
+        const announceTx = new TransactionBuilder(freshAccount, { fee: '100', networkPassphrase })
           .addOperation(
             announcerContract.call(
               'announce',
@@ -174,10 +147,7 @@ export function StellarSend() {
             )
             .build();
 
-          const { signedTxXdr: signedAnnounce } = await freighter.signTransaction(
-            assembled.toXDR(),
-            { address, networkPassphrase },
-          );
+          const signedAnnounce = await signTransaction(assembled.toXDR());
           await soroban.sendTransaction(
             TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase),
           );
@@ -192,7 +162,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount]);
+  }, [address, recipient, amount, signTransaction]);
 
   const reset = () => {
     setRecipient('');
@@ -203,7 +173,7 @@ export function StellarSend() {
     setError('');
   };
 
-  if (!address) {
+  if (!isConnected) {
     return (
       <section>
         <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">

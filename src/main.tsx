@@ -6,6 +6,7 @@ import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChainProvider } from '@/context/ChainContext';
 import { StealthKeysProvider } from '@/context/StealthKeysContext';
+import { StellarWalletProvider } from '@/context/StellarWalletContext';
 import { wagmiConfig } from '@/config';
 import { App } from './App';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -26,7 +27,9 @@ function Providers({ children }: { children: React.ReactNode }) {
           })}
         >
           <ChainProvider>
-            <StealthKeysProvider>{children}</StealthKeysProvider>
+            <StellarWalletProvider>
+              <StealthKeysProvider>{children}</StealthKeysProvider>
+            </StellarWalletProvider>
           </ChainProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
