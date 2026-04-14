@@ -61,9 +61,13 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
       });
 
-      const raw = signedMessage as unknown as string;
-      if (!raw) throw new Error('Signing failed: no signature returned');
-      const binaryString = atob(raw);
+      if (!signedMessage) throw new Error('Signing failed: no signature returned');
+
+      // Freighter v3 returns Buffer, v4 returns base64 string
+      if (typeof signedMessage !== 'string') {
+        return new Uint8Array(signedMessage);
+      }
+      const binaryString = atob(signedMessage);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
