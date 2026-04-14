@@ -216,7 +216,7 @@ export function HorizenReceive() {
   const deployment = getDeployment('horizen');
 
   // Check if already registered on-chain
-  const { data: registeredMeta } = useReadContract({
+  const { data: registeredMeta, refetch: refetchRegistration } = useReadContract({
     address: deployment.contracts.registry as `0x${string}`,
     abi: REGISTRY_ABI,
     functionName: 'stealthMetaAddressOf',
@@ -225,15 +225,20 @@ export function HorizenReceive() {
   });
 
   const isAlreadyRegistered =
-    !!registeredMeta &&
-    (registeredMeta as string) !== '0x' &&
-    (registeredMeta as string).length > 2;
+    !!registeredMeta && registeredMeta !== '0x' && (registeredMeta as string).length > 2;
 
   // Registration tx
   const { writeContract, data: regHash, isPending: isRegPending } = useWriteContract();
   const { isLoading: isRegConfirming, isSuccess: isRegSuccess } = useWaitForTransactionReceipt({
     hash: regHash,
   });
+
+  // Refetch registration status after successful registration
+  useEffect(() => {
+    if (isRegSuccess) {
+      refetchRegistration();
+    }
+  }, [isRegSuccess, refetchRegistration]);
 
   const registered = isAlreadyRegistered || isRegSuccess;
 
