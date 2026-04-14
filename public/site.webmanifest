@@ -1,7 +1,7 @@
 {
-  "name": "Wraith",
-  "short_name": "Wraith",
-  "description": "Stealth addresses for Horizen. Send and receive any asset privately.",
+  "name": "Wraith Demo",
+  "short_name": "Wraith Demo",
+  "description": "Developer demo for the Wraith Protocol stealth address SDK. Send and receive private payments on Horizen and Stellar.",
   "icons": [
     { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png" }
