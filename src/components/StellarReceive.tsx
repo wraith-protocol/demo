@@ -379,12 +379,18 @@ export function StellarReceive() {
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
       });
 
-      const raw = signedMessage as unknown as string;
-      if (!raw) throw new Error('Signing failed');
-      const binaryString = atob(raw);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+      if (!signedMessage) throw new Error('Signing failed');
+      let bytes: Uint8Array;
+      if (signedMessage instanceof Uint8Array) {
+        bytes = signedMessage;
+      } else if (typeof signedMessage === 'string') {
+        const binaryString = atob(signedMessage);
+        bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+      } else {
+        bytes = new Uint8Array(signedMessage as ArrayBuffer);
       }
 
       const derived = deriveStealthKeys(bytes);
