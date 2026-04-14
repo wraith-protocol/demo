@@ -23,6 +23,19 @@ import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { horizenTestnet } from '@/config';
 
+const REGISTRY_READ_ABI = [
+  {
+    type: 'function',
+    name: 'stealthMetaAddressOf',
+    inputs: [
+      { name: 'registrant', type: 'address' },
+      { name: 'schemeId', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bytes' }],
+    stateMutability: 'view',
+  },
+] as const;
+
 function explorerTxUrl(hash: string) {
   return `${horizenTestnet.blockExplorers.default.url}/tx/${hash}`;
 }
@@ -218,7 +231,7 @@ export function HorizenReceive() {
   // Check if already registered on-chain
   const { data: registeredMeta, refetch: refetchRegistration } = useReadContract({
     address: deployment.contracts.registry as `0x${string}`,
-    abi: REGISTRY_ABI,
+    abi: REGISTRY_READ_ABI,
     functionName: 'stealthMetaAddressOf',
     args: address ? [address, SCHEME_ID] : undefined,
     query: { enabled: !!address },
