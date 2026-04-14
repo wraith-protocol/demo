@@ -24,15 +24,15 @@ export function Header() {
         </div>
         <div className="flex items-center justify-between">
           <ChainSwitcher />
-          <nav className="flex gap-3 sm:gap-4">
+          <nav className="flex gap-0">
             {navLinks.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
-                className={`font-heading text-[10px] uppercase tracking-widest transition-colors sm:text-xs ${
+                className={`px-4 py-2 font-heading text-[10px] uppercase tracking-widest transition-colors sm:text-xs ${
                   location.pathname === link.to
-                    ? 'text-primary'
-                    : 'text-on-surface-variant hover:text-primary'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'border-b-2 border-transparent text-on-surface-variant hover:text-primary'
                 }`}
               >
                 {link.label}

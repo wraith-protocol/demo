@@ -17,6 +17,9 @@ import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { horizenTestnet } from '@/config';
 
+const SUBGRAPH_URL =
+  'https://api.goldsky.com/api/public/project_cmhp1xyw0qu8901xcdayke69d/subgraphs/wraith-stealth-horizen-testnet-horizen-testnet/2.0.0/gn';
+
 function explorerTxUrl(hash: string) {
   return `${horizenTestnet.blockExplorers.default.url}/tx/${hash}`;
 }
@@ -246,7 +249,7 @@ export function HorizenReceive() {
     setIsScanning(true);
     setError('');
     try {
-      const announcements = await fetchAnnouncements('horizen');
+      const announcements = await fetchAnnouncements('horizen', SUBGRAPH_URL);
       const results = scanAnnouncements(
         announcements,
         evmKeys.viewingKey,
