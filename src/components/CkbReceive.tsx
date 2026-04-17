@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
   deriveStealthKeys,
@@ -90,9 +90,17 @@ export function CkbReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const signature = await signer.signMessage(STEALTH_SIGNING_MESSAGE);
-      const sigHex = `0x${signature}` as HexString;
-      const derived = deriveStealthKeys(sigHex);
+      const sig = await (signer as any).signMessageRaw(STEALTH_SIGNING_MESSAGE);
+      const sigStr = typeof sig === 'string' ? sig : `0x${Buffer.from(sig).toString('hex')}`;
+      const sigHex = sigStr.startsWith('0x') ? sigStr : `0x${sigStr}`;
+
+      if (sigHex.length < 132) {
+        throw new Error(
+          `Signature too short (${(sigHex.length - 2) / 2} bytes). Need 65 bytes. Your wallet may not support raw secp256k1 signing.`,
+        );
+      }
+
+      const derived = deriveStealthKeys(sigHex as HexString);
       setCkbKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setCkbMetaAddress(meta);
@@ -102,6 +110,13 @@ export function CkbReceive() {
       setIsDerivingKeys(false);
     }
   }, [signer, setCkbKeys, setCkbMetaAddress]);
+
+  // Auto-derive keys when wallet connects
+  useEffect(() => {
+    if (signer && !ckbKeys && !isDerivingKeys) {
+      deriveKeys();
+    }
+  }, [signer, ckbKeys, isDerivingKeys, deriveKeys]);
 
   const scanPayments = useCallback(async () => {
     if (!ckbKeys) return;
