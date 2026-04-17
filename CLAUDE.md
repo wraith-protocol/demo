@@ -4,7 +4,7 @@ You are building a minimal demo web app for the Wraith Protocol stealth address 
 
 ## What This App Does
 
-A single-page app with two functions: **Send** and **Receive** stealth payments. Supports two chains: Horizen (EVM) and Stellar. A chain switcher in the header toggles between them.
+A single-page app with two functions: **Send** and **Receive** stealth payments. Supports four chains: Horizen (EVM), Stellar, Solana, and CKB (Nervos). A dropdown chain selector in the header switches between them.
 
 This is NOT a full product. It's a reference implementation that developers study to understand how the SDK works in a real app.
 
@@ -23,6 +23,8 @@ Read the reference web apps to understand the existing UX patterns. The demo sho
 - Tailwind CSS (dark monochrome design system)
 - wagmi v2 + RainbowKit (EVM wallet connection)
 - @stellar/freighter-api (Stellar wallet connection)
+- @solana/web3.js (Solana via Phantom browser wallet)
+- @noble/curves + @noble/hashes (ed25519 primitives for Solana/CKB stealth)
 - @wraith-protocol/sdk (installed from npm)
 - React Router (two routes: /send and /receive)
 
@@ -53,8 +55,8 @@ The UI should be minimal and clean — not a dashboard, not flashy. Think: a dev
 ### Header (all pages)
 
 - Wraith logo + "WRAITH DEMO" text
-- Chain switcher: two buttons — "Horizen" and "Stellar". Active chain gets `border-primary` bottom border.
-- Wallet connect button: RainbowKit ConnectButton when Horizen is active, Freighter connect when Stellar is active.
+- Chain switcher: dropdown selector — Horizen, Stellar, Solana, CKB.
+- Wallet connect button: RainbowKit when Horizen, Freighter when Stellar, Phantom when Solana, manual key input label when CKB.
 - Nav links: Send | Receive
 
 ### Send Page (`/send`)
@@ -83,13 +85,36 @@ The UI should be minimal and clean — not a dashboard, not flashy. Think: a dev
    - Call Soroban announcer contract
 5. Show result: stealth address (G...), tx hash
 
+**Solana mode:**
+
+1. Recipient meta-address input (`st:sol:...`)
+2. Amount input (SOL)
+3. "Send" button
+4. On click:
+   - Use `generateStealthAddress()` from local stealth lib
+   - Build Solana `SystemProgram.transfer` transaction
+   - Sign with Phantom
+   - Submit to Solana Devnet
+5. Show result: stealth address (base58), tx signature
+
+**CKB mode:**
+
+1. Recipient meta-address input (`st:ckb:...`)
+2. Amount input (CKB)
+3. "Generate Stealth Cell" button
+4. On click:
+   - Use `generateStealthAddress()` from local stealth lib
+   - Show stealth address, lockArgs (ephemeral pubkey + view tag + stealth pubkey)
+   - User creates the Cell manually (CKB wallet integration pending)
+5. Show result: stealth address, lockArgs, ephemeral pubkey, view tag
+
 ### Receive Page (`/receive`)
 
-**Both chains:**
+**All chains:**
 
 1. "Derive Keys" button — signs the STEALTH_SIGNING_MESSAGE with connected wallet
 2. Shows the user's stealth meta-address (copyable)
-3. "Scan for Payments" button — calls `fetchAnnouncements()` + `scanAnnouncements()`
+3. "Scan for Payments" button — calls `fetchAnnouncements()` / `scanStealthCells()`
 4. Shows list of detected stealth payments with balances
 5. Each payment has a "Withdraw" button
 6. Withdraw: enter destination address, sends funds out
@@ -107,9 +132,22 @@ The UI should be minimal and clean — not a dashboard, not flashy. Think: a dev
 - Submit to Horizon
 - Show tx hash
 
+**Solana withdraw:**
+
+- Derive stealth private scalar from matched announcement
+- Build Solana transfer, sign with `signSolanaTransaction()`
+- Submit to Solana Devnet
+- Show tx signature
+
+**CKB withdraw:**
+
+- Derive stealth private scalar from matched stealth cell
+- Show private key for manual withdrawal via ckb-cli
+- CKB wallet integration pending
+
 ## SDK Imports
 
-The demo uses the SDK exclusively — no raw crypto code:
+The demo uses the SDK for EVM and Stellar, with local implementations for Solana and CKB:
 
 ```typescript
 // EVM
@@ -136,6 +174,27 @@ import {
   SCHEME_ID,
   bytesToHex,
 } from '@wraith-protocol/sdk/chains/stellar';
+
+// Solana (local primitives — SDK module planned)
+import {
+  deriveStealthKeys,
+  generateStealthAddress,
+  scanAnnouncements,
+  signSolanaTransaction,
+  STEALTH_SIGNING_MESSAGE,
+  encodeStealthMetaAddress,
+  decodeStealthMetaAddress,
+} from '@/lib/solana-stealth';
+
+// CKB (local primitives — SDK module planned)
+import {
+  deriveStealthKeys,
+  generateStealthAddress,
+  scanStealthCells,
+  STEALTH_SIGNING_MESSAGE,
+  encodeStealthMetaAddress,
+  decodeStealthMetaAddress,
+} from '@/lib/ckb-stealth';
 ```
 
 ## Implementation Steps
@@ -156,8 +215,8 @@ Commit after each step. Push after each step.
 ### Step 2 — Layout and Chain Switching
 
 - Header with logo, chain switcher, wallet connect, nav
-- Chain context: stores active chain ("horizen" | "stellar")
-- Wallet providers: RainbowKit provider for EVM, Freighter for Stellar
+- Chain context: stores active chain ("horizen" | "stellar" | "solana" | "ckb")
+- Wallet providers: RainbowKit for EVM, Freighter for Stellar, Phantom for Solana
 - wagmi config with Horizen testnet chain
 - Only show the relevant wallet button for the active chain
 - Two routes: `/send` and `/receive`
@@ -220,8 +279,20 @@ demo/
       ChainContext.tsx           — active chain state
     components/
       Header.tsx                — logo, chain switcher, wallet, nav
-      ChainSwitcher.tsx         — Horizen / Stellar toggle
-      WalletConnect.tsx         — conditional RainbowKit or Freighter
+      ChainSwitcher.tsx         — 4-chain dropdown selector
+      WalletConnect.tsx         — conditional wallet per chain
+      HorizenSend.tsx           — Horizen EVM send
+      HorizenReceive.tsx        — Horizen EVM receive
+      StellarSend.tsx           — Stellar send
+      StellarReceive.tsx        — Stellar receive
+      SolanaSend.tsx            — Solana send (Phantom)
+      SolanaReceive.tsx         — Solana receive (Phantom)
+      CkbSend.tsx              — CKB send (stealth cell generation)
+      CkbReceive.tsx           — CKB receive (manual key input)
+    lib/
+      explorer.ts              — explorer URL helpers (all 4 chains)
+      solana-stealth.ts        — ed25519 stealth primitives for Solana
+      ckb-stealth.ts           — ed25519 stealth primitives for CKB
     pages/
       Send.tsx                  — unified send page, switches by chain
       Receive.tsx               — unified receive page, switches by chain
