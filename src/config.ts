@@ -34,3 +34,15 @@ export const STELLAR_NETWORK = {
   horizonUrl: 'https://horizon-testnet.stellar.org',
   explorerUrl: 'https://stellar.expert/explorer/testnet',
 } as const;
+
+export const SOLANA_NETWORK = {
+  name: 'Solana Devnet',
+  rpcUrl: 'https://api.devnet.solana.com',
+  explorerUrl: 'https://explorer.solana.com',
+} as const;
+
+export const CKB_NETWORK = {
+  name: 'CKB Testnet',
+  rpcUrl: 'https://testnet.ckb.dev/rpc',
+  explorerUrl: 'https://pudge.explorer.nervos.org',
+} as const;
