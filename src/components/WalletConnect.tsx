@@ -95,7 +95,7 @@ function CkbButton() {
 
   return (
     <button onClick={open} className={btnBase}>
-      Connect CKB Wallet
+      Connect Wallet
     </button>
   );
 }

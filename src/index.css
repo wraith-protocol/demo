@@ -106,41 +106,52 @@ input:focus {
   background-color: rgba(0, 0, 0, 0.7) !important;
 }
 
-/* CCC Connector overrides */
-div[class*='_modal'] {
+/* CCC Connector overrides - target the ccc-connector web component */
+ccc-connector,
+ccc-connector * {
   border-radius: 0 !important;
 }
 
-div[class*='_modal'] div[class*='_inner'] {
+ccc-connector .background,
+ccc-connector [class*='background'],
+ccc-connector [class*='modal'],
+ccc-connector [class*='container'],
+ccc-connector [class*='content'],
+ccc-connector [class*='body'] {
   background-color: #141414 !important;
-  border: 1px solid #444444 !important;
-  border-radius: 0 !important;
   color: #e6e1e5 !important;
 }
 
-div[class*='_modal'] button {
-  border-radius: 0 !important;
-  color: #e6e1e5 !important;
-}
-
-div[class*='_modal'] div[class*='_wallet'] {
+ccc-connector [class*='wallet'],
+ccc-connector [class*='item'],
+ccc-connector [class*='option'],
+ccc-connector button[class*='wallet'],
+ccc-connector div[class*='wallet'] {
   background-color: #0e0e0e !important;
-  border: 1px solid #444444 !important;
-  border-radius: 0 !important;
   color: #e6e1e5 !important;
+  border-radius: 0 !important;
 }
 
-div[class*='_modal'] div[class*='_wallet']:hover {
+ccc-connector [class*='wallet']:hover,
+ccc-connector [class*='item']:hover,
+ccc-connector [class*='option']:hover {
   background-color: #1a1a1a !important;
 }
 
-div[class*='_modal'] div[class*='_wallet'] span,
-div[class*='_modal'] div[class*='_wallet'] p {
+ccc-connector span,
+ccc-connector p,
+ccc-connector h1,
+ccc-connector h2,
+ccc-connector h3,
+ccc-connector label,
+ccc-connector div {
   color: #e6e1e5 !important;
 }
 
-div[class*='_modal'] h2,
-div[class*='_modal'] h3 {
-  color: #e6e1e5 !important;
-  font-family: 'Space Grotesk', sans-serif !important;
+ccc-connector button {
+  border-radius: 0 !important;
+}
+
+ccc-connector img {
+  border-radius: 0 !important;
 }
