@@ -35,3 +35,112 @@ input:focus {
 ::-webkit-scrollbar-thumb {
   background: #444444;
 }
+
+/* Solana Wallet Adapter overrides */
+.wallet-adapter-button {
+  background-color: transparent !important;
+  border: 1px solid #444444 !important;
+  color: #c6c6c7 !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  border-radius: 0 !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+}
+
+@media (min-width: 640px) {
+  .wallet-adapter-button {
+    font-size: 12px !important;
+    height: 36px !important;
+    padding: 0 16px !important;
+  }
+}
+
+.wallet-adapter-button:hover {
+  background-color: #1a1a1a !important;
+}
+
+.wallet-adapter-button-trigger {
+  background-color: transparent !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background-color: #141414 !important;
+  border: 1px solid #444444 !important;
+  border-radius: 0 !important;
+  color: #e6e1e5 !important;
+}
+
+.wallet-adapter-modal-title {
+  color: #e6e1e5 !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+}
+
+.wallet-adapter-modal-list li {
+  background-color: #0e0e0e !important;
+  border-radius: 0 !important;
+}
+
+.wallet-adapter-modal-list li:hover {
+  background-color: #1a1a1a !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button {
+  color: #e6e1e5 !important;
+  border: none !important;
+  height: auto !important;
+  padding: 8px 12px !important;
+  font-size: 14px !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+
+.wallet-adapter-modal-button-close {
+  background-color: transparent !important;
+  color: #767575 !important;
+}
+
+.wallet-adapter-modal-overlay {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+/* CCC Connector overrides */
+div[class*='_modal'] {
+  border-radius: 0 !important;
+}
+
+div[class*='_modal'] div[class*='_inner'] {
+  background-color: #141414 !important;
+  border: 1px solid #444444 !important;
+  border-radius: 0 !important;
+  color: #e6e1e5 !important;
+}
+
+div[class*='_modal'] button {
+  border-radius: 0 !important;
+  color: #e6e1e5 !important;
+}
+
+div[class*='_modal'] div[class*='_wallet'] {
+  background-color: #0e0e0e !important;
+  border: 1px solid #444444 !important;
+  border-radius: 0 !important;
+  color: #e6e1e5 !important;
+}
+
+div[class*='_modal'] div[class*='_wallet']:hover {
+  background-color: #1a1a1a !important;
+}
+
+div[class*='_modal'] div[class*='_wallet'] span,
+div[class*='_modal'] div[class*='_wallet'] p {
+  color: #e6e1e5 !important;
+}
+
+div[class*='_modal'] h2,
+div[class*='_modal'] h3 {
+  color: #e6e1e5 !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+}

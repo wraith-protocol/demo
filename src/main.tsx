@@ -49,8 +49,13 @@ function Providers({ children }: { children: React.ReactNode }) {
                   connectorProps={{
                     style: {
                       '--background': '#141414',
-                      '--divider': 'rgba(255, 255, 255, 0.1)',
+                      '--divider': '#444444',
+                      '--btn-primary': '#c6c6c7',
+                      '--btn-primary-hover': '#e6e1e5',
+                      '--btn-secondary': '#0e0e0e',
+                      '--wallet-selected': '#1a1a1a',
                       color: '#e6e1e5',
+                      borderRadius: '0px',
                     } as CSSProperties,
                   }}
                 >
