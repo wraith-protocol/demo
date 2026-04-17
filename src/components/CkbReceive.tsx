@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
   deriveStealthKeys,
@@ -110,13 +110,6 @@ export function CkbReceive() {
       setIsDerivingKeys(false);
     }
   }, [signer, setCkbKeys, setCkbMetaAddress]);
-
-  // Auto-derive keys when wallet connects
-  useEffect(() => {
-    if (signer && !ckbKeys && !isDerivingKeys) {
-      deriveKeys();
-    }
-  }, [signer, ckbKeys, isDerivingKeys, deriveKeys]);
 
   const scanPayments = useCallback(async () => {
     if (!ckbKeys) return;

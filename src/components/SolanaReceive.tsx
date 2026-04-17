@@ -193,13 +193,6 @@ export function SolanaReceive() {
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
 
-  // Auto-derive keys when wallet connects
-  useEffect(() => {
-    if (connected && signMessage && !solanaKeys && !isDerivingKeys) {
-      deriveKeys();
-    }
-  }, [connected, signMessage, solanaKeys, isDerivingKeys]);
-
   const deriveKeys = useCallback(async () => {
     if (!signMessage) {
       setError('Wallet does not support message signing');
