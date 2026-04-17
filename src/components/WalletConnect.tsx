@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { ccc } from '@ckb-ccc/connector-react';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 
@@ -71,7 +73,31 @@ function SolanaButton() {
 }
 
 function CkbButton() {
-  return <span className={btnBase}>CKB (Manual Sig)</span>;
+  const { open, wallet } = ccc.useCcc();
+  const signer = ccc.useSigner();
+  const [address, setAddress] = useState<string>('');
+
+  useEffect(() => {
+    if (!signer) return;
+    (async () => {
+      const addr = await signer.getRecommendedAddress();
+      setAddress(addr);
+    })();
+  }, [signer]);
+
+  if (wallet && address) {
+    return (
+      <button onClick={open} className={btnConnected}>
+        {address.slice(0, 6)}...{address.slice(-4)}
+      </button>
+    );
+  }
+
+  return (
+    <button onClick={open} className={btnBase}>
+      Connect CKB Wallet
+    </button>
+  );
 }
 
 export function WalletConnect() {

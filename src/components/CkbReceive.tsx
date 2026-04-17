@@ -1,12 +1,14 @@
 import { useState, useCallback } from 'react';
+import { ccc } from '@ckb-ccc/connector-react';
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
   scanStealthCells,
   fetchStealthCells,
+  STEALTH_SIGNING_MESSAGE,
   type MatchedStealthCell,
+  type HexString,
 } from '@wraith-protocol/sdk/chains/ckb';
-import type { HexString } from '@wraith-protocol/sdk/chains/ckb';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -70,24 +72,27 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
 }
 
 export function CkbReceive() {
+  const { wallet } = ccc.useCcc();
+  const signer = ccc.useSigner();
   const { ckbKeys, ckbMetaAddress, setCkbKeys, setCkbMetaAddress } = useStealthKeys();
 
-  const [manualKey, setManualKey] = useState('');
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedStealthCell[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
 
-  const deriveFromManualKey = useCallback(() => {
+  const deriveKeys = useCallback(async () => {
+    if (!signer) {
+      setError('Connect your CKB wallet first');
+      return;
+    }
     setIsDerivingKeys(true);
     setError('');
     try {
-      const key = manualKey.startsWith('0x') ? manualKey : `0x${manualKey}`;
-      if (key.length !== 132) {
-        throw new Error('Enter a 65-byte ECDSA signature (130 hex chars + 0x prefix)');
-      }
-      const derived = deriveStealthKeys(key as HexString);
+      const signature = await signer.signMessage(STEALTH_SIGNING_MESSAGE);
+      const sigHex = `0x${signature}` as HexString;
+      const derived = deriveStealthKeys(sigHex);
       setCkbKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setCkbMetaAddress(meta);
@@ -96,7 +101,7 @@ export function CkbReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [manualKey, setCkbKeys, setCkbMetaAddress]);
+  }, [signer, setCkbKeys, setCkbMetaAddress]);
 
   const scanPayments = useCallback(async () => {
     if (!ckbKeys) return;
@@ -119,6 +124,19 @@ export function CkbReceive() {
     }
   }, [ckbKeys]);
 
+  if (!wallet) {
+    return (
+      <section>
+        <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
+          Receive
+        </h1>
+        <p className="mb-4 text-sm text-on-surface-variant">
+          Connect your CKB wallet using the button in the header to scan for stealth payments.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="flex flex-col gap-8">
       <div>
@@ -132,28 +150,12 @@ export function CkbReceive() {
 
       {!ckbKeys && (
         <div className="flex flex-col gap-4">
-          <div className="space-y-2">
-            <label className="font-heading text-[10px] uppercase tracking-widest text-outline">
-              Signature (65 bytes hex)
-            </label>
-            <p className="text-xs text-on-surface-variant">
-              Sign the stealth message with a secp256k1 key and paste the 65-byte recoverable
-              signature below.
-            </p>
-            <textarea
-              value={manualKey}
-              onChange={(e) => setManualKey(e.target.value.trim())}
-              placeholder="0x..."
-              rows={3}
-              className="w-full border border-outline-variant bg-surface-container px-4 py-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
-            />
-          </div>
           <button
-            onClick={deriveFromManualKey}
-            disabled={!manualKey || isDerivingKeys}
+            onClick={deriveKeys}
+            disabled={isDerivingKeys}
             className="w-full bg-primary py-4 font-heading text-sm font-bold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isDerivingKeys ? 'Deriving...' : 'Derive Keys'}
+            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Stealth Keys'}
           </button>
           {error && <p className="text-sm text-error">{error}</p>}
         </div>
