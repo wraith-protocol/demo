@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from 'react';
 
-export type Chain = 'horizen' | 'stellar';
+export type Chain = 'horizen' | 'stellar' | 'solana' | 'ckb';
 
 interface ChainContextValue {
   chain: Chain;
