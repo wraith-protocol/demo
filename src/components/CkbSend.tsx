@@ -37,6 +37,15 @@ export function CkbSend() {
         return;
       }
 
+      const parsed = parseFloat(amount);
+      if (parsed < 95) {
+        setError(
+          'Minimum amount is 95 CKB. Stealth cells require at least ~94.5 CKB for cell capacity.',
+        );
+        setIsPending(false);
+        return;
+      }
+
       const decoded = decodeStealthMetaAddress(recipient);
       const stealth = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthInfo({ stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs });
@@ -120,13 +129,13 @@ export function CkbSend() {
 
           <div className="space-y-2">
             <label className="font-heading text-[10px] uppercase tracking-widest text-outline">
-              Amount (CKB)
+              Amount (CKB, min 95)
             </label>
             <input
               type="text"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.0"
+              placeholder="95"
               className="w-full border border-outline-variant bg-surface-container px-4 py-3 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
             />
           </div>
