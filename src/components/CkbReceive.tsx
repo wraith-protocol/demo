@@ -3,34 +3,36 @@ import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
   scanStealthCells,
-  hexToBytes,
-} from '@/lib/ckb-stealth';
-import type { StealthCell, MatchedStealthCell } from '@/lib/ckb-stealth';
+  fetchStealthCells,
+  type MatchedStealthCell,
+} from '@wraith-protocol/sdk/chains/ckb';
+import type { HexString } from '@wraith-protocol/sdk/chains/ckb';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 
 function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
   const [showKey, setShowKey] = useState(false);
-  const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
+  const keyHex = match.stealthPrivateKey.slice(2);
+  const capacityCkb = (Number(match.capacity) / 1e8).toFixed(4);
 
   return (
     <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
       <div className="flex items-start justify-between">
         <div>
           <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
+            Stealth Hash
           </span>
-          <p className="truncate font-mono text-xs text-primary">{match.stealthAddress}</p>
+          <p className="truncate font-mono text-xs text-primary">{match.stealthPubKeyHash}</p>
         </div>
-        <span className="font-heading text-lg font-bold text-on-surface">{match.capacity} CKB</span>
+        <span className="font-heading text-lg font-bold text-on-surface">{capacityCkb} CKB</span>
       </div>
 
       <div>
         <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-          Out Point
+          Cell
         </span>
         <p className="truncate font-mono text-[11px] text-on-surface-variant">
-          {match.outPoint.txHash}:{match.outPoint.index}
+          {match.txHash}:{match.index}
         </p>
       </div>
 
@@ -39,8 +41,7 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
           Withdraw
         </p>
         <p className="text-xs text-on-surface-variant">
-          Use the private key below to sign a CKB transaction consuming this Cell. CKB wallet
-          integration is not yet available &mdash; use ckb-cli or a compatible tool.
+          Use the private key below to sign a CKB transaction consuming this Cell.
         </p>
       </div>
 
@@ -58,9 +59,9 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
               <span className="font-heading text-[9px] font-bold uppercase tracking-widest text-error">
                 Stealth Key
               </span>
-              <CopyButton text={scalarHex} />
+              <CopyButton text={keyHex} />
             </div>
-            <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
+            <code className="break-all font-mono text-[11px] text-on-surface">{keyHex}</code>
           </div>
         )}
       </div>
@@ -82,11 +83,11 @@ export function CkbReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const keyBytes = hexToBytes(manualKey);
-      if (keyBytes.length !== 64) {
-        throw new Error('Enter a 64-byte hex signature (128 hex chars)');
+      const key = manualKey.startsWith('0x') ? manualKey : `0x${manualKey}`;
+      if (key.length !== 132) {
+        throw new Error('Enter a 65-byte ECDSA signature (130 hex chars + 0x prefix)');
       }
-      const derived = deriveStealthKeys(keyBytes);
+      const derived = deriveStealthKeys(key as HexString);
       setCkbKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setCkbMetaAddress(meta);
@@ -102,13 +103,12 @@ export function CkbReceive() {
     setIsScanning(true);
     setError('');
     try {
-      const cells: StealthCell[] = [];
-
+      const cells = await fetchStealthCells('ckb');
       const results = scanStealthCells(
         cells,
         ckbKeys.viewingKey,
         ckbKeys.spendingPubKey,
-        ckbKeys.spendingScalar,
+        ckbKeys.spendingKey,
       );
       setMatched(results);
       setHasScanned(true);
@@ -134,16 +134,16 @@ export function CkbReceive() {
         <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <label className="font-heading text-[10px] uppercase tracking-widest text-outline">
-              Signature (64 bytes hex)
+              Signature (65 bytes hex)
             </label>
             <p className="text-xs text-on-surface-variant">
-              Sign the stealth message with an ed25519 key offline and paste the 128-char hex
-              signature below. CKB browser wallet integration is coming soon.
+              Sign the stealth message with a secp256k1 key and paste the 65-byte recoverable
+              signature below.
             </p>
             <textarea
               value={manualKey}
               onChange={(e) => setManualKey(e.target.value.trim())}
-              placeholder="Paste 128-char hex signature..."
+              placeholder="0x..."
               rows={3}
               className="w-full border border-outline-variant bg-surface-container px-4 py-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
@@ -200,7 +200,7 @@ export function CkbReceive() {
             <div className="py-12 text-center opacity-50">
               <p className="font-heading text-sm uppercase">No cells found</p>
               <p className="mt-1 text-xs text-on-surface-variant">
-                No stealth Cells matched your keys. CKB indexer integration coming soon.
+                No stealth Cells matched your keys.
               </p>
             </div>
           )}

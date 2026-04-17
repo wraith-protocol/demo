@@ -30,8 +30,8 @@ importers:
         specifier: ^5.64.0
         version: 5.99.0(react@19.2.5)
       '@wraith-protocol/sdk':
-        specifier: ^1.1.0
-        version: 1.1.0(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
+        specifier: ^1.4.0
+        version: 1.4.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
       bs58:
         specifier: ^6.0.0
         version: 6.0.0
@@ -1443,11 +1443,14 @@ packages:
   '@walletconnect/window-metadata@1.0.1':
     resolution: {integrity: sha512-9koTqyGrM2cqFRW517BPY/iEtUDx2r1+Pwwu5m7sJ7ka79wi3EyqhqcICk/yDmv6jAS1rjKgTKXlEhanYjijcA==}
 
-  '@wraith-protocol/sdk@1.1.0':
-    resolution: {integrity: sha512-Ju+Js4DDZGwiXh7agS44ZExT45Yqe3IviRxZUG2rU+Qms6iCMtCBB2Cd3IAfDiCBhBst9/iZPpD8GlTPl9mVVQ==}
+  '@wraith-protocol/sdk@1.4.0':
+    resolution: {integrity: sha512-azQM0u6y1U6tL2Eq+gdh4SOUr4U84uwyJQ3XzUObLlo7uRgPN9zDbKe+GKJN33UjH+v42OhEE0dvQLbLS9KeNw==}
     peerDependencies:
+      '@solana/web3.js': ^1.95.0
       '@stellar/stellar-sdk': ^13.1.0
     peerDependenciesMeta:
+      '@solana/web3.js':
+        optional: true
       '@stellar/stellar-sdk':
         optional: true
 
@@ -5801,12 +5804,13 @@ snapshots:
       '@walletconnect/window-getters': 1.0.1
       tslib: 1.14.1
 
-  '@wraith-protocol/sdk@1.1.0(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
+  '@wraith-protocol/sdk@1.4.0(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       viem: 2.47.17(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
     optionalDependencies:
+      '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@stellar/stellar-sdk': 13.3.0
     transitivePeerDependencies:
       - bufferutil

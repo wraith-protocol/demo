@@ -1,16 +1,15 @@
 import { useState, useCallback } from 'react';
-import { generateStealthAddress, decodeStealthMetaAddress, bytesToHex } from '@/lib/ckb-stealth';
+import {
+  generateStealthAddress,
+  decodeStealthMetaAddress,
+  type GeneratedStealthAddress,
+} from '@wraith-protocol/sdk/chains/ckb';
 
 export function CkbSend() {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
-  const [stealthResult, setStealthResult] = useState<{
-    stealthAddress: string;
-    lockArgs: string;
-    ephemeralPubKey: Uint8Array;
-    viewTag: number;
-  } | null>(null);
+  const [stealthResult, setStealthResult] = useState<GeneratedStealthAddress | null>(null);
 
   const handleGenerate = useCallback(() => {
     setError('');
@@ -43,8 +42,7 @@ export function CkbSend() {
           Send
         </h1>
         <p className="text-sm text-on-surface-variant">
-          Generate a stealth Cell for CKB Testnet. The Cell itself serves as the announcement
-          &mdash; no separate announcer contract needed.
+          Generate a stealth Cell for CKB Testnet. The Cell itself serves as the announcement.
         </p>
       </div>
 
@@ -100,16 +98,16 @@ export function CkbSend() {
           <div className="space-y-3">
             <div>
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address (Pub Key)
+                Stealth Public Key
               </span>
               <p className="truncate font-mono text-xs text-primary">
-                {stealthResult.stealthAddress}
+                {stealthResult.stealthPubKey}
               </p>
             </div>
 
             <div>
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-                Lock Args
+                Lock Args (53 bytes)
               </span>
               <p className="break-all font-mono text-[11px] text-on-surface-variant">
                 {stealthResult.lockArgs}
@@ -118,18 +116,20 @@ export function CkbSend() {
 
             <div>
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-                Ephemeral Pub Key
+                Ephemeral Public Key
               </span>
               <p className="truncate font-mono text-xs text-on-surface-variant">
-                {bytesToHex(stealthResult.ephemeralPubKey)}
+                {stealthResult.ephemeralPubKey}
               </p>
             </div>
 
             <div>
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-                View Tag
+                Blake160 Hash
               </span>
-              <p className="font-mono text-xs text-on-surface-variant">{stealthResult.viewTag}</p>
+              <p className="font-mono text-xs text-on-surface-variant">
+                {stealthResult.stealthPubKeyHash}
+              </p>
             </div>
 
             <div className="border border-outline-variant bg-surface p-4">
@@ -138,7 +138,7 @@ export function CkbSend() {
               </p>
               <p className="text-xs text-on-surface-variant">
                 Create a Cell with {amount} CKB capacity using the lock args above. The lock script
-                should encode the stealth public key so the recipient can scan and claim.
+                code hash should be the wraith-stealth-lock deployed on testnet.
               </p>
             </div>
           </div>

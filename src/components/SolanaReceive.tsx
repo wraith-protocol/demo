@@ -6,8 +6,8 @@ import {
   scanAnnouncements,
   signSolanaTransaction,
   STEALTH_SIGNING_MESSAGE,
-} from '@/lib/solana-stealth';
-import type { Announcement, MatchedAnnouncement } from '@/lib/solana-stealth';
+} from '@wraith-protocol/sdk/chains/solana';
+import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';

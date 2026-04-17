@@ -6,7 +6,11 @@ import {
   SystemProgram,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
-import { generateStealthAddress, decodeStealthMetaAddress, bytesToHex } from '@/lib/solana-stealth';
+import {
+  generateStealthAddress,
+  decodeStealthMetaAddress,
+  bytesToHex,
+} from '@wraith-protocol/sdk/chains/solana';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 

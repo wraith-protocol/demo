@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 import type { StealthKeys as EVMStealthKeys } from '@wraith-protocol/sdk/chains/evm';
 import type { StealthKeys as StellarStealthKeys } from '@wraith-protocol/sdk/chains/stellar';
-import type { StealthKeys as SolanaStealthKeys } from '@/lib/solana-stealth';
-import type { StealthKeys as CKBStealthKeys } from '@/lib/ckb-stealth';
+import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chains/solana';
+import type { StealthKeys as CKBStealthKeys } from '@wraith-protocol/sdk/chains/ckb';
 
 interface StealthKeysContextValue {
   evmKeys: EVMStealthKeys | null;
