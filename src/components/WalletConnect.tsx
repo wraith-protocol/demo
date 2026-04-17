@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
@@ -54,12 +55,64 @@ function FreighterButton() {
   );
 }
 
+function PhantomButton() {
+  const [address, setAddress] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const connect = useCallback(async () => {
+    try {
+      const phantom = (window as unknown as Record<string, unknown>).solana as
+        | {
+            isPhantom?: boolean;
+            connect: () => Promise<{ publicKey: { toString: () => string } }>;
+          }
+        | undefined;
+      if (!phantom?.isPhantom) {
+        setError('Phantom not found');
+        return;
+      }
+      const resp = await phantom.connect();
+      setAddress(resp.publicKey.toString());
+    } catch {
+      setError('Connect failed');
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    setAddress(null);
+  }, []);
+
+  if (address) {
+    return (
+      <button onClick={disconnect} className={btnConnected}>
+        {address.slice(0, 4)}...{address.slice(-4)}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <button onClick={connect} className={btnBase}>
+        Connect Phantom
+      </button>
+      {error && <span className="text-[10px] text-error">{error}</span>}
+    </>
+  );
+}
+
+function CkbPlaceholder() {
+  return (
+    <span className="px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-outline sm:px-4 sm:py-2 sm:text-xs">
+      Manual Key Input
+    </span>
+  );
+}
+
 export function WalletConnect() {
   const { chain } = useChain();
 
-  if (chain === 'stellar') {
-    return <FreighterButton />;
-  }
-
+  if (chain === 'stellar') return <FreighterButton />;
+  if (chain === 'solana') return <PhantomButton />;
+  if (chain === 'ckb') return <CkbPlaceholder />;
   return <HorizenButton />;
 }
