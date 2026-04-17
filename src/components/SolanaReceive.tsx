@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { useWallet } from '@solana/wallet-adapter-react';
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
   scanAnnouncements,
+  fetchAnnouncements,
   signSolanaTransaction,
   STEALTH_SIGNING_MESSAGE,
 } from '@wraith-protocol/sdk/chains/solana';
-import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
+import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
@@ -182,7 +184,7 @@ function SolanaStealthRow({
 }
 
 export function SolanaReceive() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const { connected, signMessage } = useWallet();
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
@@ -191,36 +193,16 @@ export function SolanaReceive() {
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
 
-  const isConnected = !!walletAddress;
-
-  const connectWallet = useCallback(async () => {
-    try {
-      const phantom = (window as unknown as Record<string, unknown>).solana as
-        | {
-            isPhantom?: boolean;
-            connect: () => Promise<{ publicKey: { toString: () => string } }>;
-          }
-        | undefined;
-      if (!phantom?.isPhantom) {
-        setError('Phantom wallet not found. Please install the Phantom browser extension.');
-        return;
-      }
-      const resp = await phantom.connect();
-      setWalletAddress(resp.publicKey.toString());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect wallet');
-    }
-  }, []);
-
   const deriveKeys = useCallback(async () => {
+    if (!signMessage) {
+      setError('Wallet does not support message signing');
+      return;
+    }
     setIsDerivingKeys(true);
     setError('');
     try {
-      const phantom = (window as unknown as Record<string, unknown>).solana as {
-        signMessage: (message: Uint8Array, encoding: string) => Promise<{ signature: Uint8Array }>;
-      };
       const msgBytes = new TextEncoder().encode(STEALTH_SIGNING_MESSAGE);
-      const { signature } = await phantom.signMessage(msgBytes, 'utf8');
+      const signature = await signMessage(msgBytes);
       const derived = deriveStealthKeys(signature);
       setSolanaKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
@@ -230,15 +212,14 @@ export function SolanaReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [setSolanaKeys, setSolanaMetaAddress]);
+  }, [signMessage, setSolanaKeys, setSolanaMetaAddress]);
 
   const scanPayments = useCallback(async () => {
     if (!solanaKeys) return;
     setIsScanning(true);
     setError('');
     try {
-      const announcements: Announcement[] = [];
-
+      const announcements = await fetchAnnouncements('solana');
       const results = scanAnnouncements(
         announcements,
         solanaKeys.viewingKey,
@@ -254,22 +235,15 @@ export function SolanaReceive() {
     }
   }, [solanaKeys]);
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <section>
         <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
           Receive
         </h1>
         <p className="mb-4 text-sm text-on-surface-variant">
-          Connect your Phantom wallet to scan for incoming stealth transfers on Solana.
+          Connect your Solana wallet using the button in the header to scan for stealth payments.
         </p>
-        <button
-          onClick={connectWallet}
-          className="bg-primary px-6 py-3 font-heading text-sm font-bold uppercase tracking-widest text-surface transition-colors hover:brightness-110"
-        >
-          Connect Phantom
-        </button>
-        {error && <p className="mt-2 text-sm text-error">{error}</p>}
       </section>
     );
   }

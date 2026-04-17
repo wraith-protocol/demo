@@ -6,6 +6,7 @@ import {
   SystemProgram,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
+import { useWallet } from '@solana/wallet-adapter-react';
 import {
   generateStealthAddress,
   decodeStealthMetaAddress,
@@ -15,7 +16,7 @@ import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 
 export function SolanaSend() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const { publicKey, connected, sendTransaction } = useWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -28,29 +29,8 @@ export function SolanaSend() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const isConnected = !!walletAddress;
-
-  const connectWallet = useCallback(async () => {
-    try {
-      const phantom = (window as unknown as Record<string, unknown>).solana as
-        | {
-            isPhantom?: boolean;
-            connect: () => Promise<{ publicKey: { toString: () => string } }>;
-          }
-        | undefined;
-      if (!phantom?.isPhantom) {
-        setError('Phantom wallet not found. Please install the Phantom browser extension.');
-        return;
-      }
-      const resp = await phantom.connect();
-      setWalletAddress(resp.publicKey.toString());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect wallet');
-    }
-  }, []);
-
   const handleSend = useCallback(async () => {
-    if (!walletAddress) {
+    if (!connected || !publicKey) {
       setError('Wallet not connected');
       return;
     }
@@ -70,30 +50,18 @@ export function SolanaSend() {
       setStealthResult(result);
 
       const connection = new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed');
-
       const stealthPubkey = new PublicKey(result.stealthAddress);
-      const senderPubkey = new PublicKey(walletAddress);
-
       const lamports = Math.round(parseFloat(amount) * LAMPORTS_PER_SOL);
 
-      const tx = new Transaction();
-      tx.add(
+      const tx = new Transaction().add(
         SystemProgram.transfer({
-          fromPubkey: senderPubkey,
+          fromPubkey: publicKey,
           toPubkey: stealthPubkey,
           lamports,
         }),
       );
 
-      const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = senderPubkey;
-
-      const phantom = (window as unknown as Record<string, unknown>).solana as {
-        signAndSendTransaction: (tx: Transaction) => Promise<{ signature: string }>;
-      };
-
-      const { signature } = await phantom.signAndSendTransaction(tx);
+      const signature = await sendTransaction(tx, connection);
       setTxHash(signature);
 
       await connection.confirmTransaction(signature, 'confirmed');
@@ -103,7 +71,7 @@ export function SolanaSend() {
     } finally {
       setIsPending(false);
     }
-  }, [walletAddress, recipient, amount]);
+  }, [connected, publicKey, sendTransaction, recipient, amount]);
 
   const reset = () => {
     setRecipient('');
@@ -114,22 +82,15 @@ export function SolanaSend() {
     setError('');
   };
 
-  if (!isConnected) {
+  if (!connected) {
     return (
       <section>
         <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
           Send
         </h1>
         <p className="mb-4 text-sm text-on-surface-variant">
-          Connect your Phantom wallet to send stealth payments on Solana.
+          Connect your Solana wallet using the button in the header to send stealth payments.
         </p>
-        <button
-          onClick={connectWallet}
-          className="bg-primary px-6 py-3 font-heading text-sm font-bold uppercase tracking-widest text-surface transition-colors hover:brightness-110"
-        >
-          Connect Phantom
-        </button>
-        {error && <p className="mt-2 text-sm text-error">{error}</p>}
       </section>
     );
   }
