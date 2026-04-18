@@ -9,7 +9,7 @@ export function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
-      className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+      className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
     >
       {copied ? 'Copied' : 'Copy'}
     </button>

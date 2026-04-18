@@ -19,46 +19,50 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
 
   return (
     <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Stealth Hash
           </span>
-          <p className="truncate font-mono text-xs text-primary">{match.stealthPubKeyHash}</p>
+          <div className="mt-0.5 flex items-center gap-2">
+            <p className="truncate font-mono text-xs text-primary">{match.stealthPubKeyHash}</p>
+            <CopyButton text={match.stealthPubKeyHash} />
+          </div>
         </div>
-        <span className="font-heading text-lg font-bold text-on-surface">{capacityCkb} CKB</span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+          <span className="font-heading text-lg font-bold text-on-surface">{capacityCkb} CKB</span>
+        </div>
       </div>
 
       <div>
-        <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
-          Cell
-        </span>
-        <p className="truncate font-mono text-[11px] text-on-surface-variant">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">Cell</span>
+        <p className="mt-0.5 truncate font-mono text-[11px] text-on-surface-variant">
           {match.txHash}:{match.index}
         </p>
       </div>
 
       <div className="border border-outline-variant bg-surface p-4">
-        <p className="mb-2 font-heading text-[10px] uppercase tracking-widest text-outline">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-outline">
           Withdraw
         </p>
-        <p className="text-xs text-on-surface-variant">
+        <p className="font-body text-xs leading-relaxed text-on-surface-variant">
           Use the private key below to sign a CKB transaction consuming this Cell.
         </p>
       </div>
 
-      <div>
+      <div className="border-t border-outline-variant/30 pt-3">
         {!showKey ? (
           <button
             onClick={() => setShowKey(true)}
-            className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+            className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
           >
             Reveal private key
           </button>
         ) : (
           <div className="border border-error/20 bg-error/5 p-3">
             <div className="mb-1 flex items-center justify-between">
-              <span className="font-heading text-[9px] font-bold uppercase tracking-widest text-error">
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
                 Stealth Key
               </span>
               <CopyButton text={keyHex} />
@@ -134,12 +138,15 @@ export function CkbReceive() {
 
   if (!wallet) {
     return (
-      <section>
-        <h1 className="mb-2 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
+      <section className="flex flex-col gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          CKB Testnet / CKB
+        </span>
+        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive
         </h1>
-        <p className="mb-4 text-sm text-on-surface-variant">
-          Connect your CKB wallet using the button in the header to scan for stealth payments.
+        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
+          Connect your CKB wallet to scan for stealth payments.
         </p>
       </section>
     );
@@ -147,11 +154,14 @@ export function CkbReceive() {
 
   return (
     <section className="flex flex-col gap-8">
-      <div>
-        <h1 className="mb-1 font-heading text-3xl font-bold uppercase tracking-tight text-primary">
+      <div className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          CKB Testnet / CKB
+        </span>
+        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive
         </h1>
-        <p className="text-sm text-on-surface-variant">
+        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
           Derive your stealth keys, then scan for stealth Cells on CKB Testnet.
         </p>
       </div>
@@ -161,7 +171,7 @@ export function CkbReceive() {
           <button
             onClick={deriveKeys}
             disabled={isDerivingKeys}
-            className="w-full bg-primary py-4 font-heading text-sm font-bold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Stealth Keys'}
           </button>
@@ -172,25 +182,27 @@ export function CkbReceive() {
       {ckbKeys && ckbMetaAddress && (
         <>
           <div className="border border-outline-variant bg-surface-container p-5">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
               </span>
               <CopyButton text={ckbMetaAddress} />
             </div>
-            <code className="break-all font-mono text-xs text-primary">{ckbMetaAddress}</code>
+            <code className="block break-all font-mono text-xs leading-relaxed text-primary">
+              {ckbMetaAddress}
+            </code>
           </div>
 
           <div className="flex items-center justify-between">
             <button
               onClick={scanPayments}
               disabled={isScanning}
-              className="bg-primary px-6 py-3 font-heading text-sm font-bold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Cells'}
             </button>
             {hasScanned && (
-              <span className="font-heading text-xs text-on-surface-variant">
+              <span className="font-mono text-xs text-on-surface-variant">
                 {matched.length} cell{matched.length !== 1 ? 's' : ''} found
               </span>
             )}
@@ -207,9 +219,11 @@ export function CkbReceive() {
           )}
 
           {hasScanned && matched.length === 0 && (
-            <div className="py-12 text-center opacity-50">
-              <p className="font-heading text-sm uppercase">No cells found</p>
-              <p className="mt-1 text-xs text-on-surface-variant">
+            <div className="py-12 text-center">
+              <p className="font-heading text-sm uppercase tracking-widest text-outline">
+                No cells found
+              </p>
+              <p className="mt-2 font-body text-xs text-on-surface-variant">
                 No stealth Cells matched your keys.
               </p>
             </div>
