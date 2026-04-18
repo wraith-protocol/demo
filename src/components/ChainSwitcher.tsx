@@ -16,7 +16,7 @@ export function ChainSwitcher() {
       <select
         value={chain}
         onChange={(e) => setChain(e.target.value as Chain)}
-        className="appearance-none border border-outline-variant bg-surface-container px-4 py-2 pr-8 font-heading text-xs uppercase tracking-widest text-primary focus:border-primary focus:outline-none"
+        className="h-8 appearance-none border border-outline-variant bg-surface px-3 py-1.5 pr-7 font-mono text-[10px] uppercase tracking-widest text-primary focus:border-primary focus:outline-none sm:h-9 sm:px-4 sm:py-2 sm:pr-8 sm:text-xs"
       >
         {chains.map((c) => (
           <option key={c.id} value={c.id}>
