@@ -64,7 +64,7 @@ export function SolanaSend() {
             isSigner: k.isSigner,
             isWritable: k.isWritable,
           })),
-          data: ix.data,
+          data: Buffer.from(ix.data),
         }),
       );
 
