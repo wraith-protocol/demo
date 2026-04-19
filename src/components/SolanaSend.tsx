@@ -3,15 +3,11 @@ import {
   Connection,
   PublicKey,
   Transaction,
-  SystemProgram,
+  TransactionInstruction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
-import {
-  generateStealthAddress,
-  decodeStealthMetaAddress,
-  bytesToHex,
-} from '@wraith-protocol/sdk/chains/solana';
+import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
@@ -46,19 +42,29 @@ export function SolanaSend() {
         return;
       }
 
-      const decoded = decodeStealthMetaAddress(recipient);
-      const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
-      setStealthResult(result);
+      const lamports = BigInt(Math.round(parseFloat(amount) * LAMPORTS_PER_SOL));
+      const result = buildSendSol({
+        recipientMetaAddress: recipient,
+        amount: lamports,
+        senderPubkey: publicKey.toBase58(),
+      });
+      setStealthResult({
+        stealthAddress: result.stealthAddress,
+        ephemeralPubKey: result.ephemeralPubKey,
+        viewTag: result.viewTag,
+      });
 
       const connection = new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed');
-      const stealthPubkey = new PublicKey(result.stealthAddress);
-      const lamports = Math.round(parseFloat(amount) * LAMPORTS_PER_SOL);
-
+      const ix = result.instruction;
       const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: stealthPubkey,
-          lamports,
+        new TransactionInstruction({
+          programId: new PublicKey(ix.programId),
+          keys: ix.keys.map((k) => ({
+            pubkey: new PublicKey(k.pubkey),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          data: ix.data,
         }),
       );
 

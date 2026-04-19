@@ -48,8 +48,8 @@ importers:
         specifier: ^5.64.0
         version: 5.99.0(react@19.2.5)
       '@wraith-protocol/sdk':
-        specifier: ^1.4.2
-        version: 1.4.2(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
+        specifier: ^1.4.4
+        version: 1.4.4(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
       bs58:
         specifier: ^6.0.0
         version: 6.0.0
@@ -1782,8 +1782,8 @@ packages:
   '@walletconnect/window-metadata@1.0.1':
     resolution: {integrity: sha512-9koTqyGrM2cqFRW517BPY/iEtUDx2r1+Pwwu5m7sJ7ka79wi3EyqhqcICk/yDmv6jAS1rjKgTKXlEhanYjijcA==}
 
-  '@wraith-protocol/sdk@1.4.2':
-    resolution: {integrity: sha512-VtS6c5Hnph4k8e60mctVadTc/OzzFR6YAnjdy258qwiZpvY/ESTdvDVdSqefvqfDyJNrHClyHPkJoi4TBo5XUg==}
+  '@wraith-protocol/sdk@1.4.4':
+    resolution: {integrity: sha512-USv/1VOU9057WMfST5O9aUH1E+hyblzB0jaAIRn/ZZauOjK2ADOSozVb6miY9H3NTY2MQB4PqQpK0MwRrMrfAQ==}
     peerDependencies:
       '@solana/web3.js': ^1.95.0
       '@stellar/stellar-sdk': ^13.1.0
@@ -7316,7 +7316,7 @@ snapshots:
       '@walletconnect/window-getters': 1.0.1
       tslib: 1.14.1
 
-  '@wraith-protocol/sdk@1.4.2(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
+  '@wraith-protocol/sdk@1.4.4(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
