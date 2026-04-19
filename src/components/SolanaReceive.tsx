@@ -340,7 +340,7 @@ export function SolanaReceive() {
                 No transfers found
               </p>
               <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys. Solana announcer program coming soon.
+                No stealth transfers matched your keys.
               </p>
             </div>
           )}
