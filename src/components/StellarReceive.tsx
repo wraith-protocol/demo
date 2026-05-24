@@ -24,6 +24,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
+import { isNetworkUnstableError, retryFetchJson, withRetry } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -36,7 +37,7 @@ async function fetchAnnouncementEvents(
 
   try {
     let startLedger = 1;
-    const probeRes = await fetch(rpcUrl, {
+    const { data: probeData } = await retryFetchJson<{ error?: { message?: string } }>(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -50,7 +51,6 @@ async function fetchAnnouncementEvents(
         },
       }),
     });
-    const probeData = await probeRes.json();
 
     if (probeData.error?.message) {
       const match = probeData.error.message.match(/range:\s*(\d+)\s*-\s*(\d+)/);
@@ -78,13 +78,14 @@ async function fetchAnnouncementEvents(
         params.startLedger = startLedger;
       }
 
-      const res = await fetch(rpcUrl, {
+      const { data } = await retryFetchJson<{
+        result?: { events?: Record<string, unknown>[]; cursor?: string };
+      }>(rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
       });
 
-      const data = await res.json();
       const events = data.result?.events ?? [];
 
       for (const event of events) {
@@ -103,7 +104,8 @@ async function fetchAnnouncementEvents(
         if (!cursor) hasMore = false;
       }
     }
-  } catch {
+  } catch (err) {
+    if (isNetworkUnstableError(err)) throw err;
     // Events API may not be available
   }
 
@@ -150,6 +152,7 @@ function StellarStealthRow({
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [canRetryWithdraw, setCanRetryWithdraw] = useState(false);
   const [showKey, setShowKey] = useState(false);
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
@@ -157,12 +160,13 @@ function StellarStealthRow({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
+        const { response: res, data } = await retryFetchJson<{
+          balances?: { asset_type: string; balance: string }[];
+        }>(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
         if (!res.ok) {
           setBalance('0');
           return;
         }
-        const data = await res.json();
         const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
         setBalance(xlm?.balance ?? '0');
       } catch {
@@ -176,15 +180,19 @@ function StellarStealthRow({
   const handleWithdraw = async () => {
     if (!dest) return;
     setError('');
+    setCanRetryWithdraw(false);
     setWithdrawing(true);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const { response: res, data: account } = await retryFetchJson<{
+        sequence: string;
+        subentry_count?: number;
+        balances?: { asset_type: string; balance: string }[];
+      }>(`${horizonUrl}/accounts/${match.stealthAddress}`);
       if (!res.ok) throw new Error('Account not found');
-      const account = await res.json();
 
       const xlmBal = account.balances?.find(
         (b: { asset_type: string }) => b.asset_type === 'native',
@@ -213,13 +221,15 @@ function StellarStealthRow({
       const signatureBase64 = Buffer.from(signature).toString('base64');
       tx.addSignature(match.stealthAddress, signatureBase64);
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
+      const { response: submitRes, data: submitData } = await retryFetchJson<{
+        hash: string;
+        extras?: { result_codes?: { transaction?: string } };
+        title?: string;
+      }>(`${horizonUrl}/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `tx=${encodeURIComponent(tx.toXDR())}`,
       });
-
-      const submitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
           submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
@@ -229,7 +239,14 @@ function StellarStealthRow({
       setWithdrawHash(submitData.hash);
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      setCanRetryWithdraw(isNetworkUnstableError(err));
+      setError(
+        isNetworkUnstableError(err)
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Withdraw failed',
+      );
     } finally {
       setWithdrawing(false);
     }
@@ -293,6 +310,14 @@ function StellarStealthRow({
       )}
 
       {error && <p className="text-xs text-error">{error}</p>}
+      {canRetryWithdraw && (
+        <button
+          onClick={handleWithdraw}
+          className="h-9 border border-error/30 font-heading text-[10px] font-semibold uppercase tracking-widest text-error transition-colors hover:bg-error/5"
+        >
+          Try Again
+        </button>
+      )}
 
       {withdrawHash && (
         <div className="flex items-center gap-2">
@@ -345,6 +370,7 @@ export function StellarReceive() {
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [canRetryScan, setCanRetryScan] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
@@ -360,7 +386,7 @@ export function StellarReceive() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-        const accountResponse = await soroban.getAccount(address);
+        const accountResponse = await withRetry(() => soroban.getAccount(address));
         const sourceAccount = new Account(
           accountResponse.accountId(),
           accountResponse.sequenceNumber(),
@@ -378,7 +404,7 @@ export function StellarReceive() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(tx);
+        const simulated = await withRetry(() => soroban.simulateTransaction(tx));
         if (!('error' in simulated) && 'result' in simulated) {
           setIsAlreadyRegistered(true);
         }
@@ -415,7 +441,7 @@ export function StellarReceive() {
       const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountResponse = await soroban.getAccount(address);
+      const accountResponse = await withRetry(() => soroban.getAccount(address));
       const sourceAccount = new Account(
         accountResponse.accountId(),
         accountResponse.sequenceNumber(),
@@ -438,7 +464,7 @@ export function StellarReceive() {
         .setTimeout(30)
         .build();
 
-      const simulated = await soroban.simulateTransaction(tx);
+      const simulated = await withRetry(() => soroban.simulateTransaction(tx));
       if ('error' in simulated) {
         throw new Error((simulated as { error: string }).error || 'Simulation failed');
       }
@@ -448,8 +474,8 @@ export function StellarReceive() {
         .build();
 
       const signedXdr = await signTransaction(assembled.toXDR());
-      const response = await soroban.sendTransaction(
-        TransactionBuilder.fromXDR(signedXdr, networkPassphrase),
+      const response = await withRetry(() =>
+        soroban.sendTransaction(TransactionBuilder.fromXDR(signedXdr, networkPassphrase)),
       );
 
       if (response.status === 'ERROR') throw new Error('Transaction submission failed');
@@ -459,7 +485,7 @@ export function StellarReceive() {
       let attempts = 0;
       while (attempts < 30) {
         try {
-          const result = await soroban.getTransaction(response.hash);
+          const result = await withRetry(() => soroban.getTransaction(response.hash));
           if (result.status === 'NOT_FOUND') {
             attempts++;
             await new Promise((r) => setTimeout(r, 1000));
@@ -478,7 +504,13 @@ export function StellarReceive() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(
+        isNetworkUnstableError(err)
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Registration failed',
+      );
     } finally {
       setIsRegistering(false);
     }
@@ -488,6 +520,7 @@ export function StellarReceive() {
     if (!stellarKeys) return;
     setIsScanning(true);
     setError('');
+    setCanRetryScan(false);
     try {
       const announcements = await fetchAnnouncementEvents(
         STELLAR_NETWORK.rpcUrl,
@@ -502,7 +535,14 @@ export function StellarReceive() {
       setMatched(results);
       setHasScanned(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      setCanRetryScan(isNetworkUnstableError(err));
+      setError(
+        isNetworkUnstableError(err)
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Scan failed',
+      );
     } finally {
       setIsScanning(false);
     }
@@ -621,6 +661,14 @@ export function StellarReceive() {
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+          {canRetryScan && (
+            <button
+              onClick={scanPayments}
+              className="h-10 border border-error/30 font-heading text-[11px] font-semibold uppercase tracking-widest text-error transition-colors hover:bg-error/5"
+            >
+              Try Again
+            </button>
+          )}
 
           {matched.length > 0 && (
             <div className="flex flex-col gap-4">

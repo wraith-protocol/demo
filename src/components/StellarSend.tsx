@@ -18,6 +18,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { isNetworkUnstableError, retryFetch, retryFetchJson, withRetry } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
@@ -26,6 +27,7 @@ export function StellarSend() {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
+  const [canRetrySend, setCanRetrySend] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
@@ -42,6 +44,7 @@ export function StellarSend() {
     }
 
     setError('');
+    setCanRetrySend(false);
     setIsPending(true);
 
     try {
@@ -59,14 +62,15 @@ export function StellarSend() {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const { response: accountRes, data: accountData } = await retryFetchJson<{
+        sequence: string;
+      }>(`${horizonUrl}/accounts/${address}`);
       if (!accountRes.ok) throw new Error('Failed to load sender account');
-      const accountData = await accountRes.json();
       const sourceAccount = new Account(address, accountData.sequence);
 
-      const stealthExists = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then(
-        (r) => r.ok,
-      );
+      const stealthExists = await retryFetch(
+        `${horizonUrl}/accounts/${result.stealthAddress}`,
+      ).then((response) => response.ok);
 
       let classicTx;
       if (stealthExists) {
@@ -94,13 +98,15 @@ export function StellarSend() {
 
       const signedXdr = await signTransaction(classicTx.toXDR());
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
+      const { response: submitRes, data: submitData } = await retryFetchJson<{
+        hash: string;
+        extras?: { result_codes?: { transaction?: string } };
+        title?: string;
+      }>(`${horizonUrl}/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `tx=${encodeURIComponent(signedXdr)}`,
       });
-
-      const submitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
           submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
@@ -115,8 +121,9 @@ export function StellarSend() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const announcerContract = new Contract(ANNOUNCER_CONTRACT);
 
-        const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
-        const freshData = await freshRes.json();
+        const { data: freshData } = await retryFetchJson<{ sequence: string }>(
+          `${horizonUrl}/accounts/${address}`,
+        );
         const freshAccount = new Account(address, freshData.sequence);
 
         const announceTx = new TransactionBuilder(freshAccount, { fee: '100', networkPassphrase })
@@ -132,7 +139,7 @@ export function StellarSend() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(announceTx);
+        const simulated = await withRetry(() => soroban.simulateTransaction(announceTx));
         if (!('error' in simulated)) {
           const assembled = rpcMod
             .assembleTransaction(
@@ -142,8 +149,8 @@ export function StellarSend() {
             .build();
 
           const signedAnnounce = await signTransaction(assembled.toXDR());
-          await soroban.sendTransaction(
-            TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase),
+          await withRetry(() =>
+            soroban.sendTransaction(TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase)),
           );
         }
       } catch {
@@ -152,7 +159,14 @@ export function StellarSend() {
 
       setIsSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setCanRetrySend(isNetworkUnstableError(err));
+      setError(
+        isNetworkUnstableError(err)
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Transaction failed',
+      );
     } finally {
       setIsPending(false);
     }
@@ -165,6 +179,7 @@ export function StellarSend() {
     setTxHash(null);
     setIsSuccess(false);
     setError('');
+    setCanRetrySend(false);
   };
 
   const handlePaste = async () => {
@@ -264,6 +279,14 @@ export function StellarSend() {
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+          {canRetrySend && (
+            <button
+              onClick={handleSend}
+              className="h-10 border border-error/30 font-heading text-[11px] font-semibold uppercase tracking-widest text-error transition-colors hover:bg-error/5"
+            >
+              Try Again
+            </button>
+          )}
 
           <button
             onClick={handleSend}
