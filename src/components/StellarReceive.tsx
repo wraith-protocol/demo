@@ -24,6 +24,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
+import { withRetry, StellarRetryExhaustedError } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -36,20 +37,22 @@ async function fetchAnnouncementEvents(
 
   try {
     let startLedger = 1;
-    const probeRes = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 0,
-        method: 'getEvents',
-        params: {
-          startLedger: 1,
-          filters: [{ type: 'contract', contractIds: [contractId] }],
-          pagination: { limit: 1 },
-        },
+    const probeRes = await withRetry(() =>
+      fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 0,
+          method: 'getEvents',
+          params: {
+            startLedger: 1,
+            filters: [{ type: 'contract', contractIds: [contractId] }],
+            pagination: { limit: 1 },
+          },
+        }),
       }),
-    });
+    );
     const probeData = await probeRes.json();
 
     if (probeData.error?.message) {
@@ -78,11 +81,13 @@ async function fetchAnnouncementEvents(
         params.startLedger = startLedger;
       }
 
-      const res = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
-      });
+      const res = await withRetry(() =>
+        fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
+        }),
+      );
 
       const data = await res.json();
       const events = data.result?.events ?? [];
@@ -150,6 +155,7 @@ function StellarStealthRow({
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [retryExhausted, setRetryExhausted] = useState(false);
   const [showKey, setShowKey] = useState(false);
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
@@ -157,7 +163,9 @@ function StellarStealthRow({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
+        const res = await withRetry(() =>
+          fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`),
+        );
         if (!res.ok) {
           setBalance('0');
           return;
@@ -176,13 +184,16 @@ function StellarStealthRow({
   const handleWithdraw = async () => {
     if (!dest) return;
     setError('');
+    setRetryExhausted(false);
     setWithdrawing(true);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const res = await withRetry(() =>
+        fetch(`${horizonUrl}/accounts/${match.stealthAddress}`),
+      );
       if (!res.ok) throw new Error('Account not found');
       const account = await res.json();
 
@@ -213,11 +224,13 @@ function StellarStealthRow({
       const signatureBase64 = Buffer.from(signature).toString('base64');
       tx.addSignature(match.stealthAddress, signatureBase64);
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(tx.toXDR())}`,
-      });
+      const submitRes = await withRetry(() =>
+        fetch(`${horizonUrl}/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `tx=${encodeURIComponent(tx.toXDR())}`,
+        }),
+      );
 
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
@@ -229,7 +242,12 @@ function StellarStealthRow({
       setWithdrawHash(submitData.hash);
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      if (err instanceof StellarRetryExhaustedError) {
+        setRetryExhausted(true);
+        setError('Network unstable — try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Withdraw failed');
+      }
     } finally {
       setWithdrawing(false);
     }
@@ -292,7 +310,19 @@ function StellarStealthRow({
         </div>
       )}
 
-      {error && <p className="text-xs text-error">{error}</p>}
+      {error && (
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-error">{error}</p>
+          {retryExhausted && (
+            <button
+              onClick={handleWithdraw}
+              className="font-heading text-[11px] font-semibold uppercase tracking-widest text-primary underline"
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
 
       {withdrawHash && (
         <div className="flex items-center gap-2">
@@ -345,6 +375,7 @@ export function StellarReceive() {
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [scanRetryExhausted, setScanRetryExhausted] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
@@ -502,7 +533,13 @@ export function StellarReceive() {
       setMatched(results);
       setHasScanned(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      setError(
+        err instanceof StellarRetryExhaustedError
+          ? 'Network unstable — try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Scan failed',
+      );
     } finally {
       setIsScanning(false);
     }

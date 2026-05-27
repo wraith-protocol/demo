@@ -18,6 +18,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { withRetry, StellarRetryExhaustedError } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
@@ -27,6 +28,7 @@ export function StellarSend() {
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
+  const [retryExhausted, setRetryExhausted] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
     ephemeralPubKey: Uint8Array;
@@ -42,6 +44,7 @@ export function StellarSend() {
     }
 
     setError('');
+    setRetryExhausted(false);
     setIsPending(true);
 
     try {
@@ -59,13 +62,13 @@ export function StellarSend() {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const accountRes = await withRetry(() => fetch(`${horizonUrl}/accounts/${address}`));
       if (!accountRes.ok) throw new Error('Failed to load sender account');
       const accountData = await accountRes.json();
       const sourceAccount = new Account(address, accountData.sequence);
 
-      const stealthExists = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then(
-        (r) => r.ok,
+      const stealthExists = await withRetry(() =>
+        fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then((r) => r.ok),
       );
 
       let classicTx;
@@ -94,11 +97,13 @@ export function StellarSend() {
 
       const signedXdr = await signTransaction(classicTx.toXDR());
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(signedXdr)}`,
-      });
+      const submitRes = await withRetry(() =>
+        fetch(`${horizonUrl}/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `tx=${encodeURIComponent(signedXdr)}`,
+        }),
+      );
 
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
@@ -115,7 +120,7 @@ export function StellarSend() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const announcerContract = new Contract(ANNOUNCER_CONTRACT);
 
-        const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
+        const freshRes = await withRetry(() => fetch(`${horizonUrl}/accounts/${address}`));
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
@@ -152,7 +157,12 @@ export function StellarSend() {
 
       setIsSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      if (err instanceof StellarRetryExhaustedError) {
+        setRetryExhausted(true);
+        setError('Network unstable — try again.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Transaction failed');
+      }
     } finally {
       setIsPending(false);
     }
@@ -263,7 +273,19 @@ export function StellarSend() {
             </div>
           </div>
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-error">{error}</p>
+              {retryExhausted && (
+                <button
+                  onClick={handleSend}
+                  className="font-heading text-[11px] font-semibold uppercase tracking-widest text-primary underline"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
 
           <button
             onClick={handleSend}
