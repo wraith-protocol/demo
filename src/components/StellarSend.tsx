@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   TransactionBuilder,
   Account,
@@ -12,6 +12,7 @@ import {
 import {
   generateStealthAddress,
   decodeStealthMetaAddress,
+  resolveName,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
@@ -34,6 +35,53 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [resolvedMetaAddress, setResolvedMetaAddress] = useState<string | null>(null);
+  const [isResolvingName, setIsResolvingName] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const resolveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isMetaAddress = recipient.startsWith('st:xlm:');
+  const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
+  const isWraithName = !isMetaAddress && cleanedName.length >= 3 && cleanedName.length <= 32 && /^[a-z0-9]+$/.test(cleanedName);
+
+  useEffect(() => {
+    if (resolveTimeoutRef.current) {
+      clearTimeout(resolveTimeoutRef.current);
+    }
+
+    if (!isWraithName) {
+      setResolvedMetaAddress(null);
+      setResolveError(null);
+      return;
+    }
+
+    setIsResolvingName(true);
+    setResolveError(null);
+
+    resolveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const metaAddress = await resolveName(cleanedName);
+        if (metaAddress === null) {
+          setResolveError('Name not registered on Stellar testnet');
+          setResolvedMetaAddress(null);
+        } else {
+          setResolvedMetaAddress(metaAddress);
+          setResolveError(null);
+        }
+      } catch (err) {
+        setResolveError('Failed to resolve name');
+        setResolvedMetaAddress(null);
+      } finally {
+        setIsResolvingName(false);
+      }
+    }, 300);
+
+    return () => {
+      if (resolveTimeoutRef.current) {
+        clearTimeout(resolveTimeoutRef.current);
+      }
+    };
+  }, [isWraithName, cleanedName]);
 
   const handleSend = useCallback(async () => {
     if (!address) {
@@ -45,7 +93,17 @@ export function StellarSend() {
     setIsPending(true);
 
     try {
-      const metaAddress = recipient;
+      let metaAddress = recipient;
+
+      if (isWraithName) {
+        if (!resolvedMetaAddress) {
+          setError('Name not resolved');
+          setIsPending(false);
+          return;
+        }
+        metaAddress = resolvedMetaAddress;
+      }
+
       if (!metaAddress.startsWith('st:xlm:')) {
         setError('Enter a valid Stellar meta-address (st:xlm:...)');
         setIsPending(false);
@@ -156,7 +214,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction]);
+  }, [address, recipient, amount, signTransaction, isWraithName, resolvedMetaAddress]);
 
   const reset = () => {
     setRecipient('');
@@ -165,6 +223,8 @@ export function StellarSend() {
     setTxHash(null);
     setIsSuccess(false);
     setError('');
+    setResolvedMetaAddress(null);
+    setResolveError(null);
   };
 
   const handlePaste = async () => {
@@ -210,15 +270,20 @@ export function StellarSend() {
       {!stealthResult && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="recipient-input"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               Recipient Meta-Address
             </label>
             <div className="relative">
               <input
+                id="recipient-input"
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:xlm:..."
+                placeholder="st:xlm:... or name.wraith"
+                aria-describedby={isWraithName ? 'resolve-status' : undefined}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
@@ -228,6 +293,33 @@ export function StellarSend() {
                 Paste
               </button>
             </div>
+            {isWraithName && (
+              <div id="resolve-status" className="flex flex-col gap-1.5">
+                {isResolvingName && (
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
+                    Resolving {cleanedName}.wraith...
+                  </span>
+                )}
+                {!isResolvingName && resolveError && (
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-error">
+                    {resolveError}
+                  </span>
+                )}
+                {!isResolvingName && resolvedMetaAddress && (
+                  <div>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface-variant">
+                      Resolved Address
+                    </span>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className="block truncate font-mono text-xs text-tertiary">
+                        {resolvedMetaAddress}
+                      </span>
+                      <CopyButton text={resolvedMetaAddress} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -267,7 +359,7 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || isResolvingName || (isWraithName && resolveError !== null)}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}
