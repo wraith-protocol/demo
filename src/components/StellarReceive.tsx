@@ -144,13 +144,16 @@ function StellarStealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
 }) {
+  const { address, signTransaction } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
+  const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
@@ -191,9 +194,30 @@ function StellarStealthRow({
       );
       if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
 
+      const currentBalance = parseFloat(xlmBal.balance);
       const subentryCount = account.subentry_count ?? 0;
-      const reserve = (2 + subentryCount) * 0.5;
-      const sendableAmount = (parseFloat(xlmBal.balance) - reserve - 0.00001).toFixed(7);
+      const baseReserve = 0.5; // 0.5 XLM per base reserve
+      const minAccountReserve = (2 + subentryCount) * baseReserve;
+      const estimatedFee = 0.00001; // 100 stroops base fee
+      const feeBumpFee = 0.0001; // Additional fee for fee-bump envelope
+
+      // Check if we need sponsored withdrawal
+      // We need sponsorship if balance can't cover: amount + fee + reserve
+      // For simplicity, if balance < 2 XLM (base reserve + buffer), we'll use mergeAccount
+      const needsSponsor = currentBalance < minAccountReserve + estimatedFee + feeBumpFee;
+
+      if (needsSponsor && !address) {
+        throw new Error('Sponsored withdrawal requires connected wallet');
+      }
+
+      if (needsSponsor) {
+        setShowSponsorPrompt(true);
+        setWithdrawing(false);
+        return;
+      }
+
+      // Standard withdrawal (account can pay its own fees)
+      const sendableAmount = (currentBalance - minAccountReserve - estimatedFee).toFixed(7);
       if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
@@ -230,6 +254,93 @@ function StellarStealthRow({
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdraw failed');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const handleSponsoredWithdraw = async () => {
+    if (!dest || !address) return;
+    setError('');
+    setWithdrawing(true);
+    setShowSponsorPrompt(false);
+
+    try {
+      const horizonUrl = STELLAR_NETWORK.horizonUrl;
+      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+
+      // Fetch stealth account
+      const stealthRes = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      if (!stealthRes.ok) throw new Error('Stealth account not found');
+      const stealthAccount = await stealthRes.json();
+
+      const xlmBal = stealthAccount.balances?.find(
+        (b: { asset_type: string }) => b.asset_type === 'native',
+      );
+      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+
+      // Build inner transaction: mergeAccount to recover all XLM including base reserve
+      const stealthSourceAccount = new Account(match.stealthAddress, stealthAccount.sequence);
+      const innerTx = new TransactionBuilder(stealthSourceAccount, {
+        fee: '0', // Fee will be paid by outer fee-bump transaction
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.accountMerge({
+            destination: dest,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      // Sign inner transaction with stealth key
+      const innerTxHash = innerTx.hash();
+      const innerSignature = signStellarTransaction(
+        innerTxHash,
+        match.stealthPrivateScalar,
+        match.stealthPubKeyBytes,
+      );
+      const innerSignatureBase64 = Buffer.from(innerSignature).toString('base64');
+      innerTx.addSignature(match.stealthAddress, innerSignatureBase64);
+
+      // Fetch sponsor account for fee-bump
+      const sponsorRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      if (!sponsorRes.ok) throw new Error('Sponsor account not found');
+
+      // Build fee-bump transaction
+      // Fee-bump fee must be higher than inner tx fee (which is 0)
+      // Set to 1000 stroops (0.0001 XLM) to ensure it's accepted
+      const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
+        address, // fee source (sponsor)
+        '1000', // fee in stroops
+        innerTx,
+        networkPassphrase,
+      );
+
+      // Sign fee-bump with sponsor wallet (Freighter will prompt)
+      const feeBumpXdr = feeBumpTx.toXDR();
+      const signedFeeBumpXdr = await signTransaction(feeBumpXdr);
+
+      // Submit fee-bump transaction
+      const submitRes = await fetch(`${horizonUrl}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `tx=${encodeURIComponent(signedFeeBumpXdr)}`,
+      });
+
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) {
+        throw new Error(
+          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+        );
+      }
+
+      // Fee-bump transactions return the outer hash
+      setFeeBumpHash(submitData.hash);
+      setWithdrawHash(submitData.hash); // For UI consistency
+      onWithdrawn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sponsored withdraw failed');
     } finally {
       setWithdrawing(false);
     }
@@ -292,22 +403,66 @@ function StellarStealthRow({
         </div>
       )}
 
+      {showSponsorPrompt && (
+        <div className="border border-tertiary bg-tertiary/5 p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-tertiary">
+              Sponsored Withdrawal Required
+            </span>
+          </div>
+          <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
+            This stealth address can't pay its own fees. Your connected wallet will sponsor the
+            transaction and pay the fee. Freighter will prompt you to sign the fee-bump transaction.
+          </p>
+          <p className="mb-4 font-body text-xs leading-relaxed text-on-surface-variant">
+            The entire balance (including base reserve) will be merged into the destination address.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSponsoredWithdraw}
+              disabled={withdrawing}
+              className="h-10 flex-1 bg-tertiary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {withdrawing ? 'Processing...' : 'Pay with Connected Wallet'}
+            </button>
+            <button
+              onClick={() => {
+                setShowSponsorPrompt(false);
+              }}
+              disabled={withdrawing}
+              className="h-10 border border-outline-variant px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-outline transition-colors hover:bg-surface-bright disabled:opacity-30"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <p className="text-xs text-error">{error}</p>}
 
       {withdrawHash && (
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-          <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
-            <a
-              href={stellarTxUrl(withdrawHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline"
-            >
-              {withdrawHash.slice(0, 14)}...
-            </a>
-          </span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+            <span className="font-mono text-[10px] text-on-surface-variant">
+              {feeBumpHash ? 'Sponsored withdrawal complete' : 'Withdrawn'} —{' '}
+              <a
+                href={stellarTxUrl(withdrawHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                {withdrawHash.slice(0, 14)}...
+              </a>
+            </span>
+          </div>
+          {feeBumpHash && (
+            <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
+              Fee-bump transaction sponsored by your connected wallet. All funds including base
+              reserve have been recovered.
+            </p>
+          )}
         </div>
       )}
 
