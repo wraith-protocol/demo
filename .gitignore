@@ -4,3 +4,5 @@ dist/
 .env.*
 reference/
 *.local
+storybook-static/
+**/__diff_output__/

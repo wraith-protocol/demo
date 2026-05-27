@@ -21,8 +21,8 @@ import {
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { CopyButton } from '@/components/CopyButton';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { StellarMatchCard } from '@/components/StellarMatchCard';
+import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
@@ -137,7 +137,7 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
   return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
-function StellarStealthRow({
+function StellarMatchCardContainer({
   match,
   onWithdrawn,
 }: {
@@ -146,7 +146,7 @@ function StellarStealthRow({
 }) {
   const { address, signTransaction } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
-  const [loadingBal, setLoadingBal] = useState(true);
+  const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [dest, setDest] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
@@ -171,7 +171,7 @@ function StellarStealthRow({
       } catch {
         setBalance('0');
       } finally {
-        setLoadingBal(false);
+        setBalanceState('loaded');
       }
     })();
   }, [match.stealthAddress]);
@@ -347,146 +347,24 @@ function StellarStealthRow({
   };
 
   return (
-    <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
-          </span>
-          <div className="mt-0.5 flex items-center gap-2">
-            <a
-              href={stellarAddrUrl(match.stealthAddress)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block truncate font-mono text-xs text-primary underline"
-            >
-              {match.stealthAddress}
-            </a>
-            <CopyButton text={match.stealthAddress} />
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {loadingBal ? (
-            <span className="font-mono text-xs text-outline">...</span>
-          ) : balance && parseFloat(balance) > 0 ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
-            </>
-          ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
-          )}
-        </div>
-      </div>
-
-      {!withdrawHash && balance && parseFloat(balance) > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={dest}
-              onChange={(e) => setDest(e.target.value)}
-              placeholder="Destination address (G...)"
-              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
-            />
-            <button
-              onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
-              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-            >
-              {withdrawing ? '...' : 'Withdraw'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showSponsorPrompt && (
-        <div className="border border-tertiary bg-tertiary/5 p-4">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-tertiary">
-              Sponsored Withdrawal Required
-            </span>
-          </div>
-          <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-            This stealth address can't pay its own fees. Your connected wallet will sponsor the
-            transaction and pay the fee. Freighter will prompt you to sign the fee-bump transaction.
-          </p>
-          <p className="mb-4 font-body text-xs leading-relaxed text-on-surface-variant">
-            The entire balance (including base reserve) will be merged into the destination address.
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={handleSponsoredWithdraw}
-              disabled={withdrawing}
-              className="h-10 flex-1 bg-tertiary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-            >
-              {withdrawing ? 'Processing...' : 'Pay with Connected Wallet'}
-            </button>
-            <button
-              onClick={() => {
-                setShowSponsorPrompt(false);
-              }}
-              disabled={withdrawing}
-              className="h-10 border border-outline-variant px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-outline transition-colors hover:bg-surface-bright disabled:opacity-30"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-xs text-error">{error}</p>}
-
-      {withdrawHash && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-            <span className="font-mono text-[10px] text-on-surface-variant">
-              {feeBumpHash ? 'Sponsored withdrawal complete' : 'Withdrawn'} —{' '}
-              <a
-                href={stellarTxUrl(withdrawHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                {withdrawHash.slice(0, 14)}...
-              </a>
-            </span>
-          </div>
-          {feeBumpHash && (
-            <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
-              Fee-bump transaction sponsored by your connected wallet. All funds including base
-              reserve have been recovered.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="border-t border-outline-variant/30 pt-3">
-        {!showKey ? (
-          <button
-            onClick={() => setShowKey(true)}
-            className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-          >
-            Reveal secret key
-          </button>
-        ) : (
-          <div className="border border-error/20 bg-error/5 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
-              </span>
-              <CopyButton text={scalarHex} />
-            </div>
-            <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
-          </div>
-        )}
-      </div>
-    </div>
+    <StellarMatchCard
+      stealthAddress={match.stealthAddress}
+      scalarHex={scalarHex}
+      balance={balance}
+      balanceState={balanceState}
+      dest={dest}
+      withdrawing={withdrawing}
+      withdrawHash={withdrawHash}
+      feeBumpHash={feeBumpHash}
+      error={error}
+      showKey={showKey}
+      showSponsorPrompt={showSponsorPrompt}
+      onDestChange={setDest}
+      onWithdraw={handleWithdraw}
+      onSponsoredWithdraw={handleSponsoredWithdraw}
+      onCancelSponsor={() => setShowSponsorPrompt(false)}
+      onRevealKey={() => setShowKey(true)}
+    />
   );
 }
 
@@ -663,140 +541,25 @@ export function StellarReceive() {
     }
   }, [stellarKeys]);
 
-  if (!isConnected) {
-    return (
-      <section className="flex flex-col gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
-        </span>
-        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
-        </h1>
-        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to scan for incoming stealth transfers on Stellar.
-        </p>
-      </section>
-    );
-  }
-
   return (
-    <section className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
-        </span>
-        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
-        </h1>
-        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Derive your stealth keys, register on-chain, then scan for payments.
-        </p>
-      </div>
-
-      {!stellarKeys && (
-        <div className="flex flex-col gap-4">
-          <button
-            onClick={deriveKeysFromWallet}
-            disabled={isDerivingKeys}
-            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-          >
-            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
-          </button>
-          {error && <p className="text-sm text-error">{error}</p>}
-        </div>
-      )}
-
-      {stellarKeys && stellarMetaAddress && (
-        <>
-          <div className="border border-outline-variant bg-surface-container p-5">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Your Stealth Meta-Address
-              </span>
-              <CopyButton text={stellarMetaAddress} />
-            </div>
-            <code className="block break-all font-mono text-xs leading-relaxed text-primary">
-              {stellarMetaAddress}
-            </code>
-          </div>
-
-          <div className="border border-outline-variant bg-surface-container p-5">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              On-Chain Registration
-            </span>
-            {registered ? (
-              <div className="mt-3 flex items-center gap-2">
-                <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-                <span className="font-mono text-xs text-on-surface-variant">
-                  Meta-address registered on-chain
-                  {regHash && (
-                    <>
-                      {' — '}
-                      <a
-                        href={stellarTxUrl(regHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary underline"
-                      >
-                        {regHash.slice(0, 14)}...
-                      </a>
-                    </>
-                  )}
-                </span>
-              </div>
-            ) : (
-              <div className="mt-3">
-                <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-                  Register your meta-address so senders can look you up by wallet address.
-                </p>
-                <button
-                  onClick={registerOnChain}
-                  disabled={isRegistering}
-                  className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
-                >
-                  {isRegistering ? 'Registering...' : 'Register On-Chain'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            <button
-              onClick={scanPayments}
-              disabled={isScanning}
-              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-            >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
-            </button>
-            {hasScanned && (
-              <span className="font-mono text-xs text-on-surface-variant">
-                {matched.length} transfer{matched.length !== 1 ? 's' : ''} found
-              </span>
-            )}
-          </div>
-
-          {error && <p className="text-sm text-error">{error}</p>}
-
-          {matched.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {matched.map((m, i) => (
-                <StellarStealthRow key={i} match={m} onWithdrawn={() => {}} />
-              ))}
-            </div>
-          )}
-
-          {hasScanned && matched.length === 0 && (
-            <div className="py-12 text-center">
-              <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
-              </p>
-              <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
-              </p>
-            </div>
-          )}
-        </>
-      )}
-    </section>
+    <StellarReceiveView
+      isConnected={isConnected}
+      isDerivingKeys={isDerivingKeys}
+      keysDerived={!!stellarKeys}
+      metaAddress={stellarMetaAddress}
+      registered={registered}
+      isRegistering={isRegistering}
+      regHash={regHash}
+      isScanning={isScanning}
+      hasScanned={hasScanned}
+      matchCount={matched.length}
+      error={error}
+      onDeriveKeys={deriveKeysFromWallet}
+      onRegister={registerOnChain}
+      onScan={scanPayments}
+      matches={matched.map((m, i) => (
+        <StellarMatchCardContainer key={i} match={m} onWithdrawn={() => {}} />
+      ))}
+    />
   );
 }
