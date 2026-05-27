@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   TransactionBuilder,
   Account,
@@ -18,6 +18,10 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { useSimulateTransaction } from '@/hooks/useSimulateTransaction';
+import { SimulationCard } from '@/components/SimulationCard';
+import { buildAnnounceTransaction } from '@/lib/soroban';
+import { decodeSimulationError } from '@/lib/errors';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
@@ -34,6 +38,50 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const stealthPreview = useMemo(() => {
+    if (!recipient.startsWith('st:xlm:') || !amount || parseFloat(amount) <= 0) return null;
+    try {
+      const decoded = decodeStealthMetaAddress(recipient);
+      return generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+    } catch {
+      return null;
+    }
+  }, [recipient, amount]);
+
+  const buildTx = useMemo(() => {
+    if (!address || !stealthPreview) return null;
+    return () =>
+      buildAnnounceTransaction(
+        address,
+        stealthPreview.stealthAddress,
+        stealthPreview.ephemeralPubKey,
+        stealthPreview.viewTag,
+        SCHEME_ID,
+        ANNOUNCER_CONTRACT,
+      );
+  }, [address, stealthPreview]);
+
+  const {
+    result: simResult,
+    isSimulating,
+    simulate,
+    reset: resetSim,
+  } = useSimulateTransaction(buildTx, {
+    debounceMs: 500,
+    enabled: !!address && !!stealthPreview && !isSuccess,
+  });
+
+  useEffect(() => {
+    if (stealthPreview && address && !isSuccess) {
+      simulate();
+    } else {
+      resetSim();
+    }
+  }, [stealthPreview, address, isSuccess, simulate, resetSim]);
+
+  const simError = simResult && !simResult.ok ? decodeSimulationError(simResult.error) : null;
+  const simBlocksSend = simResult !== null && !simResult.ok && !simResult.isNetworkError;
 
   const handleSend = useCallback(async () => {
     if (!address) {
@@ -109,7 +157,6 @@ export function StellarSend() {
 
       setTxHash(submitData.hash);
 
-      // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
@@ -119,7 +166,10 @@ export function StellarSend() {
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
-        const announceTx = new TransactionBuilder(freshAccount, { fee: '100', networkPassphrase })
+        const announceTx = new TransactionBuilder(freshAccount, {
+          fee: '100',
+          networkPassphrase,
+        })
           .addOperation(
             announcerContract.call(
               'announce',
@@ -165,6 +215,7 @@ export function StellarSend() {
     setTxHash(null);
     setIsSuccess(false);
     setError('');
+    resetSim();
   };
 
   const handlePaste = async () => {
@@ -253,7 +304,11 @@ export function StellarSend() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Network fee
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {simResult?.ok
+                  ? `${(parseInt(simResult.predictedFeeStroops, 10) / 10_000_000).toFixed(7)} XLM`
+                  : '100 stroops'}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -263,14 +318,18 @@ export function StellarSend() {
             </div>
           </div>
 
+          {simResult && <SimulationCard result={simResult} isSimulating={isSimulating} />}
+
+          {simError && <p className="text-sm text-error">{simError}</p>}
+
           {error && <p className="text-sm text-error">{error}</p>}
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || isSimulating || simBlocksSend}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isSimulating ? 'Simulating...' : isPending ? 'Confirm in wallet...' : 'Send Privately'}
           </button>
         </div>
       )}
