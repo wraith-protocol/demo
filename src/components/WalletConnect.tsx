@@ -103,8 +103,12 @@ function CkbButton() {
 export function WalletConnect() {
   const { chain } = useChain();
 
-  if (chain === 'stellar') return <FreighterButton />;
-  if (chain === 'solana') return <SolanaButton />;
-  if (chain === 'ckb') return <CkbButton />;
-  return <HorizenButton />;
+  return (
+    <div data-tour="wallet">
+      {chain === 'stellar' && <FreighterButton />}
+      {chain === 'solana' && <SolanaButton />}
+      {chain === 'ckb' && <CkbButton />}
+      {chain === 'horizen' && <HorizenButton />}
+    </div>
+  );
 }

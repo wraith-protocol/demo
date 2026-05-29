@@ -13,7 +13,7 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <header className="border-b border-outline-variant bg-surface">
+    <header data-tour="header" className="border-b border-outline-variant bg-surface">
       <div className="mx-auto flex max-w-[720px] items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-4">
           <Link to="/send" className="flex items-center gap-2">

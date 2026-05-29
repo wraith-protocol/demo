@@ -194,7 +194,7 @@ export function StellarSend() {
 
   return (
     <section className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
+      <div data-tour="send-page" className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
           Stellar Testnet / XLM
         </span>
@@ -209,7 +209,7 @@ export function StellarSend() {
 
       {!stealthResult && (
         <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-1.5">
+          <div data-tour="recipient" className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Recipient Meta-Address
             </label>
@@ -230,7 +230,7 @@ export function StellarSend() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
+          <div data-tour="amount" className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Amount
             </label>
@@ -266,6 +266,7 @@ export function StellarSend() {
           {error && <p className="text-sm text-error">{error}</p>}
 
           <button
+            data-tour="submit"
             onClick={handleSend}
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
