@@ -1,20 +1,34 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Stellar Payment Link', () => {
+  test.beforeEach(async ({ context }) => {
+    // Mock Freighter API so the app thinks a wallet is installed and connected
+    await context.addInitScript(() => {
+      (window as any).freighter = {
+        isConnected: () => Promise.resolve({ isConnected: true }),
+        getAddress: () => Promise.resolve({ address: 'GATTESTADDRESSYOURSFREIGHTER123456789' }),
+        requestAccess: () => Promise.resolve(),
+      };
+      (window as any).freighterApi = (window as any).freighter; // Some versions use freighterApi
+    });
+  });
+
   test('should generate a link, pre-fill the send form, and disable inputs', async ({ page, context }) => {
     // 1. Go to Receive page
     await page.goto('/receive');
-
-    // We might need to mock the wallet connection if it's required to see the form.
-    // For this test, we assume the UI handles an unconnected state or we can connect a mock wallet.
-    // Since we don't have a mock wallet setup easily available, we'll navigate directly to the /pay route
-    // with some parameters to test the receiving side, which is the core of the validation.
+    await page.locator('select').selectOption('stellar');
 
     // 2. Open generated link in a new context
     const testUrl = '/pay?to=st:xlm:test_meta_address&amount=15.5&memo=TestMemo&exp=' + (Math.floor(Date.now() / 1000) + 3600);
     
     const newPage = await context.newPage();
     await newPage.goto(testUrl);
+
+    // Switch to Stellar network
+    await newPage.locator('select').selectOption('stellar');
+    
+    // Click Connect Freighter
+    await newPage.click('text=Connect Freighter');
 
     // 3. Verify Send page pre-filled inputs
     const recipientInput = newPage.locator('input[placeholder="st:xlm:..."]');
@@ -35,6 +49,12 @@ test.describe('Stellar Payment Link', () => {
     const testUrl = `/pay?to=st:xlm:test_meta_address&amount=10&exp=${expiredExp}`;
     
     await page.goto(testUrl);
+
+    // Switch to Stellar network
+    await page.locator('select').selectOption('stellar');
+
+    // Click Connect Freighter
+    await page.click('text=Connect Freighter');
 
     // Check for error message
     const errorText = page.locator('text=This payment link has expired');
