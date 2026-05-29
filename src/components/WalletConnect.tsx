@@ -40,19 +40,64 @@ function HorizenButton() {
 }
 
 function FreighterButton() {
-  const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const {
+    address,
+    isConnected,
+    status,
+    statusMessage,
+    preferredNetwork,
+    setPreferredNetwork,
+    connect,
+    disconnect,
+    retryInstallDetection,
+  } = useStellarWallet();
+
+  const handleInstall = () => {
+    window.open('https://www.freighter.app/', '_blank', 'noopener,noreferrer');
+    retryInstallDetection();
+  };
 
   if (isConnected && address) {
     return (
-      <button onClick={disconnect} className={btnConnected}>
-        {address.slice(0, 4)}...{address.slice(-4)}
+      <div className="flex items-center gap-2">
+        <select
+          value={preferredNetwork}
+          onChange={(event) =>
+            setPreferredNetwork(event.target.value as 'testnet' | 'futurenet' | 'mainnet')
+          }
+          className="h-8 border border-outline-variant bg-transparent px-2 font-mono text-[10px] uppercase tracking-widest text-primary sm:h-9"
+          aria-label="Preferred Stellar network"
+        >
+          <option value="testnet">Testnet</option>
+          <option value="futurenet">Futurenet</option>
+          <option value="mainnet">Mainnet</option>
+        </select>
+        <button onClick={disconnect} className={btnConnected}>
+          {address.slice(0, 4)}...{address.slice(-4)}
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'not_installed') {
+    return (
+      <button onClick={handleInstall} title={statusMessage} className={btnBase}>
+        Install Freighter
+      </button>
+    );
+  }
+
+  if (status === 'not_allowed') {
+    return (
+      <button onClick={connect} title={statusMessage} className={btnBase}>
+        Approve Freighter
       </button>
     );
   }
 
   return (
-    <button onClick={connect} className={btnBase}>
-      Connect Freighter
+    <button onClick={connect} title={statusMessage || undefined} className={btnBase}>
+      {status === 'checking' ? 'Checking...' : 'Connect Freighter'}
     </button>
   );
 }

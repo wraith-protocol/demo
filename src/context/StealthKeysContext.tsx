@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { StealthKeys as EVMStealthKeys } from '@wraith-protocol/sdk/chains/evm';
 import type { StealthKeys as StellarStealthKeys } from '@wraith-protocol/sdk/chains/stellar';
 import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chains/solana';
@@ -47,6 +47,11 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     setStellarKeys(null);
     setStellarMetaAddress(null);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener('stellar:clear-stealth-keys', clearStellar);
+    return () => window.removeEventListener('stellar:clear-stealth-keys', clearStellar);
+  }, [clearStellar]);
   const clearSolana = useCallback(() => {
     setSolanaKeys(null);
     setSolanaMetaAddress(null);
