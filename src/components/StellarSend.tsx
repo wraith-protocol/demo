@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   TransactionBuilder,
   Account,
@@ -8,6 +9,7 @@ import {
   Address,
   Operation,
   Asset,
+  Memo,
 } from '@stellar/stellar-sdk';
 import {
   generateStealthAddress,
@@ -65,9 +67,16 @@ function validateAmount(value: string) {
 }
 
 export function StellarSend() {
+  const [searchParams] = useSearchParams();
+  const paramTo = searchParams.get('to');
+  const paramAmount = searchParams.get('amount');
+  const paramMemo = searchParams.get('memo');
+  const paramExp = searchParams.get('exp');
+
   const { address, isConnected, signTransaction } = useStellarWallet();
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useState(paramTo || '');
+  const [amount, setAmount] = useState(paramAmount || '');
+  const [memo, setMemo] = useState(paramMemo || '');
   const [error, setError] = useState('');
   const [touched, setTouched] = useState({ recipient: false, amount: false });
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -75,6 +84,18 @@ export function StellarSend() {
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
   const [balanceLookupError, setBalanceLookupError] = useState('');
   const [isPending, setIsPending] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (paramExp) {
+      const expSecs = parseInt(paramExp, 10);
+      if (!isNaN(expSecs) && expSecs * 1000 < Date.now()) {
+        setIsExpired(true);
+        setError('This payment link has expired');
+      }
+    }
+  }, [paramExp]);
+
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
     ephemeralPubKey: Uint8Array;
@@ -105,7 +126,8 @@ export function StellarSend() {
     !validationError &&
     !isAwaitingBalance &&
     !isBalanceLoading &&
-    !isPending;
+    !isPending &&
+    !isExpired;
 
   useEffect(() => {
     setSourceBalance(null);
@@ -183,29 +205,32 @@ export function StellarSend() {
         (r) => r.ok,
       );
 
-      let classicTx;
+      let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
+
       if (stealthExists) {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.payment({
-              destination: result.stealthAddress,
-              asset: Asset.native(),
-              amount: amountValue,
-            }),
-          )
-          .setTimeout(30)
-          .build();
+        builder = builder.addOperation(
+          Operation.payment({
+            destination: result.stealthAddress,
+            asset: Asset.native(),
+            amount: amountValue,
+          }),
+        );
       } else {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.createAccount({
-              destination: result.stealthAddress,
-              startingBalance: amountValue,
-            }),
-          )
-          .setTimeout(30)
-          .build();
+        builder = builder.addOperation(
+          Operation.createAccount({
+            destination: result.stealthAddress,
+            startingBalance: amountValue,
+          }),
+        );
       }
+
+      builder = builder.setTimeout(30);
+
+      if (memo) {
+        builder = builder.addMemo(Memo.text(memo));
+      }
+
+      const classicTx = builder.build();
 
       const signedXdr = await signTransaction(classicTx.toXDR());
 
@@ -271,15 +296,18 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, amountValue, canSubmit, metaAddress, signTransaction, validationError]);
+  }, [address, amountValue, canSubmit, metaAddress, memo, signTransaction, validationError]);
 
   const reset = () => {
-    setRecipient('');
-    setAmount('');
+    setRecipient(paramTo || '');
+    setAmount(paramAmount || '');
+    setMemo(paramMemo || '');
     setStealthResult(null);
     setTxHash(null);
     setIsSuccess(false);
-    setError('');
+    if (!isExpired) {
+      setError('');
+    }
     setTouched({ recipient: false, amount: false });
     setSubmitAttempted(false);
     setSourceBalance(null);
@@ -328,6 +356,12 @@ export function StellarSend() {
       onPaste={handlePaste}
       onSend={handleSend}
       onReset={reset}
+      memo={memo}
+      onMemoChange={setMemo}
+      isExpired={isExpired}
+      paramTo={!!paramTo}
+      paramAmount={!!paramAmount}
+      paramMemo={!!paramMemo}
     />
   );
 }

@@ -31,6 +31,7 @@
     "@wraith-protocol/sdk": "^1.4.5",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
+    "qrcode.react": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.6.0",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "^1.60.0",
     "@storybook/addon-a11y": "^8",
     "@storybook/addon-essentials": "^8",
     "@storybook/addon-interactions": "^8",
@@ -48,6 +50,7 @@
     "@storybook/test": "^8.6.18",
     "@storybook/test-runner": "^0.19.1",
     "@types/jest-image-snapshot": "^6.4.1",
+    "@types/node": "^25.9.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.5.0",

@@ -25,6 +25,13 @@ export interface StellarSendViewProps {
   onPaste: () => void;
   onSend: () => void;
   onReset: () => void;
+  // Extra optional props for payment-link / memo support
+  memo?: string;
+  onMemoChange?: (value: string) => void;
+  isExpired?: boolean;
+  paramTo?: boolean;
+  paramAmount?: boolean;
+  paramMemo?: boolean;
 }
 
 export function StellarSendView({
@@ -51,6 +58,13 @@ export function StellarSendView({
   onPaste,
   onSend,
   onReset,
+  // Extra props destructuring with default fallbacks
+  memo = '',
+  onMemoChange,
+  isExpired = false,
+  paramTo = false,
+  paramAmount = false,
+  paramMemo = false,
 }: StellarSendViewProps) {
   if (!isConnected) {
     return (
@@ -99,14 +113,17 @@ export function StellarSendView({
                 aria-invalid={!!recipientError}
                 aria-describedby="stellar-recipient-error"
                 placeholder="st:xlm:..."
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                disabled={paramTo || isExpired}
+                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
-              <button
-                onClick={onPaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-              >
-                Paste
-              </button>
+              {!paramTo && !isExpired && (
+                <button
+                  onClick={onPaste}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                >
+                  Paste
+                </button>
+              )}
             </div>
             <p
               id="stellar-recipient-error"
@@ -131,7 +148,8 @@ export function StellarSendView({
                 aria-invalid={amountInvalid}
                 aria-describedby="stellar-amount-error stellar-balance-error"
                 placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                disabled={paramAmount || isExpired}
+                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
                 XLM
@@ -140,6 +158,22 @@ export function StellarSendView({
             <p id="stellar-amount-error" className="min-h-5 text-xs text-error" aria-live="polite">
               {showAmountError && amountError ? amountError : ' '}
             </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Memo (optional)
+            </label>
+            <input
+              id="stellar-memo"
+              type="text"
+              value={memo}
+              onChange={(e) => onMemoChange?.(e.target.value)}
+              placeholder="e.g. Coffee"
+              maxLength={28}
+              disabled={paramMemo || isExpired}
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
+            />
           </div>
 
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">

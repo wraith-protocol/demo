@@ -14,6 +14,7 @@ export function App() {
         <Routes>
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
+          <Route path="/pay" element={<Send />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>

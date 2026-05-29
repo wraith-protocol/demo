@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import { StellarPaymentLink } from '@/components/StellarPaymentLink';
 
 export interface StellarReceiveViewProps {
   isConnected: boolean;
@@ -133,6 +134,8 @@ export function StellarReceiveView({
               </div>
             )}
           </div>
+
+          <StellarPaymentLink metaAddress={metaAddress} />
 
           <div className="flex items-center justify-between">
             <button
