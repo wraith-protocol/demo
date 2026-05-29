@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "1.37.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.5.0",

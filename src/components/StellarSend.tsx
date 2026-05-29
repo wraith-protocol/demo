@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   TransactionBuilder,
   Account,
@@ -26,6 +26,9 @@ export function StellarSend() {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
+  const [recipientError, setRecipientError] = useState('');
+  const [amountError, setAmountError] = useState('');
+  const [balanceError, setBalanceError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
@@ -34,6 +37,8 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [balanceXLM, setBalanceXLM] = useState<number | null>(null);
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
 
   const handleSend = useCallback(async () => {
     if (!address) {
@@ -52,7 +57,14 @@ export function StellarSend() {
         return;
       }
 
-      const decoded = decodeStealthMetaAddress(metaAddress);
+      let decoded;
+      try {
+        decoded = decodeStealthMetaAddress(metaAddress);
+      } catch (e) {
+        setError('Invalid meta-address format');
+        setIsPending(false);
+        return;
+      }
       const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthResult(result);
 
@@ -158,6 +170,121 @@ export function StellarSend() {
     }
   }, [address, recipient, amount, signTransaction]);
 
+  // Helpers & validation
+  const feeXLM = 100 / 1e7; // 100 stroops -> XLM
+
+  const isBase32 = (s: string) => /^[A-Z2-7]+=*$/i.test(s.replace(/\s+/g, ''));
+
+  const validateRecipient = (val: string) => {
+    if (!val) return 'Recipient is required';
+    if (!val.startsWith('st:xlm:')) return 'Must start with "st:xlm:"';
+    const body = val.slice('st:xlm:'.length);
+    if (!body) return 'Invalid meta-address';
+    if (!isBase32(body)) return 'Meta-address must be valid base32';
+    return '';
+  };
+
+  const validateAmount = (val: string) => {
+    if (!val) return 'Amount is required';
+    const normalized = val.replace(/,/g, '').trim();
+    if (!/^(?:\d+|\d+\.\d{1,7})$/.test(normalized)) return 'Max 7 decimals allowed';
+    const n = Number(normalized);
+    if (!isFinite(n) || n <= 0) return 'Amount must be positive';
+    if (n < 0.0000001) return 'Minimum amount is 0.0000001 XLM';
+    return '';
+  };
+
+  // Debounced balance check (500ms)
+  const balanceTimer = useRef<number | null>(null);
+  useEffect(() => {
+    setRecipientError('');
+    setAmountError('');
+    setBalanceError('');
+
+    const recErr = validateRecipient(recipient);
+    const amtErr = validateAmount(amount);
+    setRecipientError(recErr);
+    setAmountError(amtErr);
+
+    // Skip balance lookup if recipient or amount invalid or wallet not connected
+    if (recErr || amtErr || !isConnected || !address) {
+      setBalanceXLM(null);
+      setIsCheckingBalance(false);
+      if (balanceTimer.current) {
+        window.clearTimeout(balanceTimer.current);
+        balanceTimer.current = null;
+      }
+      return;
+    }
+
+    setIsCheckingBalance(true);
+    if (balanceTimer.current) window.clearTimeout(balanceTimer.current);
+    balanceTimer.current = window.setTimeout(async () => {
+      try {
+        const horizonUrl = STELLAR_NETWORK.horizonUrl;
+
+        // fetch latest ledger to get base_reserve_in_stroops
+        const ledgerRes = await fetch(`${horizonUrl}/ledgers?order=desc&limit=1`);
+        const ledgerJson = await ledgerRes.json();
+        const baseReserveStroops = Number(
+          ledgerJson._embedded?.records?.[0]?.base_reserve_in_stroops || 0,
+        );
+        const reserveXLM = (baseReserveStroops / 1e7) * 2; // approximate reserve impact
+
+        // fetch sender account for balance
+        const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
+        if (!accountRes.ok) throw new Error('Failed to fetch account balance');
+        const accountJson = await accountRes.json();
+        const nativeBal = Number(
+          accountJson.balances?.find((b: any) => b.asset_type === 'native')?.balance || 0,
+        );
+        setBalanceXLM(nativeBal);
+
+        // determine if stealth address exists (affects reserve requirement)
+        let reserveNeeded = 0;
+        try {
+          const decoded = decodeStealthMetaAddress(recipient);
+          const tmp = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+          const stealthExistsRes = await fetch(`${horizonUrl}/accounts/${tmp.stealthAddress}`);
+          const stealthExists = stealthExistsRes.ok;
+          reserveNeeded = stealthExists ? 0 : reserveXLM;
+        } catch {
+          reserveNeeded = reserveXLM;
+        }
+
+        const amt = Number(amount.replace(/,/g, '').trim());
+        const required = amt + feeXLM + reserveNeeded;
+        if (required > nativeBal) {
+          setBalanceError('Insufficient balance for amount + fee + reserve');
+        } else {
+          setBalanceError('');
+        }
+      } catch (e: any) {
+        setBalanceError(e?.message || 'Balance check failed');
+        setBalanceXLM(null);
+      } finally {
+        setIsCheckingBalance(false);
+        balanceTimer.current = null;
+      }
+    }, 500);
+
+    return () => {
+      if (balanceTimer.current) {
+        window.clearTimeout(balanceTimer.current);
+        balanceTimer.current = null;
+      }
+    };
+  }, [recipient, amount, address, isConnected]);
+
+  const canSubmit =
+    !recipientError &&
+    !amountError &&
+    !balanceError &&
+    !!recipient &&
+    !!amount &&
+    !isPending &&
+    !isCheckingBalance;
+
   const reset = () => {
     setRecipient('');
     setAmount('');
@@ -215,6 +342,8 @@ export function StellarSend() {
             </label>
             <div className="relative">
               <input
+                id="recipient-input"
+                aria-describedby="recipient-help recipient-error"
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
@@ -228,6 +357,14 @@ export function StellarSend() {
                 Paste
               </button>
             </div>
+            <div id="recipient-help" className="mt-1 font-mono text-[11px] text-on-surface-variant">
+              Format: st:xlm:&lt;base32&gt;
+            </div>
+            {recipientError && (
+              <div id="recipient-error" className="mt-1 text-sm text-error">
+                {recipientError}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -236,6 +373,8 @@ export function StellarSend() {
             </label>
             <div className="relative">
               <input
+                id="amount-input"
+                aria-describedby="amount-help amount-error balance-error"
                 type="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -246,6 +385,29 @@ export function StellarSend() {
                 XLM
               </span>
             </div>
+            <div id="amount-help" className="mt-1 font-mono text-[11px] text-on-surface-variant">
+              Positive number, max 7 decimals, min 0.0000001
+            </div>
+            {amountError && (
+              <div id="amount-error" className="mt-1 text-sm text-error">
+                {amountError}
+              </div>
+            )}
+            {isCheckingBalance && (
+              <div className="mt-1 font-mono text-[11px] text-on-surface-variant">
+                Checking balance…
+              </div>
+            )}
+            {balanceXLM !== null && (
+              <div className="mt-1 font-mono text-[11px] text-on-surface-variant">
+                Balance: {balanceXLM} XLM
+              </div>
+            )}
+            {balanceError && (
+              <div id="balance-error" className="mt-1 text-sm text-error">
+                {balanceError}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
@@ -267,10 +429,15 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!canSubmit}
+            aria-disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending
+              ? 'Confirm in wallet...'
+              : isCheckingBalance
+                ? 'Checking...'
+                : 'Send Privately'}
           </button>
         </div>
       )}
