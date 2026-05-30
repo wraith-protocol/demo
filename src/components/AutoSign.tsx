@@ -81,9 +81,11 @@ function HorizenAutoSign() {
 }
 
 function StellarAutoSign() {
-  const { isConnected, address, signMessage } = useStellarWallet();
+  const { isConnected, address, network, signMessage } = useStellarWallet();
   const { stellarKeys, setStellarKeys, setStellarMetaAddress, clearStellar } = useStealthKeys();
   const prompted = useRef<string | null>(null);
+  const signature = useRef<Uint8Array | null>(null);
+  const lastAddress = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
 
@@ -99,15 +101,22 @@ function StellarAutoSign() {
     if (!ready || !address) return;
     if (stellarKeys) return;
     if (isLoading.current) return;
-    if (prompted.current === address) return;
+    if (lastAddress.current !== address) {
+      prompted.current = null;
+      signature.current = null;
+      lastAddress.current = address;
+    }
+    const identity = `${address}:${network.id}`;
+    if (prompted.current === identity) return;
 
-    prompted.current = address;
+    prompted.current = identity;
     isLoading.current = true;
 
     (async () => {
       try {
-        const signature = await signMessage(STELLAR_SIGNING_MESSAGE);
-        const keys = deriveStellarKeys(signature);
+        const signedMessage = signature.current || (await signMessage(STELLAR_SIGNING_MESSAGE));
+        signature.current = signedMessage;
+        const keys = deriveStellarKeys(signedMessage);
         const meta = encodeStellarMeta(keys.spendingPubKey, keys.viewingPubKey);
         setStellarKeys(keys);
         setStellarMetaAddress(meta);
@@ -117,15 +126,17 @@ function StellarAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, address, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
+  }, [ready, address, network.id, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
 
   useEffect(() => {
     if (!isConnected) {
       prompted.current = null;
+      signature.current = null;
+      lastAddress.current = null;
       setReady(false);
       clearStellar();
     }
-  }, [isConnected, clearStellar]);
+  }, [isConnected, address, clearStellar]);
 
   return null;
 }

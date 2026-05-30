@@ -16,13 +16,12 @@ import {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
-import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
 export function StellarSend() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const { address, isConnected, network, signTransaction } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -56,8 +55,8 @@ export function StellarSend() {
       const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthResult(result);
 
-      const horizonUrl = STELLAR_NETWORK.horizonUrl;
-      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+      const horizonUrl = network.horizonUrl;
+      const networkPassphrase = network.networkPassphrase;
 
       const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
       if (!accountRes.ok) throw new Error('Failed to load sender account');
@@ -112,7 +111,7 @@ export function StellarSend() {
       // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const soroban = new rpcMod.Server(network.rpcUrl);
         const announcerContract = new Contract(ANNOUNCER_CONTRACT);
 
         const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
@@ -156,7 +155,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction]);
+  }, [address, recipient, amount, network, signTransaction]);
 
   const reset = () => {
     setRecipient('');
@@ -180,7 +179,7 @@ export function StellarSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {network.name} / XLM
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
@@ -196,7 +195,7 @@ export function StellarSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {network.name} / XLM
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
@@ -295,7 +294,7 @@ export function StellarSend() {
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
+                  href={stellarAddrUrl(stealthResult.stealthAddress, network)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block truncate font-mono text-xs text-primary underline"
@@ -313,7 +312,7 @@ export function StellarSend() {
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
-                    href={stellarTxUrl(txHash)}
+                    href={stellarTxUrl(txHash, network)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block truncate font-mono text-xs text-primary underline"

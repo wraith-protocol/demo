@@ -60,9 +60,9 @@ function Providers({ children }: { children: React.ReactNode }) {
                   }}
                 >
                   <ChainProvider>
-                    <StellarWalletProvider>
-                      <StealthKeysProvider>{children}</StealthKeysProvider>
-                    </StellarWalletProvider>
+                    <StealthKeysProvider>
+                      <StellarWalletProvider>{children}</StellarWalletProvider>
+                    </StealthKeysProvider>
                   </ChainProvider>
                 </ccc.Provider>
               </WalletModalProvider>

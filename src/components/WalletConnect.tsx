@@ -40,7 +40,8 @@ function HorizenButton() {
 }
 
 function FreighterButton() {
-  const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const { address, isConnected, status, installUrl, connect, disconnect, retryInstall } =
+    useStellarWallet();
 
   if (isConnected && address) {
     return (
@@ -50,9 +51,27 @@ function FreighterButton() {
     );
   }
 
+  if (status === 'not-installed') {
+    return (
+      <a
+        href={installUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={retryInstall}
+        className={btnBase}
+      >
+        Install Freighter
+      </a>
+    );
+  }
+
   return (
-    <button onClick={connect} className={btnBase}>
-      Connect Freighter
+    <button
+      onClick={() => void connect().catch(() => undefined)}
+      disabled={status === 'checking'}
+      className={btnBase}
+    >
+      {status === 'needs-approval' ? 'Approve in Freighter' : 'Connect Freighter'}
     </button>
   );
 }

@@ -23,7 +23,6 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
-import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -144,6 +143,7 @@ function StellarStealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
 }) {
+  const { network } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
@@ -157,7 +157,7 @@ function StellarStealthRow({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
+        const res = await fetch(`${network.horizonUrl}/accounts/${match.stealthAddress}`);
         if (!res.ok) {
           setBalance('0');
           return;
@@ -171,7 +171,7 @@ function StellarStealthRow({
         setLoadingBal(false);
       }
     })();
-  }, [match.stealthAddress]);
+  }, [match.stealthAddress, network.horizonUrl]);
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -179,8 +179,8 @@ function StellarStealthRow({
     setWithdrawing(true);
 
     try {
-      const horizonUrl = STELLAR_NETWORK.horizonUrl;
-      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+      const horizonUrl = network.horizonUrl;
+      const networkPassphrase = network.networkPassphrase;
 
       const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
       if (!res.ok) throw new Error('Account not found');
@@ -244,7 +244,7 @@ function StellarStealthRow({
           </span>
           <div className="mt-0.5 flex items-center gap-2">
             <a
-              href={stellarAddrUrl(match.stealthAddress)}
+              href={stellarAddrUrl(match.stealthAddress, network)}
               target="_blank"
               rel="noopener noreferrer"
               className="block truncate font-mono text-xs text-primary underline"
@@ -300,7 +300,7 @@ function StellarStealthRow({
           <span className="font-mono text-[10px] text-on-surface-variant">
             Withdrawn —{' '}
             <a
-              href={stellarTxUrl(withdrawHash)}
+              href={stellarTxUrl(withdrawHash, network)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline"
@@ -336,7 +336,7 @@ function StellarStealthRow({
 }
 
 export function StellarReceive() {
-  const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
+  const { address, isConnected, network, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
 
@@ -357,8 +357,8 @@ export function StellarReceive() {
     (async () => {
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
-        const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+        const soroban = new rpcMod.Server(network.rpcUrl);
+        const networkPassphrase = network.networkPassphrase;
 
         const accountResponse = await soroban.getAccount(address);
         const sourceAccount = new Account(
@@ -386,7 +386,7 @@ export function StellarReceive() {
         // Not registered or contract not available
       }
     })();
-  }, [address]);
+  }, [address, network]);
 
   const registered = isAlreadyRegistered || isRegSuccess;
 
@@ -412,8 +412,8 @@ export function StellarReceive() {
     setError('');
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-      const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
-      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+      const soroban = new rpcMod.Server(network.rpcUrl);
+      const networkPassphrase = network.networkPassphrase;
 
       const accountResponse = await soroban.getAccount(address);
       const sourceAccount = new Account(
@@ -482,17 +482,14 @@ export function StellarReceive() {
     } finally {
       setIsRegistering(false);
     }
-  }, [stellarKeys, address, signTransaction]);
+  }, [stellarKeys, address, network, signTransaction]);
 
   const scanPayments = useCallback(async () => {
     if (!stellarKeys) return;
     setIsScanning(true);
     setError('');
     try {
-      const announcements = await fetchAnnouncementEvents(
-        STELLAR_NETWORK.rpcUrl,
-        ANNOUNCER_CONTRACT,
-      );
+      const announcements = await fetchAnnouncementEvents(network.rpcUrl, ANNOUNCER_CONTRACT);
       const results = scanAnnouncements(
         announcements,
         stellarKeys.viewingKey,
@@ -506,13 +503,13 @@ export function StellarReceive() {
     } finally {
       setIsScanning(false);
     }
-  }, [stellarKeys]);
+  }, [stellarKeys, network.rpcUrl]);
 
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {network.name} / XLM
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive
@@ -528,7 +525,7 @@ export function StellarReceive() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {network.name} / XLM
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive
@@ -578,7 +575,7 @@ export function StellarReceive() {
                     <>
                       {' — '}
                       <a
-                        href={stellarTxUrl(regHash)}
+                        href={stellarTxUrl(regHash, network)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline"
