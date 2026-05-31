@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   TransactionBuilder,
   Operation,
@@ -21,8 +21,12 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
+import { PrivacyTooltip } from '@/components/PrivacyTooltip';
+import { ImportConflictModal } from '@/components/ImportConflictModal';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { STELLAR_NETWORK } from '@/config';
 import { useActivityStore } from '@/stores/activityStore';
+import type { ImportResult } from '@/lib/stealthLabels';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -30,9 +34,23 @@ const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PY
 function StellarMatchCardContainer({
   match,
   onWithdrawn,
+  labelData,
+  onSaveLabel,
+  onHide,
+  onUnhide,
+  onTagClick,
+  showPrivacyWarning,
+  onDismissPrivacyWarning,
 }: {
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
+  labelData: { label: string; tags: string[]; hiddenAt?: number } | null;
+  onSaveLabel: (label: string, tags: string[]) => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onTagClick: (tag: string) => void;
+  showPrivacyWarning: boolean;
+  onDismissPrivacyWarning: () => void;
 }) {
   const { address, signTransaction } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
@@ -284,6 +302,13 @@ function StellarMatchCardContainer({
       onSponsoredWithdraw={handleSponsoredWithdraw}
       onCancelSponsor={() => setShowSponsorPrompt(false)}
       onRevealKey={() => setShowKey(true)}
+      labelData={labelData}
+      onSaveLabel={onSaveLabel}
+      onHide={onHide}
+      onUnhide={onUnhide}
+      onTagClick={onTagClick}
+      showPrivacyWarning={showPrivacyWarning}
+      onDismissPrivacyWarning={onDismissPrivacyWarning}
     />
   );
 }
@@ -313,6 +338,54 @@ export function StellarReceive() {
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [importConflicts, setImportConflicts] = useState<ImportResult['conflicts'] | null>(null);
+  const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    labels,
+    saveLabel,
+    hideAddress,
+    unhideAddress,
+    exportLabels,
+    importLabels,
+    shouldShowPrivacyWarning,
+    dismissPrivacyWarning,
+    getAllTags,
+  } = useStealthLabels(address);
+
+  const allTags = useMemo(() => getAllTags(), [getAllTags, labels]);
+
+  const filteredMatched = useMemo(() => {
+    return matched.filter((m) => {
+      const labelData = labels[m.stealthAddress];
+
+      if (!showHidden && labelData?.hiddenAt) return false;
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesLabel = labelData?.label?.toLowerCase().includes(q);
+        const matchesTag = labelData?.tags?.some((t) => t.toLowerCase().includes(q));
+        const matchesAddress = m.stealthAddress.toLowerCase().includes(q);
+        if (!matchesLabel && !matchesTag && !matchesAddress) return false;
+      }
+
+      if (activeTag) {
+        if (!labelData?.tags?.includes(activeTag)) return false;
+      }
+
+      return true;
+    });
+  }, [matched, labels, showHidden, searchQuery, activeTag]);
+
+  const hiddenCount = useMemo(() => {
+    return matched.filter((m) => labels[m.stealthAddress]?.hiddenAt).length;
+  }, [matched, labels]);
 
   // Check if already registered on-chain
   useEffect(() => {
@@ -520,25 +593,119 @@ export function StellarReceive() {
     }
   }, [stellarKeys]);
 
+  const handleExport = () => {
+    const json = exportLabels();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wraith-labels-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = ev.target?.result as string;
+        JSON.parse(json);
+        const result = importLabels(json, false);
+        if (result.conflicts.length > 0) {
+          setImportConflicts(result.conflicts);
+          setPendingImportJson(json);
+        } else {
+          setImportMessage(`Imported ${result.imported} label${result.imported !== 1 ? 's' : ''}.`);
+          setTimeout(() => setImportMessage(null), 3000);
+        }
+      } catch {
+        setImportMessage('Invalid JSON file.');
+        setTimeout(() => setImportMessage(null), 3000);
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleConflictResolve = (action: 'keep-all' | 'overwrite-all') => {
+    if (action === 'overwrite-all' && pendingImportJson) {
+      const result = importLabels(pendingImportJson, true);
+      setImportMessage(
+        `Imported ${result.imported} label${result.imported !== 1 ? 's' : ''} (overwritten).`,
+      );
+    } else {
+      setImportMessage('Kept existing labels.');
+    }
+    setImportConflicts(null);
+    setPendingImportJson(null);
+    setTimeout(() => setImportMessage(null), 3000);
+  };
+
   return (
-    <StellarReceiveView
-      isConnected={isConnected}
-      isDerivingKeys={isDerivingKeys}
-      keysDerived={!!stellarKeys}
-      metaAddress={stellarMetaAddress}
-      registered={registered}
-      isRegistering={isRegistering}
-      regHash={regHash}
-      isScanning={isScanning}
-      hasScanned={hasScanned}
-      matchCount={matched.length}
-      error={error}
-      onDeriveKeys={deriveKeysFromWallet}
-      onRegister={registerOnChain}
-      onScan={scanPayments}
-      matches={matched.map((m, i) => (
-        <StellarMatchCardContainer key={i} match={m} onWithdrawn={() => {}} />
-      ))}
-    />
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleImportFile}
+        className="hidden"
+      />
+      <StellarReceiveView
+        isConnected={isConnected}
+        isDerivingKeys={isDerivingKeys}
+        keysDerived={!!stellarKeys}
+        metaAddress={stellarMetaAddress}
+        registered={registered}
+        isRegistering={isRegistering}
+        regHash={regHash}
+        isScanning={isScanning}
+        hasScanned={hasScanned}
+        matchCount={matched.length}
+        error={error}
+        onDeriveKeys={deriveKeysFromWallet}
+        onRegister={registerOnChain}
+        onScan={scanPayments}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filteredMatchCount={filteredMatched.length}
+        activeTag={activeTag}
+        allTags={allTags}
+        onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
+        showHidden={showHidden}
+        hiddenCount={hiddenCount}
+        onToggleShowHidden={() => setShowHidden(!showHidden)}
+        onExport={handleExport}
+        onImport={() => fileInputRef.current?.click()}
+        importMessage={importMessage}
+        importConflicts={importConflicts}
+        onImportConflictResolve={handleConflictResolve}
+        onCloseImportModal={() => {
+          setImportConflicts(null);
+          setPendingImportJson(null);
+        }}
+        matches={
+          filteredMatched.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              {filteredMatched.map((m, i) => (
+                <StellarMatchCardContainer
+                  key={i}
+                  match={m}
+                  onWithdrawn={() => {}}
+                  labelData={labels[m.stealthAddress] ?? null}
+                  onSaveLabel={(label, tags) => saveLabel(m.stealthAddress, label, tags)}
+                  onHide={() => hideAddress(m.stealthAddress)}
+                  onUnhide={() => unhideAddress(m.stealthAddress)}
+                  onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
+                  showPrivacyWarning={shouldShowPrivacyWarning}
+                  onDismissPrivacyWarning={dismissPrivacyWarning}
+                />
+              ))}
+            </div>
+          ) : null
+        }
+      />
+    </>
   );
 }
