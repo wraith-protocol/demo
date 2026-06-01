@@ -44,14 +44,14 @@ function FreighterButton() {
 
   if (isConnected && address) {
     return (
-      <button onClick={disconnect} className={btnConnected}>
+      <button onClick={disconnect} className={btnConnected} data-tour="wallet-connect">
         {address.slice(0, 4)}...{address.slice(-4)}
       </button>
     );
   }
 
   return (
-    <button onClick={connect} className={btnBase}>
+    <button onClick={connect} className={btnBase} data-tour="wallet-connect">
       Connect Freighter
     </button>
   );

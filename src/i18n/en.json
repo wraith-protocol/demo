@@ -1,0 +1,28 @@
+{
+  "onboardingTour": {
+    "step1": {
+      "title": "Welcome to Wraith",
+      "description": "This is Wraith. We're showing private payments on Stellar testnet. Click Connect Wallet to start."
+    },
+    "step2": {
+      "title": "Stealth Key Derivation",
+      "description": "We just asked your wallet to sign a stealth-key derivation message. These keys live in your browser, not on any server."
+    },
+    "step3": {
+      "title": "Recipient Address",
+      "description": "Paste any Stellar stealth meta-address here — or type a .wraith name."
+    },
+    "step4": {
+      "title": "Amount",
+      "description": "Enter an XLM amount. We'll generate a fresh stealth address — the recipient's real address never appears on-chain."
+    },
+    "step5": {
+      "title": "Send Privately",
+      "description": "When you send, the network sees a transfer to a new address that nobody can link to the recipient. Try it on testnet."
+    },
+    "doneBtn": "Done",
+    "nextBtn": "Next →",
+    "prevBtn": "← Back",
+    "skipBtn": "Skip tour"
+  }
+}

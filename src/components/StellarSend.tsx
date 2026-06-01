@@ -219,6 +219,7 @@ export function StellarSend() {
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="st:xlm:..."
+                data-tour="recipient-input"
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
@@ -240,6 +241,7 @@ export function StellarSend() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.0"
+                data-tour="amount-input"
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
@@ -268,6 +270,7 @@ export function StellarSend() {
           <button
             onClick={handleSend}
             disabled={!recipient || !amount || isPending}
+            data-tour="send-button"
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}
