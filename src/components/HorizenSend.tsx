@@ -5,10 +5,12 @@ import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/cha
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 export function HorizenSend() {
   const { isConnected, address } = useAccount();
   const { data: balanceData } = useBalance({ address });
+  const { shouldDisable } = useNetworkStatus();
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -209,7 +211,7 @@ export function HorizenSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}

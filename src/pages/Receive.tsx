@@ -3,12 +3,15 @@ import { HorizenReceive } from '@/components/HorizenReceive';
 import { StellarReceive } from '@/components/StellarReceive';
 import { SolanaReceive } from '@/components/SolanaReceive';
 import { CkbReceive } from '@/components/CkbReceive';
+import { WrongNetworkBanner } from '@/components/WrongNetworkBanner';
 
 export default function Receive() {
   const { chain } = useChain();
 
-  if (chain === 'stellar') return <StellarReceive />;
-  if (chain === 'solana') return <SolanaReceive />;
-  if (chain === 'ckb') return <CkbReceive />;
-  return <HorizenReceive />;
+  return (
+    <div>
+      <WrongNetworkBanner />
+      {chain === 'stellar' ? <StellarReceive /> : chain === 'solana' ? <SolanaReceive /> : chain === 'ckb' ? <CkbReceive /> : <HorizenReceive />}
+    </div>
+  );
 }

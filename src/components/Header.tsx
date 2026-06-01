@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
+import { NetworkBadge } from './NetworkBadge';
 
 const navLinks = [
   { to: '/send', label: 'Send' },
@@ -45,6 +46,7 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           <ChainSwitcher />
+          <NetworkBadge />
           <WalletConnect />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

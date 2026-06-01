@@ -18,11 +18,13 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
 export function StellarSend() {
   const { address, isConnected, signTransaction } = useStellarWallet();
+  const { shouldDisable } = useNetworkStatus();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -267,7 +269,7 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}

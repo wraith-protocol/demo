@@ -11,9 +11,11 @@ import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 export function SolanaSend() {
   const { publicKey, connected, sendTransaction } = useWallet();
+  const { shouldDisable } = useNetworkStatus();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -183,7 +185,7 @@ export function SolanaSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}

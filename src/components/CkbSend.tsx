@@ -6,12 +6,14 @@ import {
   getDeployment,
 } from '@wraith-protocol/sdk/chains/ckb';
 import { CopyButton } from '@/components/CopyButton';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
 
 export function CkbSend() {
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
+  const { shouldDisable } = useNetworkStatus();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -189,7 +191,7 @@ export function CkbSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? 'Confirm in wallet...' : 'Send Privately'}

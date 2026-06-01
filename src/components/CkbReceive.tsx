@@ -12,6 +12,7 @@ import {
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { StealthLabelEditor } from '@/components/StealthLabelEditor';
 import { StealthLabelBar } from '@/components/StealthLabelBar';
 import type { StealthLabel } from '@/lib/stealth-labels';
@@ -126,6 +127,7 @@ export function CkbReceive() {
 
   const labelOps = useStealthLabels(walletAddress);
   const { ckbKeys, ckbMetaAddress, setCkbKeys, setCkbMetaAddress } = useStealthKeys();
+  const { shouldDisable } = useNetworkStatus();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -234,7 +236,7 @@ export function CkbReceive() {
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeys}
-            disabled={isDerivingKeys}
+            disabled={isDerivingKeys || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Stealth Keys'}
@@ -260,7 +262,7 @@ export function CkbReceive() {
           <div className="flex items-center justify-between">
             <button
               onClick={scanPayments}
-              disabled={isScanning}
+              disabled={isScanning || shouldDisable}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Cells'}

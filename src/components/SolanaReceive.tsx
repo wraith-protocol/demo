@@ -15,6 +15,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { StealthLabelEditor } from '@/components/StealthLabelEditor';
 import { StealthLabelBar } from '@/components/StealthLabelBar';
 import type { StealthLabel } from '@/lib/stealth-labels';
@@ -45,6 +46,7 @@ function SolanaStealthRow({
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const { shouldDisable } = useNetworkStatus();
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
@@ -164,7 +166,7 @@ function SolanaStealthRow({
             />
             <button
               onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
+              disabled={!dest || withdrawing || shouldDisable}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {withdrawing ? '...' : 'Withdraw'}
@@ -230,6 +232,7 @@ export function SolanaReceive() {
   const walletId = publicKey?.toBase58();
   const labelOps = useStealthLabels(walletId);
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
+  const { shouldDisable } = useNetworkStatus();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -330,7 +333,7 @@ export function SolanaReceive() {
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeys}
-            disabled={isDerivingKeys}
+            disabled={isDerivingKeys || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
@@ -356,7 +359,7 @@ export function SolanaReceive() {
           <div className="flex items-center justify-between">
             <button
               onClick={scanPayments}
-              disabled={isScanning}
+              disabled={isScanning || shouldDisable}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}

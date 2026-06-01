@@ -25,6 +25,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { StealthLabelEditor } from '@/components/StealthLabelEditor';
 import { StealthLabelBar } from '@/components/StealthLabelBar';
 import type { StealthLabel } from '@/lib/stealth-labels';
@@ -167,6 +168,7 @@ function StellarStealthRow({
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const { shouldDisable } = useNetworkStatus();
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
@@ -299,7 +301,7 @@ function StellarStealthRow({
             />
             <button
               onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
+              disabled={!dest || withdrawing || shouldDisable}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {withdrawing ? '...' : 'Withdraw'}
@@ -365,6 +367,7 @@ export function StellarReceive() {
   const labelOps = useStealthLabels(address ?? undefined);
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
+  const { shouldDisable } = useNetworkStatus();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -586,7 +589,7 @@ export function StellarReceive() {
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeysFromWallet}
-            disabled={isDerivingKeys}
+            disabled={isDerivingKeys || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
@@ -640,7 +643,7 @@ export function StellarReceive() {
                 </p>
                 <button
                   onClick={registerOnChain}
-                  disabled={isRegistering}
+                  disabled={isRegistering || shouldDisable}
                   className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
                   {isRegistering ? 'Registering...' : 'Register On-Chain'}
@@ -652,7 +655,7 @@ export function StellarReceive() {
           <div className="flex items-center justify-between">
             <button
               onClick={scanPayments}
-              disabled={isScanning}
+              disabled={isScanning || shouldDisable}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}

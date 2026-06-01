@@ -25,6 +25,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { StealthLabelEditor } from '@/components/StealthLabelEditor';
 import { StealthLabelBar } from '@/components/StealthLabelBar';
 import type { StealthLabel } from '@/lib/stealth-labels';
@@ -55,6 +56,7 @@ function StealthRow({
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const { shouldDisable } = useNetworkStatus();
 
   useEffect(() => {
     (async () => {
@@ -159,7 +161,7 @@ function StealthRow({
             />
             <button
               onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
+              disabled={!dest || withdrawing || shouldDisable}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {withdrawing ? '...' : 'Withdraw'}
@@ -228,6 +230,7 @@ export function HorizenReceive() {
   const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
 
   const labelOps = useStealthLabels(address);
+  const { shouldDisable } = useNetworkStatus();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -363,7 +366,7 @@ export function HorizenReceive() {
         <div className="flex flex-col gap-4">
           <button
             onClick={deriveKeys}
-            disabled={isDerivingKeys}
+            disabled={isDerivingKeys || shouldDisable}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
@@ -417,7 +420,7 @@ export function HorizenReceive() {
                 </p>
                 <button
                   onClick={registerOnChain}
-                  disabled={isRegPending || isRegConfirming}
+                  disabled={isRegPending || isRegConfirming || shouldDisable}
                   className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
                   {isRegPending
@@ -433,7 +436,7 @@ export function HorizenReceive() {
           <div className="flex items-center justify-between">
             <button
               onClick={scanPayments}
-              disabled={isScanning}
+              disabled={isScanning || shouldDisable}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}
