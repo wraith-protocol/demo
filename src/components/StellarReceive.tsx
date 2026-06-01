@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TransactionBuilder,
   Operation,
@@ -24,6 +24,10 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { StealthLabelEditor } from '@/components/StealthLabelEditor';
+import { StealthLabelBar } from '@/components/StealthLabelBar';
+import type { StealthLabel } from '@/lib/stealth-labels';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -140,9 +144,21 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
 function StellarStealthRow({
   match,
   onWithdrawn,
+  label,
+  onSaveLabel,
+  onSaveTags,
+  onHide,
+  onUnhide,
+  onTagFilter,
 }: {
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
+  label: StealthLabel | undefined;
+  onSaveLabel: (text: string) => void;
+  onSaveTags: (tags: string[]) => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onTagFilter: (tag: string | null) => void;
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
@@ -331,12 +347,22 @@ function StellarStealthRow({
           </div>
         )}
       </div>
+
+      <StealthLabelEditor
+        label={label}
+        onSaveLabel={onSaveLabel}
+        onSaveTags={onSaveTags}
+        onHide={onHide}
+        onUnhide={onUnhide}
+        onTagFilter={onTagFilter}
+      />
     </div>
   );
 }
 
 export function StellarReceive() {
   const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
+  const labelOps = useStealthLabels(address ?? undefined);
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
 
@@ -345,6 +371,24 @@ export function StellarReceive() {
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  const displayedMatches = useMemo(() => {
+    if (!labelOps.searchQuery && !labelOps.activeTag) return matched;
+    return matched.filter((m) => {
+      const l = labelOps.getLabel(m.stealthAddress);
+      if (labelOps.activeTag) return l?.tags.includes(labelOps.activeTag);
+      if (labelOps.searchQuery) {
+        const q = labelOps.searchQuery.toLowerCase();
+        return (
+          l?.label.toLowerCase().includes(q) ||
+          l?.tags.some((t) => t.toLowerCase().includes(q)) ||
+          m.stealthAddress.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [matched, labelOps.searchQuery, labelOps.activeTag, labelOps]);
+
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
@@ -623,11 +667,37 @@ export function StellarReceive() {
           {error && <p className="text-sm text-error">{error}</p>}
 
           {matched.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {matched.map((m, i) => (
-                <StellarStealthRow key={i} match={m} onWithdrawn={() => {}} />
-              ))}
-            </div>
+            <>
+              <StealthLabelBar
+                searchQuery={labelOps.searchQuery}
+                onSearchChange={labelOps.setSearchQuery}
+                activeTag={labelOps.activeTag}
+                allTags={labelOps.allTags}
+                onTagSelect={labelOps.setActiveTag}
+                showHidden={labelOps.showHidden}
+                onToggleShowHidden={() => labelOps.setShowHidden(!labelOps.showHidden)}
+                showPrivacyWarning={labelOps.showPrivacyWarning}
+                onDismissPrivacyWarning={labelOps.dismissPrivacyWarning}
+                onExport={labelOps.export}
+                onImport={labelOps.import}
+              />
+
+              <div className="flex flex-col gap-4">
+                {displayedMatches.map((m, i) => (
+                  <StellarStealthRow
+                    key={i}
+                    match={m}
+                    onWithdrawn={() => {}}
+                    label={labelOps.getLabel(m.stealthAddress)}
+                    onSaveLabel={(text) => labelOps.setLabel(m.stealthAddress, text)}
+                    onSaveTags={(tags) => labelOps.setTags(m.stealthAddress, tags)}
+                    onHide={() => labelOps.hide(m.stealthAddress)}
+                    onUnhide={() => labelOps.unhide(m.stealthAddress)}
+                    onTagFilter={labelOps.setActiveTag}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {hasScanned && matched.length === 0 && (

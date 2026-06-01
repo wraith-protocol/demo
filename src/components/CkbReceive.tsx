@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
   deriveStealthKeys,
@@ -11,8 +11,28 @@ import {
 } from '@wraith-protocol/sdk/chains/ckb';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { StealthLabelEditor } from '@/components/StealthLabelEditor';
+import { StealthLabelBar } from '@/components/StealthLabelBar';
+import type { StealthLabel } from '@/lib/stealth-labels';
 
-function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
+function CkbStealthRow({
+  match,
+  label,
+  onSaveLabel,
+  onSaveTags,
+  onHide,
+  onUnhide,
+  onTagFilter,
+}: {
+  match: MatchedStealthCell;
+  label: StealthLabel | undefined;
+  onSaveLabel: (text: string) => void;
+  onSaveTags: (tags: string[]) => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onTagFilter: (tag: string | null) => void;
+}) {
   const [showKey, setShowKey] = useState(false);
   const keyHex = match.stealthPrivateKey.slice(2);
   const capacityCkb = (Number(match.capacity) / 1e8).toFixed(4);
@@ -71,6 +91,15 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
           </div>
         )}
       </div>
+
+      <StealthLabelEditor
+        label={label}
+        onSaveLabel={onSaveLabel}
+        onSaveTags={onSaveTags}
+        onHide={onHide}
+        onUnhide={onUnhide}
+        onTagFilter={onTagFilter}
+      />
     </div>
   );
 }
@@ -78,6 +107,24 @@ function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
 export function CkbReceive() {
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
+  const [walletAddress, setWalletAddress] = useState<string | undefined>();
+
+  useEffect(() => {
+    (async () => {
+      if (signer) {
+        try {
+          const addr = await (signer as any).getRecommendedAddress();
+          setWalletAddress(addr);
+        } catch {
+          setWalletAddress(undefined);
+        }
+      } else {
+        setWalletAddress(undefined);
+      }
+    })();
+  }, [signer]);
+
+  const labelOps = useStealthLabels(walletAddress);
   const { ckbKeys, ckbMetaAddress, setCkbKeys, setCkbMetaAddress } = useStealthKeys();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
@@ -85,6 +132,23 @@ export function CkbReceive() {
   const [matched, setMatched] = useState<MatchedStealthCell[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  const displayedMatches = useMemo(() => {
+    if (!labelOps.searchQuery && !labelOps.activeTag) return matched;
+    return matched.filter((m) => {
+      const l = labelOps.getLabel(m.stealthPubKeyHash);
+      if (labelOps.activeTag) return l?.tags.includes(labelOps.activeTag);
+      if (labelOps.searchQuery) {
+        const q = labelOps.searchQuery.toLowerCase();
+        return (
+          l?.label.toLowerCase().includes(q) ||
+          l?.tags.some((t) => t.toLowerCase().includes(q)) ||
+          m.stealthPubKeyHash.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [matched, labelOps.searchQuery, labelOps.activeTag, labelOps]);
 
   const deriveKeys = useCallback(async () => {
     if (!signer) {
@@ -211,11 +275,36 @@ export function CkbReceive() {
           {error && <p className="text-sm text-error">{error}</p>}
 
           {matched.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {matched.map((m, i) => (
-                <CkbStealthRow key={i} match={m} />
-              ))}
-            </div>
+            <>
+              <StealthLabelBar
+                searchQuery={labelOps.searchQuery}
+                onSearchChange={labelOps.setSearchQuery}
+                activeTag={labelOps.activeTag}
+                allTags={labelOps.allTags}
+                onTagSelect={labelOps.setActiveTag}
+                showHidden={labelOps.showHidden}
+                onToggleShowHidden={() => labelOps.setShowHidden(!labelOps.showHidden)}
+                showPrivacyWarning={labelOps.showPrivacyWarning}
+                onDismissPrivacyWarning={labelOps.dismissPrivacyWarning}
+                onExport={labelOps.export}
+                onImport={labelOps.import}
+              />
+
+              <div className="flex flex-col gap-4">
+                {displayedMatches.map((m, i) => (
+                  <CkbStealthRow
+                    key={i}
+                    match={m}
+                    label={labelOps.getLabel(m.stealthPubKeyHash)}
+                    onSaveLabel={(text) => labelOps.setLabel(m.stealthPubKeyHash, text)}
+                    onSaveTags={(tags) => labelOps.setTags(m.stealthPubKeyHash, tags)}
+                    onHide={() => labelOps.hide(m.stealthPubKeyHash)}
+                    onUnhide={() => labelOps.unhide(m.stealthPubKeyHash)}
+                    onTagFilter={labelOps.setActiveTag}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {hasScanned && matched.length === 0 && (

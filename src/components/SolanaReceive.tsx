@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import {
@@ -14,13 +14,29 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { StealthLabelEditor } from '@/components/StealthLabelEditor';
+import { StealthLabelBar } from '@/components/StealthLabelBar';
+import type { StealthLabel } from '@/lib/stealth-labels';
 
 function SolanaStealthRow({
   match,
   onWithdrawn,
+  label,
+  onSaveLabel,
+  onSaveTags,
+  onHide,
+  onUnhide,
+  onTagFilter,
 }: {
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
+  label: StealthLabel | undefined;
+  onSaveLabel: (text: string) => void;
+  onSaveTags: (tags: string[]) => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onTagFilter: (tag: string | null) => void;
 }) {
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
@@ -196,12 +212,23 @@ function SolanaStealthRow({
           </div>
         )}
       </div>
+
+      <StealthLabelEditor
+        label={label}
+        onSaveLabel={onSaveLabel}
+        onSaveTags={onSaveTags}
+        onHide={onHide}
+        onUnhide={onUnhide}
+        onTagFilter={onTagFilter}
+      />
     </div>
   );
 }
 
 export function SolanaReceive() {
-  const { connected, signMessage } = useWallet();
+  const { connected, signMessage, publicKey } = useWallet();
+  const walletId = publicKey?.toBase58();
+  const labelOps = useStealthLabels(walletId);
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
@@ -209,6 +236,23 @@ export function SolanaReceive() {
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  const displayedMatches = useMemo(() => {
+    if (!labelOps.searchQuery && !labelOps.activeTag) return matched;
+    return matched.filter((m) => {
+      const l = labelOps.getLabel(m.stealthAddress);
+      if (labelOps.activeTag) return l?.tags.includes(labelOps.activeTag);
+      if (labelOps.searchQuery) {
+        const q = labelOps.searchQuery.toLowerCase();
+        return (
+          l?.label.toLowerCase().includes(q) ||
+          l?.tags.some((t) => t.toLowerCase().includes(q)) ||
+          m.stealthAddress.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [matched, labelOps.searchQuery, labelOps.activeTag, labelOps]);
 
   const deriveKeys = useCallback(async () => {
     if (!signMessage) {
@@ -327,11 +371,37 @@ export function SolanaReceive() {
           {error && <p className="text-sm text-error">{error}</p>}
 
           {matched.length > 0 && (
-            <div className="flex flex-col gap-4">
-              {matched.map((m, i) => (
-                <SolanaStealthRow key={i} match={m} onWithdrawn={() => {}} />
-              ))}
-            </div>
+            <>
+              <StealthLabelBar
+                searchQuery={labelOps.searchQuery}
+                onSearchChange={labelOps.setSearchQuery}
+                activeTag={labelOps.activeTag}
+                allTags={labelOps.allTags}
+                onTagSelect={labelOps.setActiveTag}
+                showHidden={labelOps.showHidden}
+                onToggleShowHidden={() => labelOps.setShowHidden(!labelOps.showHidden)}
+                showPrivacyWarning={labelOps.showPrivacyWarning}
+                onDismissPrivacyWarning={labelOps.dismissPrivacyWarning}
+                onExport={labelOps.export}
+                onImport={labelOps.import}
+              />
+
+              <div className="flex flex-col gap-4">
+                {displayedMatches.map((m, i) => (
+                  <SolanaStealthRow
+                    key={i}
+                    match={m}
+                    onWithdrawn={() => {}}
+                    label={labelOps.getLabel(m.stealthAddress)}
+                    onSaveLabel={(text) => labelOps.setLabel(m.stealthAddress, text)}
+                    onSaveTags={(tags) => labelOps.setTags(m.stealthAddress, tags)}
+                    onHide={() => labelOps.hide(m.stealthAddress)}
+                    onUnhide={() => labelOps.unhide(m.stealthAddress)}
+                    onTagFilter={labelOps.setActiveTag}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {hasScanned && matched.length === 0 && (

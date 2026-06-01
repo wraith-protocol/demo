@@ -28,6 +28,7 @@
     "@wraith-protocol/sdk": "^1.4.5",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
+    "esbuild": "^0.28.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.6.0",
