@@ -1,0 +1,63 @@
+name: Storybook
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Needed so the update job can push regenerated baselines back to the branch.
+permissions:
+  contents: write
+
+jobs:
+  visual-regression:
+    runs-on: ubuntu-latest
+    # Run inside the Playwright image so Chromium + system fonts match exactly how
+    # the committed baselines are generated. Keep this tag in sync with the
+    # `playwright` version in package.json. See CONTRIBUTING.md.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.9
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Ensure Chromium is installed
+        run: pnpm exec playwright install chromium
+
+      - name: Build Storybook
+        run: pnpm build-storybook --quiet
+
+      # On PRs: verify every story against the committed baselines (fail on diff).
+      # On main / manual runs: (re)generate baselines so they live in the canonical
+      # CI environment.
+      - name: Visual regression
+        run: |
+          pnpm exec concurrently -k -s first -n SB,TEST \
+            "pnpm exec http-server storybook-static --port 6006 --silent" \
+            "pnpm exec wait-on tcp:127.0.0.1:6006 && pnpm test-storybook --url http://127.0.0.1:6006 ${{ github.event_name == 'pull_request' && ' ' || '-u' }}"
+
+      - name: Commit updated baselines
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ -n "$(git status --porcelain __image_snapshots__)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add __image_snapshots__
+            git commit -m "chore: update storybook visual baselines [skip ci]"
+            git push
+          fi
+
+      - name: Upload snapshot diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-snapshot-diffs
+          path: '**/__diff_output__/**'
+          if-no-files-found: ignore

@@ -10,7 +10,7 @@ interface StellarWalletContextValue {
   signTransaction: (xdr: string) => Promise<string>;
 }
 
-const StellarWalletContext = createContext<StellarWalletContextValue | null>(null);
+export const StellarWalletContext = createContext<StellarWalletContextValue | null>(null);
 
 export function StellarWalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
