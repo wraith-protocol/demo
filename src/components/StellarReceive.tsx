@@ -22,6 +22,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { STELLAR_NETWORK } from '@/config';
+import { useActivityStore } from '@/stores/activityStore';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -37,6 +38,8 @@ function StellarMatchCardContainer({
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [dest, setDest] = useState('');
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
@@ -117,19 +120,32 @@ function StellarMatchCardContainer({
         .setTimeout(30)
         .build();
 
-      const txHash = tx.hash();
+      const txHashHex = tx.hash().toString('hex');
       const signature = signStellarTransaction(
-        txHash,
+        txHashHex,
         match.stealthPrivateScalar,
         match.stealthPubKeyBytes,
       );
       const signatureBase64 = Buffer.from(signature).toString('base64');
       tx.addSignature(match.stealthAddress, signatureBase64);
 
+      const signedXdrStr = encodeURIComponent(tx.toXDR());
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address || '',
+        kind: 'withdrawal',
+        direction: 'out',
+        status: 'pending',
+        amount: sendableAmount,
+        recipient: dest,
+        timestamp: Date.now(),
+      });
+
       const submitRes = await fetch(`${horizonUrl}/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(tx.toXDR())}`,
+        body: `tx=${signedXdrStr}`,
       });
 
       const submitData = await submitRes.json();
@@ -140,9 +156,11 @@ function StellarMatchCardContainer({
       }
 
       setWithdrawHash(submitData.hash);
+      updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdraw failed');
+      // In a real robust implementation we'd check if we submitted and mark failed
     } finally {
       setWithdrawing(false);
     }
@@ -210,6 +228,18 @@ function StellarMatchCardContainer({
       const feeBumpXdr = feeBumpTx.toXDR();
       const signedFeeBumpXdr = await signTransaction(feeBumpXdr);
 
+      const txHashHex = feeBumpTx.hash().toString('hex');
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address || '',
+        kind: 'withdrawal',
+        direction: 'out',
+        status: 'pending',
+        recipient: dest,
+        timestamp: Date.now(),
+      });
+
       // Submit fee-bump transaction
       const submitRes = await fetch(`${horizonUrl}/transactions`, {
         method: 'POST',
@@ -227,6 +257,7 @@ function StellarMatchCardContainer({
       // Fee-bump transactions return the outer hash
       setFeeBumpHash(submitData.hash);
       setWithdrawHash(submitData.hash); // For UI consistency
+      updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sponsored withdraw failed');
@@ -261,6 +292,8 @@ export function StellarReceive() {
   const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -384,8 +417,19 @@ export function StellarReceive() {
       );
 
       if (response.status === 'ERROR') throw new Error('Transaction submission failed');
+      const txHashHex = response.hash;
 
-      setRegHash(response.hash);
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address,
+        kind: 'name-registration',
+        direction: 'out',
+        status: 'pending',
+        timestamp: Date.now(),
+      });
+
+      setRegHash(txHashHex);
 
       let attempts = 0;
       while (attempts < 30) {
@@ -398,11 +442,15 @@ export function StellarReceive() {
           }
           if (result.status === 'SUCCESS') {
             setIsRegSuccess(true);
+            updateActivity(txHashHex, 'confirmed');
+          } else if (result.status === 'FAILED') {
+            updateActivity(txHashHex, 'failed');
           }
           break;
         } catch (pollErr: unknown) {
           if (pollErr instanceof Error && pollErr.message?.includes('Bad union switch')) {
             setIsRegSuccess(true);
+            updateActivity(txHashHex, 'confirmed');
             break;
           }
           throw pollErr;
@@ -429,10 +477,23 @@ export function StellarReceive() {
         new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
         { type: 'module' },
       );
-
       workerRef.current.onmessage = (e) => {
         if (e.data.type === 'SUCCESS') {
-          setMatched(e.data.results);
+          const results = e.data.results;
+          setMatched(results);
+          
+          results.forEach((m: MatchedAnnouncement) => {
+            addActivity({
+              id: m.stealthAddress, // use address as unique id for receives
+              chain: 'stellar',
+              wallet: address || '',
+              kind: 'stealth-receive',
+              direction: 'in',
+              status: 'confirmed', // immediately confirmed since it's discovered
+              timestamp: Date.now(),
+            });
+          });
+
           setHasScanned(true);
           setIsScanning(false);
         } else if (e.data.type === 'ERROR') {

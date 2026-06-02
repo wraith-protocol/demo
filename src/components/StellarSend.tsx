@@ -20,6 +20,7 @@ import {
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 import { StellarSendView } from '@/components/StellarSendView';
+import { useActivityStore } from '@/stores/activityStore';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -75,6 +76,8 @@ export function StellarSend() {
   const paramExp = searchParams.get('exp');
 
   const { address, isConnected, signTransaction } = useStellarWallet();
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
   const [memo, setMemo] = useState(paramMemo || '');
@@ -235,6 +238,7 @@ export function StellarSend() {
 
     setError('');
     setIsPending(true);
+    let txHashHex = '';
 
     try {
       const decoded = decodeStealthMetaAddress(metaAddress);
@@ -281,6 +285,20 @@ export function StellarSend() {
       const classicTx = builder.build();
 
       const signedXdr = await signTransaction(classicTx.toXDR());
+      txHashHex = classicTx.hash().toString('hex');
+      setTxHash(txHashHex);
+
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address,
+        kind: 'stealth-send',
+        direction: 'out',
+        status: 'pending',
+        amount: amountValue,
+        recipient: metaAddress,
+        timestamp: Date.now(),
+      });
 
       const submitRes = await fetch(`${horizonUrl}/transactions`, {
         method: 'POST',
@@ -339,8 +357,14 @@ export function StellarSend() {
       }
 
       setIsSuccess(true);
+      updateActivity(txHashHex, 'confirmed');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      if (txHashHex) updateActivity(txHashHex, 'failed');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Transaction failed');
+      }
     } finally {
       setIsPending(false);
     }
