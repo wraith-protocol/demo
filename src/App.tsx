@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
+import { HelpButton } from '@/components/HelpButton';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 
@@ -13,9 +14,11 @@ export function App() {
         <Routes>
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
+          <Route path="/pay" element={<Send />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>
+      <HelpButton />
     </div>
   );
 }
