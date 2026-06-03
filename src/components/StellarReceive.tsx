@@ -21,8 +21,6 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
-import { PrivacyTooltip } from '@/components/PrivacyTooltip';
-import { ImportConflictModal } from '@/components/ImportConflictModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { STELLAR_NETWORK } from '@/config';
 import { useActivityStore } from '@/stores/activityStore';
@@ -138,15 +136,16 @@ function StellarMatchCardContainer({
         .setTimeout(30)
         .build();
 
-      const txHashHex = tx.hash().toString('hex');
+      const txHash = tx.hash();
       const signature = signStellarTransaction(
-        txHashHex,
+        txHash,
         match.stealthPrivateScalar,
         match.stealthPubKeyBytes,
       );
       const signatureBase64 = Buffer.from(signature).toString('base64');
       tx.addSignature(match.stealthAddress, signatureBase64);
 
+      const txHashHex = Buffer.from(txHash).toString('hex');
       const signedXdrStr = encodeURIComponent(tx.toXDR());
       addActivity({
         id: txHashHex,

@@ -28,7 +28,6 @@ function parseEntry(raw: string | null): StealthLabel | null {
 
 export function getLabels(walletPubkey: string): Record<string, StealthLabel> {
   const result: Record<string, StealthLabel> = {};
-  const prefix = `${walletPubkey}:`;
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key || !isLabelKey(key, walletPubkey)) continue;
