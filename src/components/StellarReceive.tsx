@@ -269,22 +269,22 @@ function StellarStealthRow({
       </div>
 
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Withdraw to
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <input
               type="text"
               value={dest}
               onChange={(e) => setDest(e.target.value)}
               placeholder="Destination address (G...)"
-              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
+              className="h-11 flex-1 border border-outline-variant bg-surface px-3 font-mono text-[11px] text-primary placeholder:text-outline focus:border-primary sm:h-10 sm:text-xs"
             />
             <button
               onClick={handleWithdraw}
               disabled={!dest || withdrawing}
-              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-11 bg-primary px-6 font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:h-10 sm:px-4 sm:text-[10px]"
             >
               {withdrawing ? '...' : 'Withdraw'}
             </button>
@@ -543,7 +543,7 @@ export function StellarReceive() {
           <button
             onClick={deriveKeysFromWallet}
             disabled={isDerivingKeys}
-            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            className="h-12 w-full bg-primary font-heading text-[14px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:text-[13px]"
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
           </button>
@@ -605,11 +605,11 @@ export function StellarReceive() {
             )}
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <button
               onClick={scanPayments}
               disabled={isScanning}
-              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-12 bg-primary px-8 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}
             </button>

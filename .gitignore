@@ -4,3 +4,6 @@ dist/
 .env.*
 reference/
 *.local
+.npm/
+uploads/
+package-lock.json

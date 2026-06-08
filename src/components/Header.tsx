@@ -48,11 +48,11 @@ export function Header() {
           <WalletConnect />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
+            className="flex h-11 w-11 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
             aria-label="Menu"
           >
             <svg
-              className="h-4 w-4"
+              className="h-5 w-5"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"

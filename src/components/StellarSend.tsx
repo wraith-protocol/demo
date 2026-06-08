@@ -219,11 +219,11 @@ export function StellarSend() {
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="st:xlm:..."
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-mono text-xs text-primary placeholder:text-outline focus:border-primary sm:text-sm sm:pr-20"
               />
               <button
                 onClick={handlePaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                className="absolute right-0 top-0 flex h-12 items-center px-4 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary active:bg-surface-bright"
               >
                 Paste
               </button>
@@ -237,6 +237,7 @@ export function StellarSend() {
             <div className="relative">
               <input
                 type="text"
+                inputMode="decimal"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.0"
