@@ -91,8 +91,8 @@ async function fetchAnnouncementEvents(
         try {
           const ann = parseAnnouncementEvent(event);
           if (ann) all.push(ann);
-        } catch {
-          // Skip malformed
+        } catch (err) {
+          console.error('Failed to parse announcement event:', err);
         }
       }
 
@@ -270,11 +270,15 @@ function StellarStealthRow({
 
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
         <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          <label
+            htmlFor="withdraw-dest"
+            className="font-mono text-[10px] uppercase tracking-widest text-outline"
+          >
             Withdraw to
           </label>
           <div className="flex gap-2">
             <input
+              id="withdraw-dest"
               type="text"
               value={dest}
               onChange={(e) => setDest(e.target.value)}
@@ -357,7 +361,8 @@ export function StellarReceive() {
     (async () => {
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const soroban =
+          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
         const accountResponse = await soroban.getAccount(address);
@@ -412,7 +417,8 @@ export function StellarReceive() {
     setError('');
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-      const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+      const soroban =
+        (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
       const accountResponse = await soroban.getAccount(address);
@@ -493,7 +499,8 @@ export function StellarReceive() {
         STELLAR_NETWORK.rpcUrl,
         ANNOUNCER_CONTRACT,
       );
-      const results = scanAnnouncements(
+      const scanFn = (window as any).scanAnnouncementsMock || scanAnnouncements;
+      const results = scanFn(
         announcements,
         stellarKeys.viewingKey,
         stellarKeys.spendingPubKey,

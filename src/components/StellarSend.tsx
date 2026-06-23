@@ -112,7 +112,8 @@ export function StellarSend() {
       // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const soroban =
+          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const announcerContract = new Contract(ANNOUNCER_CONTRACT);
 
         const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
@@ -210,11 +211,15 @@ export function StellarSend() {
       {!stealthResult && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="recipient-meta-address"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               Recipient Meta-Address
             </label>
             <div className="relative">
               <input
+                id="recipient-meta-address"
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
@@ -231,11 +236,15 @@ export function StellarSend() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="amount"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               Amount
             </label>
             <div className="relative">
               <input
+                id="amount"
                 type="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

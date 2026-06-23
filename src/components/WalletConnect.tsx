@@ -41,6 +41,7 @@ function HorizenButton() {
 
 function FreighterButton() {
   const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const [error, setError] = useState<string | null>(null);
 
   if (isConnected && address) {
     return (
@@ -51,9 +52,22 @@ function FreighterButton() {
   }
 
   return (
-    <button onClick={connect} className={btnBase}>
-      Connect Freighter
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={async () => {
+          setError(null);
+          try {
+            await connect();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Connection failed');
+          }
+        }}
+        className={btnBase}
+      >
+        Connect Freighter
+      </button>
+      {error && <span className="text-[10px] text-error font-mono">{error}</span>}
+    </div>
   );
 }
 
