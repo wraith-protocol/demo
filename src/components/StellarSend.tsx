@@ -15,7 +15,7 @@ import {
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { stellarTxUrl, stellarAddrUrl, stellarContractUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -259,7 +259,17 @@ export function StellarSend() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Announcer contract
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
+              <span className="font-mono text-[10px] text-on-surface-variant flex items-center gap-2">
+                <span>Soroban</span>
+                <a
+                  href={stellarContractUrl(ANNOUNCER_CONTRACT)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline text-[12px]"
+                >
+                  View on stellar.expert
+                </a>
+              </span>
             </div>
           </div>
 
@@ -302,6 +312,14 @@ export function StellarSend() {
                 >
                   {stealthResult.stealthAddress}
                 </a>
+                <a
+                  href={stellarAddrUrl(stealthResult.stealthAddress)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 text-[11px] text-primary underline"
+                >
+                  View on stellar.expert
+                </a>
                 <CopyButton text={stealthResult.stealthAddress} />
               </div>
             </div>
@@ -319,6 +337,14 @@ export function StellarSend() {
                     className="block truncate font-mono text-xs text-primary underline"
                   >
                     {txHash}
+                  </a>
+                  <a
+                    href={stellarTxUrl(txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-2 text-[11px] text-primary underline"
+                  >
+                    View on stellar.expert
                   </a>
                   <CopyButton text={txHash} />
                 </div>

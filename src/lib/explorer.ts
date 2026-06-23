@@ -21,6 +21,24 @@ export function stellarAddrUrl(addr: string) {
   return `${STELLAR_EXPLORER}/account/${addr}`;
 }
 
+// New helpers for Stellar deep-links
+export function stellarAccountUrl(addr: string) {
+  return stellarAddrUrl(addr);
+}
+
+export function stellarContractUrl(id: string) {
+  return `${STELLAR_EXPLORER}/contract/${id}`;
+}
+
+export function stellarAssetUrl(code: string, issuer: string) {
+  // Example: /asset/CODE:ISSUER
+  return `${STELLAR_EXPLORER}/asset/${encodeURIComponent(code)}:${issuer}`;
+}
+
+export function stellarOperationUrl(id: string) {
+  return `${STELLAR_EXPLORER}/operation/${id}`;
+}
+
 export function solanaTxUrl(hash: string) {
   return `${SOLANA_EXPLORER}/tx/${hash}?cluster=devnet`;
 }

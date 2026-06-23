@@ -22,7 +22,7 @@ import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/cha
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { stellarTxUrl, stellarAddrUrl, stellarContractUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
@@ -252,6 +252,14 @@ function StellarStealthRow({
               {match.stealthAddress}
             </a>
             <CopyButton text={match.stealthAddress} />
+            <a
+              href={stellarAddrUrl(match.stealthAddress)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-[11px] text-primary underline"
+            >
+              View on stellar.expert
+            </a>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -306,6 +314,14 @@ function StellarStealthRow({
               className="text-primary underline"
             >
               {withdrawHash.slice(0, 14)}...
+            </a>
+            <a
+              href={stellarTxUrl(withdrawHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-[11px] text-primary underline"
+            >
+              View on stellar.expert
             </a>
           </span>
         </div>
@@ -566,9 +582,19 @@ export function StellarReceive() {
           </div>
 
           <div className="border border-outline-variant bg-surface-container p-5">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              On-Chain Registration
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                On-Chain Registration
+              </span>
+              <a
+                href={stellarContractUrl(REGISTRY_CONTRACT)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline text-[12px]"
+              >
+                View on stellar.expert
+              </a>
+            </div>
             {registered ? (
               <div className="mt-3 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
