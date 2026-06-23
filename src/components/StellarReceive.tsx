@@ -3,7 +3,6 @@ import {
   TransactionBuilder,
   Operation,
   Account,
-  Asset,
   Contract,
   xdr,
   nativeToScVal,
@@ -24,6 +23,17 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
+import {
+  ASSET_KEYS,
+  STELLAR_ASSETS,
+  type StellarAssetKey,
+  fetchAccountBalances,
+  checkTrustline,
+  buildPaymentTx,
+  trustlineLaboratoryUrl,
+  computeSendableXlmAmount,
+  toStellarSdkAsset,
+} from '@/lib/stellar-assets';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -144,34 +154,90 @@ function StellarStealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
 }) {
-  const [balance, setBalance] = useState<string | null>(null);
+  const [balances, setBalances] = useState<{ xlm: string; usdc: string } | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
+  const [withdrawAsset, setWithdrawAsset] = useState<StellarAssetKey>('XLM');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const [addingTrustline, setAddingTrustline] = useState(false);
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
-        if (!res.ok) {
-          setBalance('0');
-          return;
-        }
-        const data = await res.json();
-        const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
-        setBalance(xlm?.balance ?? '0');
+        const bals = await fetchAccountBalances(match.stealthAddress);
+        setBalances(bals);
       } catch {
-        setBalance('0');
+        setBalances({ xlm: '0', usdc: '0' });
       } finally {
         setLoadingBal(false);
       }
     })();
   }, [match.stealthAddress]);
+
+  const xlmNum = parseFloat(balances?.xlm ?? '0');
+  const usdcNum = parseFloat(balances?.usdc ?? '0');
+  const hasAnyBalance = xlmNum > 0 || usdcNum > 0;
+
+  const handleAddTrustline = async () => {
+    setError('');
+    setAddingTrustline(true);
+
+    try {
+      const horizonUrl = STELLAR_NETWORK.horizonUrl;
+      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+
+      const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      if (!res.ok) throw new Error('Account not found on network');
+      const accountData = await res.json();
+
+      const sourceAccount = new Account(match.stealthAddress, accountData.sequence);
+
+      const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
+        .addOperation(
+          Operation.changeTrust({
+            asset: toStellarSdkAsset('USDC'),
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      const txHash = tx.hash();
+      const signature = signStellarTransaction(
+        txHash,
+        match.stealthPrivateScalar,
+        match.stealthPubKeyBytes,
+      );
+      const signatureBase64 = Buffer.from(signature).toString('base64');
+      tx.addSignature(match.stealthAddress, signatureBase64);
+
+      const submitRes = await fetch(`${horizonUrl}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `tx=${encodeURIComponent(tx.toXDR())}`,
+      });
+
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) {
+        throw new Error(
+          submitData.extras?.result_codes?.transaction ||
+            submitData.title ||
+            'Failed to add trustline',
+        );
+      }
+
+      const bals = await fetchAccountBalances(match.stealthAddress);
+      setBalances(bals);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add trustline');
+    } finally {
+      setAddingTrustline(false);
+    }
+  };
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -186,23 +252,47 @@ function StellarStealthRow({
       if (!res.ok) throw new Error('Account not found');
       const account = await res.json();
 
-      const xlmBal = account.balances?.find(
-        (b: { asset_type: string }) => b.asset_type === 'native',
-      );
-      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+      let sendAmount: string;
 
-      const subentryCount = account.subentry_count ?? 0;
-      const reserve = (2 + subentryCount) * 0.5;
-      const sendableAmount = (parseFloat(xlmBal.balance) - reserve - 0.00001).toFixed(7);
-      if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
+      if (withdrawAsset === 'XLM') {
+        const xlmBal = account.balances?.find(
+          (b: { asset_type: string }) => b.asset_type === 'native',
+        );
+        if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
 
-      const sourceAccount = new Account(match.stealthAddress, account.sequence);
-      const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-        .addOperation(
-          Operation.payment({ destination: dest, asset: Asset.native(), amount: sendableAmount }),
-        )
-        .setTimeout(30)
-        .build();
+        const subentryCount = account.subentry_count ?? 0;
+        const { sendable, error: calcError } = computeSendableXlmAmount(
+          xlmBal.balance,
+          subentryCount,
+        );
+        if (calcError) throw new Error(calcError);
+        sendAmount = sendable;
+      } else {
+        const usdcConfig = STELLAR_ASSETS.USDC;
+        const usdcBal = account.balances?.find(
+          (b: { asset_code?: string; asset_issuer?: string }) =>
+            b.asset_code === usdcConfig.code && b.asset_issuer === usdcConfig.issuer,
+        );
+        if (!usdcBal || parseFloat(usdcBal.balance) === 0)
+          throw new Error(`No ${withdrawAsset} balance`);
+        sendAmount = usdcBal.balance;
+
+        const tl = await checkTrustline(dest, withdrawAsset);
+        if (!tl.hasTrustline) {
+          throw new Error(
+            `Destination has no ${withdrawAsset} trustline. ${trustlineLaboratoryUrl(withdrawAsset)}`,
+          );
+        }
+      }
+
+      const tx = buildPaymentTx({
+        sourceAddress: match.stealthAddress,
+        sequence: account.sequence,
+        destination: dest,
+        amount: sendAmount,
+        assetKey: withdrawAsset,
+        networkPassphrase,
+      });
 
       const txHash = tx.hash();
       const signature = signStellarTransaction(
@@ -254,21 +344,60 @@ function StellarStealthRow({
             <CopyButton text={match.stealthAddress} />
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        <div className="flex items-center gap-2">
           {loadingBal ? (
             <span className="font-mono text-xs text-outline">...</span>
-          ) : balance && parseFloat(balance) > 0 ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
-            </>
           ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
+            <>
+              <span
+                className={`inline-block h-1.5 w-1.5 ${xlmNum > 0 ? 'bg-tertiary' : 'bg-outline'}`}
+              ></span>
+              <span className="font-heading text-base font-bold text-on-surface">
+                {balances?.xlm ?? '0'} XLM
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {loadingBal ? (
+            <span className="font-mono text-xs text-outline">...</span>
+          ) : (
+            <>
+              <span
+                className={`inline-block h-1.5 w-1.5 ${usdcNum > 0 ? 'bg-tertiary' : 'bg-outline'}`}
+              ></span>
+              <span className="font-heading text-base font-bold text-on-surface">
+                {balances?.usdc ?? '0'} USDC
+              </span>
+            </>
           )}
         </div>
       </div>
 
-      {!withdrawHash && balance && parseFloat(balance) > 0 && (
+      {!loadingBal && withdrawAsset === 'USDC' && usdcNum === 0 && (
+        <div className="border border-outline-variant/50 bg-surface p-3">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-outline">
+            No USDC trustline
+          </span>
+          <p className="mt-1 font-body text-xs text-on-surface-variant">
+            This stealth address does not have a USDC trustline. Add one to receive and withdraw
+            USDC.
+          </p>
+          <button
+            onClick={handleAddTrustline}
+            disabled={addingTrustline}
+            className="mt-2 h-8 border border-outline-variant px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+          >
+            {addingTrustline ? 'Adding...' : 'Add USDC Trustline'}
+          </button>
+        </div>
+      )}
+
+      {!withdrawHash && hasAnyBalance && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Withdraw to
@@ -281,12 +410,28 @@ function StellarStealthRow({
               placeholder="Destination address (G...)"
               className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
             />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={withdrawAsset}
+              onChange={(e) => setWithdrawAsset(e.target.value as StellarAssetKey)}
+              className="h-10 w-24 border border-outline-variant bg-surface px-2 font-heading text-xs text-primary focus:border-primary"
+            >
+              {ASSET_KEYS.filter((key) => {
+                if (key === 'XLM') return xlmNum > 0;
+                return usdcNum > 0;
+              }).map((key) => (
+                <option key={key} value={key}>
+                  {STELLAR_ASSETS[key].label}
+                </option>
+              ))}
+            </select>
             <button
               onClick={handleWithdraw}
               disabled={!dest || withdrawing}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? '...' : 'Withdraw'}
+              {withdrawing ? '...' : `Withdraw ${STELLAR_ASSETS[withdrawAsset].label}`}
             </button>
           </div>
         </div>
@@ -298,7 +443,7 @@ function StellarStealthRow({
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
           <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
+            Withdrawn {'—'}{' '}
             <a
               href={stellarTxUrl(withdrawHash)}
               target="_blank"
@@ -512,7 +657,7 @@ export function StellarReceive() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive
@@ -528,7 +673,7 @@ export function StellarReceive() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Receive

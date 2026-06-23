@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   TransactionBuilder,
   Account,
@@ -6,8 +6,6 @@ import {
   xdr,
   nativeToScVal,
   Address,
-  Operation,
-  Asset,
 } from '@stellar/stellar-sdk';
 import {
   generateStealthAddress,
@@ -18,6 +16,16 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import {
+  ASSET_KEYS,
+  STELLAR_ASSETS,
+  type StellarAssetKey,
+  checkTrustline,
+  checkAccountExists,
+  buildPaymentTx,
+  buildCreateAccountTx,
+  trustlineLaboratoryUrl,
+} from '@/lib/stellar-assets';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
@@ -25,6 +33,7 @@ export function StellarSend() {
   const { address, isConnected, signTransaction } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [selectedAsset, setSelectedAsset] = useState<StellarAssetKey>('XLM');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
@@ -34,6 +43,50 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const [trustlineStatus, setTrustlineStatus] = useState<{
+    checking: boolean;
+    hasTrustline: boolean;
+    balance: string;
+  }>({ checking: false, hasTrustline: true, balance: '0' });
+
+  const isNonNative = selectedAsset !== 'XLM';
+
+  useEffect(() => {
+    if (!recipient || !recipient.startsWith('st:xlm:')) {
+      setTrustlineStatus({ checking: false, hasTrustline: true, balance: '0' });
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      setTrustlineStatus((s) => ({ ...s, checking: true }));
+      try {
+        const decoded = decodeStealthMetaAddress(recipient);
+        const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+
+        const exists = await checkAccountExists(result.stealthAddress);
+        if (!exists) {
+          setTrustlineStatus({ checking: false, hasTrustline: false, balance: '0' });
+          return;
+        }
+
+        const status = await checkTrustline(result.stealthAddress, selectedAsset);
+        if (!cancelled) {
+          setTrustlineStatus({ checking: false, ...status });
+        }
+      } catch {
+        if (!cancelled) {
+          setTrustlineStatus({ checking: false, hasTrustline: true, balance: '0' });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recipient, selectedAsset]);
 
   const handleSend = useCallback(async () => {
     if (!address) {
@@ -62,34 +115,51 @@ export function StellarSend() {
       const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
       if (!accountRes.ok) throw new Error('Failed to load sender account');
       const accountData = await accountRes.json();
-      const sourceAccount = new Account(address, accountData.sequence);
 
-      const stealthExists = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then(
-        (r) => r.ok,
-      );
+      const stealthExists = await checkAccountExists(result.stealthAddress);
 
       let classicTx;
-      if (stealthExists) {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.payment({
-              destination: result.stealthAddress,
-              asset: Asset.native(),
-              amount,
-            }),
-          )
-          .setTimeout(30)
-          .build();
+      if (selectedAsset === 'XLM') {
+        if (stealthExists) {
+          classicTx = buildPaymentTx({
+            sourceAddress: address,
+            sequence: accountData.sequence,
+            destination: result.stealthAddress,
+            amount,
+            assetKey: 'XLM',
+            networkPassphrase,
+          });
+        } else {
+          classicTx = buildCreateAccountTx({
+            sourceAddress: address,
+            sequence: accountData.sequence,
+            destination: result.stealthAddress,
+            startingBalance: amount,
+            networkPassphrase,
+          });
+        }
       } else {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.createAccount({
-              destination: result.stealthAddress,
-              startingBalance: amount,
-            }),
-          )
-          .setTimeout(30)
-          .build();
+        if (!stealthExists) {
+          throw new Error(
+            'Recipient stealth account does not exist. Send at least 2 XLM first to create the account, then send USDC.',
+          );
+        }
+
+        const tl = await checkTrustline(result.stealthAddress, selectedAsset);
+        if (!tl.hasTrustline) {
+          throw new Error(
+            `Recipient has no trustline for ${selectedAsset}. Ask them to add a trustline first.`,
+          );
+        }
+
+        classicTx = buildPaymentTx({
+          sourceAddress: address,
+          sequence: accountData.sequence,
+          destination: result.stealthAddress,
+          amount,
+          assetKey: selectedAsset,
+          networkPassphrase,
+        });
       }
 
       const signedXdr = await signTransaction(classicTx.toXDR());
@@ -109,7 +179,6 @@ export function StellarSend() {
 
       setTxHash(submitData.hash);
 
-      // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
@@ -147,7 +216,7 @@ export function StellarSend() {
           );
         }
       } catch {
-        // Announcement is best-effort — payment already succeeded
+        // Announcement is best-effort
       }
 
       setIsSuccess(true);
@@ -156,11 +225,12 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction]);
+  }, [address, recipient, amount, selectedAsset, signTransaction]);
 
   const reset = () => {
     setRecipient('');
     setAmount('');
+    setSelectedAsset('XLM');
     setStealthResult(null);
     setTxHash(null);
     setIsSuccess(false);
@@ -180,7 +250,7 @@ export function StellarSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
@@ -196,14 +266,14 @@ export function StellarSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          Send XLM or USDC privately using stealth addresses. The recipient gets funds at a fresh
+          address only they can control.
         </p>
       </div>
 
@@ -230,23 +300,63 @@ export function StellarSend() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
+          <div className="flex gap-3">
+            <div className="flex-1 flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Amount
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
+                  {selectedAsset}
+                </span>
+              </div>
+            </div>
+
+            <div className="w-28 flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Asset
+              </label>
+              <select
+                value={selectedAsset}
+                onChange={(e) => setSelectedAsset(e.target.value as StellarAssetKey)}
+                className="h-12 w-full border border-outline-variant bg-surface px-3 font-heading text-sm text-primary focus:border-primary"
+              >
+                {ASSET_KEYS.map((key) => (
+                  <option key={key} value={key}>
+                    {STELLAR_ASSETS[key].label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
+
+          {isNonNative && !trustlineStatus.checking && !trustlineStatus.hasTrustline && (
+            <div className="border border-yellow-500/30 bg-yellow-500/5 p-3">
+              <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-yellow-400">
+                Trustline Required
+              </p>
+              <p className="mt-1 font-body text-xs text-on-surface-variant">
+                The recipient stealth address does not have a{' '}
+                <span className="font-mono text-primary">{selectedAsset}</span> trustline. They must
+                add one before receiving this asset.{' '}
+                <a
+                  href={trustlineLaboratoryUrl(selectedAsset)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline"
+                >
+                  Add Trustline on Stellar Laboratory
+                </a>
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
@@ -267,10 +377,14 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={
+              !recipient || !amount || isPending || (isNonNative && !trustlineStatus.hasTrustline)
+            }
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending
+              ? 'Confirm in wallet...'
+              : `Send ${STELLAR_ASSETS[selectedAsset].label} Privately`}
           </button>
         </div>
       )}
@@ -304,6 +418,15 @@ export function StellarSend() {
                 </a>
                 <CopyButton text={stealthResult.stealthAddress} />
               </div>
+            </div>
+
+            <div>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Asset
+              </span>
+              <span className="ml-2 font-mono text-xs text-primary">
+                {STELLAR_ASSETS[selectedAsset].label}
+              </span>
             </div>
 
             {txHash && (
