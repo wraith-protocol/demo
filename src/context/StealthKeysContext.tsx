@@ -27,7 +27,7 @@ interface StealthKeysContextValue {
   clearCkb: () => void;
 }
 
-const StealthKeysContext = createContext<StealthKeysContextValue | null>(null);
+export const StealthKeysContext = createContext<StealthKeysContextValue | null>(null);
 
 export function StealthKeysProvider({ children }: { children: React.ReactNode }) {
   const [evmKeys, setEvmKeys] = useState<EVMStealthKeys | null>(null);
