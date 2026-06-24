@@ -7,19 +7,19 @@ const config: Config = {
     extend: {
       colors: {
         surface: {
-          DEFAULT: '#0e0e0e',
-          container: '#141414',
-          bright: '#1a1a1a',
+          DEFAULT: 'var(--color-surface)',
+          container: 'var(--color-surface-container)',
+          bright: 'var(--color-surface-bright)',
         },
-        primary: '#c6c6c7',
-        'on-surface': '#e6e1e5',
-        'on-surface-variant': '#c4c7c5',
+        primary: 'var(--color-primary)',
+        'on-surface': 'var(--color-on-surface)',
+        'on-surface-variant': 'var(--color-on-surface-variant)',
         outline: {
-          DEFAULT: '#767575',
-          variant: '#444444',
+          DEFAULT: 'var(--color-outline)',
+          variant: 'var(--color-outline-variant)',
         },
-        error: '#ee7d77',
-        tertiary: '#22c55e',
+        error: 'var(--color-error)',
+        tertiary: 'var(--color-tertiary)',
       },
       fontFamily: {
         heading: ['"Space Grotesk"', 'sans-serif'],

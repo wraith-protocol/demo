@@ -2,21 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Light theme (default) */
+  --color-surface: #ffffff;
+  --color-surface-container: #f5f5f5;
+  --color-surface-bright: #fafafa;
+  --color-primary: #1a1a1a;
+  --color-on-surface: #1a1a1a;
+  --color-on-surface-variant: #4a4a4a;
+  --color-outline: #6b6b6b;
+  --color-outline-variant: #e0e0e0;
+  --color-error: #d32f2f;
+  --color-tertiary: #2e7d32;
+  --color-selection-bg: #1a1a1a;
+  --color-selection-text: #ffffff;
+  --color-placeholder: #6b6b6b;
+  --color-scrollbar-track: #ffffff;
+  --color-scrollbar-thumb: #c0c0c0;
+}
+
+.dark {
+  /* Dark theme */
+  --color-surface: #0e0e0e;
+  --color-surface-container: #141414;
+  --color-surface-bright: #1a1a1a;
+  --color-primary: #c6c6c7;
+  --color-on-surface: #e6e1e5;
+  --color-on-surface-variant: #c4c7c5;
+  --color-outline: #767575;
+  --color-outline-variant: #444444;
+  --color-error: #ee7d77;
+  --color-tertiary: #22c55e;
+  --color-selection-bg: #c6c6c7;
+  --color-selection-text: #0e0e0e;
+  --color-placeholder: #767575;
+  --color-scrollbar-track: #0e0e0e;
+  --color-scrollbar-thumb: #444444;
+}
+
 body {
-  background-color: #0e0e0e;
-  color: #e6e1e5;
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
 }
 
 ::selection {
-  background-color: #c6c6c7;
-  color: #0e0e0e;
+  background-color: var(--color-selection-bg);
+  color: var(--color-selection-text);
 }
 
 input::placeholder {
-  color: #767575;
+  color: var(--color-placeholder);
 }
 
 input:focus {
@@ -29,18 +70,18 @@ input:focus {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0e0e0e;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #444444;
+  background: var(--color-scrollbar-thumb);
 }
 
 /* Solana Wallet Adapter overrides */
 .wallet-adapter-button {
   background-color: transparent !important;
-  border: 1px solid #444444 !important;
-  color: #c6c6c7 !important;
+  border: 1px solid var(--color-outline-variant) !important;
+  color: var(--color-primary) !important;
   font-family: 'Space Grotesk', sans-serif !important;
   font-size: 10px !important;
   text-transform: uppercase !important;
@@ -59,7 +100,7 @@ input:focus {
 }
 
 .wallet-adapter-button:hover {
-  background-color: #1a1a1a !important;
+  background-color: var(--color-surface-bright) !important;
 }
 
 .wallet-adapter-button-trigger {
@@ -67,28 +108,28 @@ input:focus {
 }
 
 .wallet-adapter-modal-wrapper {
-  background-color: #141414 !important;
-  border: 1px solid #444444 !important;
+  background-color: var(--color-surface-container) !important;
+  border: 1px solid var(--color-outline-variant) !important;
   border-radius: 0 !important;
-  color: #e6e1e5 !important;
+  color: var(--color-on-surface) !important;
 }
 
 .wallet-adapter-modal-title {
-  color: #e6e1e5 !important;
+  color: var(--color-on-surface) !important;
   font-family: 'Space Grotesk', sans-serif !important;
 }
 
 .wallet-adapter-modal-list li {
-  background-color: #0e0e0e !important;
+  background-color: var(--color-surface) !important;
   border-radius: 0 !important;
 }
 
 .wallet-adapter-modal-list li:hover {
-  background-color: #1a1a1a !important;
+  background-color: var(--color-surface-bright) !important;
 }
 
 .wallet-adapter-modal-list .wallet-adapter-button {
-  color: #e6e1e5 !important;
+  color: var(--color-on-surface) !important;
   border: none !important;
   height: auto !important;
   padding: 8px 12px !important;
@@ -99,11 +140,11 @@ input:focus {
 
 .wallet-adapter-modal-button-close {
   background-color: transparent !important;
-  color: #767575 !important;
+  color: var(--color-outline) !important;
 }
 
 .wallet-adapter-modal-overlay {
-  background-color: rgba(0, 0, 0, 0.7) !important;
+  background-color: rgba(0, 0, 0, 0.5) !important;
 }
 
 /* CCC Connector overrides - target the ccc-connector web component */
@@ -118,8 +159,8 @@ ccc-connector [class*='modal'],
 ccc-connector [class*='container'],
 ccc-connector [class*='content'],
 ccc-connector [class*='body'] {
-  background-color: #141414 !important;
-  color: #e6e1e5 !important;
+  background-color: var(--color-surface-container) !important;
+  color: var(--color-on-surface) !important;
 }
 
 ccc-connector [class*='wallet'],
@@ -127,15 +168,15 @@ ccc-connector [class*='item'],
 ccc-connector [class*='option'],
 ccc-connector button[class*='wallet'],
 ccc-connector div[class*='wallet'] {
-  background-color: #0e0e0e !important;
-  color: #e6e1e5 !important;
+  background-color: var(--color-surface) !important;
+  color: var(--color-on-surface) !important;
   border-radius: 0 !important;
 }
 
 ccc-connector [class*='wallet']:hover,
 ccc-connector [class*='item']:hover,
 ccc-connector [class*='option']:hover {
-  background-color: #1a1a1a !important;
+  background-color: var(--color-surface-bright) !important;
 }
 
 ccc-connector span,
@@ -145,7 +186,7 @@ ccc-connector h2,
 ccc-connector h3,
 ccc-connector label,
 ccc-connector div {
-  color: #e6e1e5 !important;
+  color: var(--color-on-surface) !important;
 }
 
 ccc-connector button {
