@@ -6,6 +6,7 @@ import { WalletConnect } from './WalletConnect';
 const navLinks = [
   { to: '/send', label: 'Send' },
   { to: '/receive', label: 'Receive' },
+  { to: '/split', label: 'Split' },
 ];
 
 export function Header() {

@@ -3,6 +3,7 @@ import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
+import Split from '@/pages/Split';
 
 export function App() {
   return (
@@ -13,6 +14,7 @@ export function App() {
         <Routes>
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
+          <Route path="/split" element={<Split />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>
