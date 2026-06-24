@@ -1,0 +1,15 @@
+onlyBuiltDependencies:
+  - bufferutil
+  - esbuild
+  - keccak
+  - utf-8-validate
+  - utf-8-validate@5.0.10
+  - utf-8-validate@6.0.6
+
+allowBuilds:
+  bufferutil: true
+  esbuild: true
+  keccak: true
+  utf-8-validate: true
+
+dangerouslyAllowAllBuilds: true

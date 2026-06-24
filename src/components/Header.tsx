@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
-
-const navLinks = [
-  { to: '/send', label: 'Send' },
-  { to: '/receive', label: 'Receive' },
-];
+import { LocaleSwitcher } from './LocaleSwitcher';
 
 export function Header() {
   const location = useLocation();
+  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navLinks = [
+    { to: '/send', label: t('nav.send') },
+    { to: '/receive', label: t('nav.receive') },
+  ];
 
   return (
     <header className="border-b border-outline-variant bg-surface">
@@ -44,12 +47,13 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          <LocaleSwitcher />
           <ChainSwitcher />
           <WalletConnect />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
-            aria-label="Menu"
+            aria-label={t('header.menuLabel')}
           >
             <svg
               className="h-4 w-4"

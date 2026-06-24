@@ -3,6 +3,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ccc } from '@ckb-ccc/connector-react';
+import { useTranslation } from 'react-i18next';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 
@@ -12,6 +13,7 @@ const btnConnected =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-mono text-[10px] text-primary transition-colors hover:bg-surface-bright sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
 
 function HorizenButton() {
+  const { t } = useTranslation();
   return (
     <ConnectButton.Custom>
       {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
@@ -25,7 +27,7 @@ function HorizenButton() {
           >
             {!connected ? (
               <button onClick={openConnectModal} className={btnBase}>
-                Connect Wallet
+                {t('walletConnect.connectWallet')}
               </button>
             ) : (
               <button onClick={openAccountModal} className={btnConnected}>
@@ -40,6 +42,7 @@ function HorizenButton() {
 }
 
 function FreighterButton() {
+  const { t } = useTranslation();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
 
   if (isConnected && address) {
@@ -52,7 +55,7 @@ function FreighterButton() {
 
   return (
     <button onClick={connect} className={btnBase}>
-      Connect Freighter
+      {t('walletConnect.connectFreighter')}
     </button>
   );
 }
@@ -73,6 +76,7 @@ function SolanaButton() {
 }
 
 function CkbButton() {
+  const { t } = useTranslation();
   const { open, wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const [address, setAddress] = useState<string>('');
@@ -95,7 +99,7 @@ function CkbButton() {
 
   return (
     <button onClick={open} className={btnBase}>
-      Connect Wallet
+      {t('walletConnect.connectWallet')}
     </button>
   );
 }

@@ -28,8 +28,11 @@
     "@wraith-protocol/sdk": "^1.4.5",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
+    "i18next": "^24.2.3",
+    "i18next-browser-languagedetector": "^8.0.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-i18next": "^15.5.1",
     "react-router-dom": "^7.6.0",
     "viem": "^2.23.0",
     "wagmi": "^2.14.0"

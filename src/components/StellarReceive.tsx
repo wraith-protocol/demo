@@ -19,6 +19,7 @@ import {
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
+import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
@@ -144,6 +145,7 @@ function StellarStealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
 }) {
+  const { t } = useTranslation();
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
@@ -222,14 +224,16 @@ function StellarStealthRow({
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+          submitData.extras?.result_codes?.transaction ||
+            submitData.title ||
+            t('common.transactionFailed'),
         );
       }
 
       setWithdrawHash(submitData.hash);
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setWithdrawing(false);
     }
@@ -240,7 +244,7 @@ function StellarStealthRow({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
+            {t('common.stealthAddress')}
           </span>
           <div className="mt-0.5 flex items-center gap-2">
             <a
@@ -263,7 +267,7 @@ function StellarStealthRow({
               <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
             </>
           ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
+            <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
           )}
         </div>
       </div>
@@ -271,7 +275,7 @@ function StellarStealthRow({
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
+            {t('common.withdrawTo')}
           </label>
           <div className="flex gap-2">
             <input
@@ -286,7 +290,7 @@ function StellarStealthRow({
               disabled={!dest || withdrawing}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? '...' : 'Withdraw'}
+              {withdrawing ? '...' : t('common.withdraw')}
             </button>
           </div>
         </div>
@@ -298,7 +302,7 @@ function StellarStealthRow({
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
           <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
+            {t('common.withdrawn')} —{' '}
             <a
               href={stellarTxUrl(withdrawHash)}
               target="_blank"
@@ -317,13 +321,13 @@ function StellarStealthRow({
             onClick={() => setShowKey(true)}
             className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
           >
-            Reveal secret key
+            {t('common.revealSecretKey')}
           </button>
         ) : (
           <div className="border border-error/20 bg-error/5 p-3">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
+                {t('common.stealthKey')}
               </span>
               <CopyButton text={scalarHex} />
             </div>
@@ -336,6 +340,7 @@ function StellarStealthRow({
 }
 
 export function StellarReceive() {
+  const { t } = useTranslation();
   const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
@@ -400,11 +405,11 @@ export function StellarReceive() {
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Key derivation failed');
+      setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setStellarKeys, setStellarMetaAddress]);
+  }, [signMessage, setStellarKeys, setStellarMetaAddress, t]);
 
   const registerOnChain = useCallback(async () => {
     if (!stellarKeys || !address) return;
@@ -502,23 +507,23 @@ export function StellarReceive() {
       setMatched(results);
       setHasScanned(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
       setIsScanning(false);
     }
-  }, [stellarKeys]);
+  }, [stellarKeys, t]);
 
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('stellar.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to scan for incoming stealth transfers on Stellar.
+          {t('stellar.receiveConnectPrompt')}
         </p>
       </section>
     );
@@ -528,13 +533,13 @@ export function StellarReceive() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('stellar.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Derive your stealth keys, register on-chain, then scan for payments.
+          {t('stellar.receiveDescription')}
         </p>
       </div>
 
@@ -545,7 +550,7 @@ export function StellarReceive() {
             disabled={isDerivingKeys}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
+            {isDerivingKeys ? t('common.signingInWallet') : t('common.deriveKeys')}
           </button>
           {error && <p className="text-sm text-error">{error}</p>}
         </div>
@@ -556,7 +561,7 @@ export function StellarReceive() {
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Your Stealth Meta-Address
+                {t('common.yourStealthMetaAddress')}
               </span>
               <CopyButton text={stellarMetaAddress} />
             </div>
@@ -567,13 +572,13 @@ export function StellarReceive() {
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              On-Chain Registration
+              {t('common.onChainRegistration')}
             </span>
             {registered ? (
               <div className="mt-3 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
                 <span className="font-mono text-xs text-on-surface-variant">
-                  Meta-address registered on-chain
+                  {t('common.metaAddressRegistered')}
                   {regHash && (
                     <>
                       {' — '}
@@ -592,14 +597,14 @@ export function StellarReceive() {
             ) : (
               <div className="mt-3">
                 <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-                  Register your meta-address so senders can look you up by wallet address.
+                  {t('common.registerMetaAddressHint')}
                 </p>
                 <button
                   onClick={registerOnChain}
                   disabled={isRegistering}
                   className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
-                  {isRegistering ? 'Registering...' : 'Register On-Chain'}
+                  {isRegistering ? t('common.registering') : t('common.registerOnChain')}
                 </button>
               </div>
             )}
@@ -611,11 +616,11 @@ export function StellarReceive() {
               disabled={isScanning}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
+              {isScanning ? t('common.scanning') : t('common.scanForPayments')}
             </button>
             {hasScanned && (
               <span className="font-mono text-xs text-on-surface-variant">
-                {matched.length} transfer{matched.length !== 1 ? 's' : ''} found
+                {t('common.transfersFound', { count: matched.length })}
               </span>
             )}
           </div>
@@ -633,10 +638,10 @@ export function StellarReceive() {
           {hasScanned && matched.length === 0 && (
             <div className="py-12 text-center">
               <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
+                {t('common.noTransfersFound')}
               </p>
               <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
+                {t('common.noTransfersMatchedKeys')}
               </p>
             </div>
           )}

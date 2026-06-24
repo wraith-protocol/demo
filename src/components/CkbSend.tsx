@@ -5,11 +5,13 @@ import {
   decodeStealthMetaAddress,
   getDeployment,
 } from '@wraith-protocol/sdk/chains/ckb';
+import { useTranslation } from 'react-i18next';
 import { CopyButton } from '@/components/CopyButton';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
 
 export function CkbSend() {
+  const { t } = useTranslation();
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const [recipient, setRecipient] = useState('');
@@ -24,7 +26,7 @@ export function CkbSend() {
 
   const handleSend = useCallback(async () => {
     if (!signer) {
-      setError('Connect your CKB wallet first');
+      setError(t('ckb.connectWalletFirst'));
       return;
     }
 
@@ -33,16 +35,14 @@ export function CkbSend() {
 
     try {
       if (!recipient.startsWith('st:ckb:')) {
-        setError('Enter a valid CKB meta-address (st:ckb:...)');
+        setError(t('ckb.validMetaAddressError'));
         setIsPending(false);
         return;
       }
 
       const parsed = parseFloat(amount);
       if (parsed < 95) {
-        setError(
-          'Minimum amount is 95 CKB. Stealth cells require at least ~94.5 CKB for cell capacity.',
-        );
+        setError(t('ckb.minAmountError'));
         setIsPending(false);
         return;
       }
@@ -73,11 +73,11 @@ export function CkbSend() {
       const hash = await signer.sendTransaction(tx);
       setTxHash(hash);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setIsPending(false);
     }
-  }, [signer, recipient, amount]);
+  }, [signer, recipient, amount, t]);
 
   const reset = () => {
     setRecipient('');
@@ -102,13 +102,13 @@ export function CkbSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          CKB Testnet / CKB
+          {t('ckb.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('ckb.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your CKB wallet to send stealth payments.
+          {t('ckb.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -118,14 +118,13 @@ export function CkbSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          CKB Testnet / CKB
+          {t('ckb.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('ckb.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send CKB privately using stealth addresses. The recipient gets funds at a fresh Cell only
-          they can unlock.
+          {t('ckb.sendDescription')}
         </p>
       </div>
 
@@ -133,28 +132,28 @@ export function CkbSend() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:ckb:..."
+                placeholder={t('ckb.recipientPlaceholder')}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
                 onClick={handlePaste}
                 className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
               >
-                Paste
+                {t('common.paste')}
               </button>
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount (min 95)
+              {t('ckb.amountLabel')}
             </label>
             <div className="relative">
               <input
@@ -173,15 +172,19 @@ export function CkbSend() {
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">~1000 shannons</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('ckb.networkFeeAmount')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Min cell capacity
+                {t('ckb.minCellCapacity')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">~94.5 CKB</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('ckb.minCellCapacityValue')}
+              </span>
             </div>
           </div>
 
@@ -192,7 +195,7 @@ export function CkbSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -202,14 +205,14 @@ export function CkbSend() {
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              Transfer Complete
+              {t('common.transferComplete')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Public Key
+                {t('ckb.stealthPublicKey')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <p className="truncate font-mono text-xs text-primary">
@@ -221,7 +224,7 @@ export function CkbSend() {
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Transaction Hash
+                {t('common.transactionHash')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <a
@@ -241,7 +244,7 @@ export function CkbSend() {
             onClick={reset}
             className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
           >
-            New Transfer
+            {t('common.newTransfer')}
           </button>
         </div>
       )}

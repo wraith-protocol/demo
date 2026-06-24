@@ -14,6 +14,7 @@ import {
   decodeStealthMetaAddress,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
+import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
@@ -22,6 +23,7 @@ import { CopyButton } from '@/components/CopyButton';
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
 export function StellarSend() {
+  const { t } = useTranslation();
   const { address, isConnected, signTransaction } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -37,7 +39,7 @@ export function StellarSend() {
 
   const handleSend = useCallback(async () => {
     if (!address) {
-      setError('Wallet not connected');
+      setError(t('common.walletNotConnected'));
       return;
     }
 
@@ -47,7 +49,7 @@ export function StellarSend() {
     try {
       const metaAddress = recipient;
       if (!metaAddress.startsWith('st:xlm:')) {
-        setError('Enter a valid Stellar meta-address (st:xlm:...)');
+        setError(t('stellar.validMetaAddressError'));
         setIsPending(false);
         return;
       }
@@ -103,7 +105,9 @@ export function StellarSend() {
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+          submitData.extras?.result_codes?.transaction ||
+            submitData.title ||
+            t('common.transactionFailed'),
         );
       }
 
@@ -152,11 +156,11 @@ export function StellarSend() {
 
       setIsSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction]);
+  }, [address, recipient, amount, signTransaction, t]);
 
   const reset = () => {
     setRecipient('');
@@ -180,13 +184,13 @@ export function StellarSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to send stealth payments on Stellar.
+          {t('stellar.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -196,14 +200,13 @@ export function StellarSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          {t('stellar.sendDescription')}
         </p>
       </div>
 
@@ -211,28 +214,28 @@ export function StellarSend() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:xlm:..."
+                placeholder={t('stellar.recipientPlaceholder')}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
                 onClick={handlePaste}
                 className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
               >
-                Paste
+                {t('common.paste')}
               </button>
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
             <div className="relative">
               <input
@@ -251,15 +254,19 @@ export function StellarSend() {
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.networkFeeAmount')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Announcer contract
+                {t('common.announcerContract')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.announcerContractName')}
+              </span>
             </div>
           </div>
 
@@ -270,7 +277,7 @@ export function StellarSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -284,14 +291,14 @@ export function StellarSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isSuccess ? t('common.transferComplete') : t('common.pending')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
+                {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <a
@@ -309,7 +316,7 @@ export function StellarSend() {
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
@@ -331,7 +338,7 @@ export function StellarSend() {
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
-              New Transfer
+              {t('common.newTransfer')}
             </button>
           )}
         </div>
