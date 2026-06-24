@@ -7,3 +7,4 @@ reference/
 package-lock.json
 playwright-report/
 test-results/
+public/mockServiceWorker.js
