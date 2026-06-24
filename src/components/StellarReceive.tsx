@@ -21,8 +21,11 @@ import {
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useActivity } from '@/context/ActivityContext';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { PrivacyBadge } from '@/components/PrivacyBadge';
+import { computePrivacyScore } from '@/lib/privacy-score';
 import { STELLAR_NETWORK } from '@/config';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
@@ -152,6 +155,7 @@ function StellarStealthRow({
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
 
+  const { upsert } = useActivity();
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
   useEffect(() => {
@@ -160,18 +164,31 @@ function StellarStealthRow({
         const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
         if (!res.ok) {
           setBalance('0');
+          upsert({
+            address: match.stealthAddress,
+            chain: 'stellar',
+            balance: '0',
+            scannedAt: Date.now(),
+          });
           return;
         }
         const data = await res.json();
         const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
-        setBalance(xlm?.balance ?? '0');
+        const bal = xlm?.balance ?? '0';
+        setBalance(bal);
+        upsert({
+          address: match.stealthAddress,
+          chain: 'stellar',
+          balance: bal,
+          scannedAt: Date.now(),
+        });
       } catch {
         setBalance('0');
       } finally {
         setLoadingBal(false);
       }
     })();
-  }, [match.stealthAddress]);
+  }, [match.stealthAddress, upsert]);
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -259,6 +276,13 @@ function StellarStealthRow({
             <span className="font-mono text-xs text-outline">...</span>
           ) : balance && parseFloat(balance) > 0 ? (
             <>
+              <PrivacyBadge
+                score={computePrivacyScore({
+                  reuseCount: 1,
+                  balance: balance ?? '0',
+                  transferTimestamps: [],
+                })}
+              />
               <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
               <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
             </>

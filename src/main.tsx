@@ -18,6 +18,7 @@ import { ccc } from '@ckb-ccc/connector-react';
 import { ChainProvider } from '@/context/ChainContext';
 import { StealthKeysProvider } from '@/context/StealthKeysContext';
 import { StellarWalletProvider } from '@/context/StellarWalletContext';
+import { ActivityProvider } from '@/context/ActivityContext';
 import { wagmiConfig } from '@/config';
 import { App } from './App';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -61,7 +62,9 @@ function Providers({ children }: { children: React.ReactNode }) {
                 >
                   <ChainProvider>
                     <StellarWalletProvider>
-                      <StealthKeysProvider>{children}</StealthKeysProvider>
+                      <StealthKeysProvider>
+                        <ActivityProvider>{children}</ActivityProvider>
+                      </StealthKeysProvider>
                     </StellarWalletProvider>
                   </ChainProvider>
                 </ccc.Provider>
