@@ -10,6 +10,7 @@ export interface StellarReceiveViewProps {
   isDerivingKeys: boolean;
   keysDerived: boolean;
   metaAddress: string | null;
+  vaultPanel?: ReactNode;
   registered: boolean;
   isRegistering: boolean;
   regHash: string | null;
@@ -43,6 +44,7 @@ export function StellarReceiveView({
   isDerivingKeys,
   keysDerived,
   metaAddress,
+  vaultPanel,
   registered,
   isRegistering,
   regHash,
@@ -110,6 +112,7 @@ export function StellarReceiveView({
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
           </button>
           {error && <p className="text-sm text-error">{error}</p>}
+          {vaultPanel}
         </div>
       )}
 
@@ -126,6 +129,8 @@ export function StellarReceiveView({
               {metaAddress}
             </code>
           </div>
+
+          {vaultPanel}
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">

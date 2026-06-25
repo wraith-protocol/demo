@@ -16,7 +16,10 @@ import {
   STEALTH_SIGNING_MESSAGE,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
-import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
+import type {
+  MatchedAnnouncement,
+  StealthKeys as StellarStealthKeys,
+} from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
@@ -25,6 +28,7 @@ import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { STELLAR_NETWORK } from '@/config';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
+import { KeyVault } from '@/vault';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -344,6 +348,11 @@ export function StellarReceive() {
   const [importConflicts, setImportConflicts] = useState<ImportResult['conflicts'] | null>(null);
   const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [vaultPassphrase, setVaultPassphrase] = useState('');
+  const [vaultMessage, setVaultMessage] = useState<string | null>(null);
+  const [vaultBusy, setVaultBusy] = useState<'idle' | 'unlocking' | 'saving' | 'locking'>('idle');
+  const [vaultSupported, setVaultSupported] = useState(false);
+  const vaultRef = useRef<KeyVault | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -441,6 +450,176 @@ export function StellarReceive() {
       setIsDerivingKeys(false);
     }
   }, [signMessage, setStellarKeys, setStellarMetaAddress]);
+
+  useEffect(() => {
+    try {
+      vaultRef.current = new KeyVault({
+        idleTimeoutMs: 2 * 60 * 1000,
+        lockOnBlur: true,
+      });
+      setVaultSupported(true);
+    } catch {
+      vaultRef.current = null;
+      setVaultSupported(false);
+    }
+
+    return () => {
+      void vaultRef.current?.lock();
+    };
+  }, []);
+
+  const saveKeysToVault = useCallback(async () => {
+    if (!stellarKeys) return;
+    if (!vaultRef.current) {
+      setVaultMessage('Browser vault is unavailable in this environment.');
+      return;
+    }
+    if (!vaultPassphrase) {
+      setVaultMessage('Enter a passphrase to save the keys.');
+      return;
+    }
+
+    setVaultBusy('saving');
+    setVaultMessage(null);
+
+    try {
+      await vaultRef.current.unlock(vaultPassphrase);
+      await vaultRef.current.put('stellar', stellarKeys);
+      setVaultMessage('Keys saved in the browser vault.');
+    } catch (err) {
+      setVaultMessage(err instanceof Error ? err.message : 'Failed to save vault keys');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, [stellarKeys, vaultPassphrase]);
+
+  const unlockKeysFromVault = useCallback(async () => {
+    if (!vaultRef.current) {
+      setVaultMessage('Browser vault is unavailable in this environment.');
+      return;
+    }
+    if (!vaultPassphrase) {
+      setVaultMessage('Enter a passphrase to unlock the vault.');
+      return;
+    }
+
+    setVaultBusy('unlocking');
+    setVaultMessage(null);
+
+    try {
+      await vaultRef.current.unlock(vaultPassphrase);
+      const savedKeys = await vaultRef.current.get<StellarStealthKeys>('stellar');
+      if (!savedKeys) {
+        throw new Error('No Stellar keys found in the vault');
+      }
+
+      setStellarKeys(savedKeys);
+      setStellarMetaAddress(
+        encodeStealthMetaAddress(savedKeys.spendingPubKey, savedKeys.viewingPubKey),
+      );
+      setVaultMessage('Keys restored from the browser vault.');
+    } catch (err) {
+      setVaultMessage(err instanceof Error ? err.message : 'Failed to unlock vault');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, [setStellarKeys, setStellarMetaAddress, vaultPassphrase]);
+
+  const lockVault = useCallback(async () => {
+    if (!vaultRef.current) return;
+    setVaultBusy('locking');
+    setVaultMessage(null);
+    try {
+      await vaultRef.current.lock();
+      setVaultMessage('Vault locked.');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, []);
+
+  const vaultPanel = useMemo(() => {
+    if (!vaultSupported) return null;
+
+    const busy = vaultBusy !== 'idle';
+    const title = stellarKeys ? 'Save to Browser Vault' : 'Unlock Browser Vault';
+    const description = stellarKeys
+      ? 'Store the derived Stellar keys encrypted in this browser for brief reuse.'
+      : 'Restore the last saved Stellar keys from this browser vault using your passphrase.';
+
+    return (
+      <div className="border border-outline-variant bg-surface-container p-5">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Browser Vault
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Opt-in
+            </span>
+          </div>
+          <p className="text-sm leading-relaxed text-on-surface-variant">{description}</p>
+          <p className="text-xs leading-relaxed text-on-surface-variant">
+            Not a replacement for a hardware wallet.
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Passphrase
+            </label>
+            <input
+              type="password"
+              value={vaultPassphrase}
+              onChange={(e) => setVaultPassphrase(e.target.value)}
+              placeholder="Unlock the vault"
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {stellarKeys ? (
+              <>
+                <button
+                  onClick={saveKeysToVault}
+                  disabled={busy || !vaultPassphrase}
+                  className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {vaultBusy === 'saving' ? 'Saving...' : title}
+                </button>
+                <button
+                  onClick={lockVault}
+                  disabled={busy}
+                  className="h-11 border border-outline-variant px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  {vaultBusy === 'locking' ? 'Locking...' : 'Lock Vault'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={unlockKeysFromVault}
+                disabled={busy || !vaultPassphrase}
+                className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              >
+                {vaultBusy === 'unlocking' ? 'Unlocking...' : title}
+              </button>
+            )}
+          </div>
+
+          {vaultMessage && <p className="text-xs text-on-surface-variant">{vaultMessage}</p>}
+        </div>
+      </div>
+    );
+  }, [
+    lockVault,
+    saveKeysToVault,
+    stellarKeys,
+    unlockKeysFromVault,
+    vaultBusy,
+    vaultMessage,
+    vaultPassphrase,
+    vaultSupported,
+  ]);
 
   const registerOnChain = useCallback(async () => {
     if (!stellarKeys || !address) return;
@@ -656,6 +835,7 @@ export function StellarReceive() {
         isDerivingKeys={isDerivingKeys}
         keysDerived={!!stellarKeys}
         metaAddress={stellarMetaAddress}
+        vaultPanel={vaultPanel}
         registered={registered}
         isRegistering={isRegistering}
         regHash={regHash}
