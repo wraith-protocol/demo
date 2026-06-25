@@ -4,3 +4,7 @@ dist/
 .env.*
 reference/
 *.local
+package-lock.json
+playwright-report/
+test-results/
+public/mockServiceWorker.js

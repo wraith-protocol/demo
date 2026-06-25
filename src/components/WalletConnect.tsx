@@ -6,11 +6,11 @@ import { ccc } from '@ckb-ccc/connector-react';
 import { useTranslation } from 'react-i18next';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-
-const btnBase =
-  'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
-const btnConnected =
-  'bg-transparent border border-outline-variant px-3 py-1.5 font-mono text-[10px] text-primary transition-colors hover:bg-surface-bright sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
+import {
+  FreighterConnectButton,
+  walletBtnBase as btnBase,
+  walletBtnConnected as btnConnected,
+} from '@/components/FreighterConnectButton';
 
 function HorizenButton() {
   const { t } = useTranslation();
@@ -44,19 +44,30 @@ function HorizenButton() {
 function FreighterButton() {
   const { t } = useTranslation();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  if (isConnected && address) {
-    return (
-      <button onClick={disconnect} className={btnConnected}>
-        {address.slice(0, 4)}...{address.slice(-4)}
-      </button>
-    );
-  }
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      await connect();
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const status =
+    isConnected && address ? 'connected' : isConnecting ? 'connecting' : 'disconnected';
 
   return (
     <button onClick={connect} className={btnBase}>
       {t('walletConnect.connectFreighter')}
     </button>
+    <FreighterConnectButton
+      status={status}
+      address={address}
+      onConnect={handleConnect}
+      onDisconnect={disconnect}
+    />
   );
 }
 

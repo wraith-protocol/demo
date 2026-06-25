@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   TransactionBuilder,
   Operation,
@@ -12,147 +12,59 @@ import {
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
-  scanAnnouncements,
   signStellarTransaction,
-  bytesToHex,
   STEALTH_SIGNING_MESSAGE,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
+import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { CopyButton } from '@/components/CopyButton';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { StellarMatchCard } from '@/components/StellarMatchCard';
+import { StellarReceiveView } from '@/components/StellarReceiveView';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { STELLAR_NETWORK } from '@/config';
+import { useActivityStore } from '@/stores/activityStore';
+import type { ImportResult } from '@/lib/stealthLabels';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
-async function fetchAnnouncementEvents(
-  rpcUrl: string,
-  contractId: string,
-): Promise<Announcement[]> {
-  const all: Announcement[] = [];
-
-  try {
-    let startLedger = 1;
-    const probeRes = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 0,
-        method: 'getEvents',
-        params: {
-          startLedger: 1,
-          filters: [{ type: 'contract', contractIds: [contractId] }],
-          pagination: { limit: 1 },
-        },
-      }),
-    });
-    const probeData = await probeRes.json();
-
-    if (probeData.error?.message) {
-      const match = probeData.error.message.match(/range:\s*(\d+)\s*-\s*(\d+)/);
-      if (match) {
-        const oldest = parseInt(match[1], 10);
-        const latest = parseInt(match[2], 10);
-        startLedger = Math.max(oldest, latest - 5000);
-      } else {
-        return all;
-      }
-    }
-
-    let cursor: string | undefined;
-    let hasMore = true;
-
-    while (hasMore) {
-      const params: Record<string, unknown> = {
-        filters: [{ type: 'contract', contractIds: [contractId] }],
-        pagination: { limit: 1000 },
-      };
-
-      if (cursor) {
-        (params.pagination as Record<string, unknown>).cursor = cursor;
-      } else {
-        params.startLedger = startLedger;
-      }
-
-      const res = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
-      });
-
-      const data = await res.json();
-      const events = data.result?.events ?? [];
-
-      for (const event of events) {
-        try {
-          const ann = parseAnnouncementEvent(event);
-          if (ann) all.push(ann);
-        } catch {
-          // Skip malformed
-        }
-      }
-
-      if (events.length < 1000) {
-        hasMore = false;
-      } else {
-        cursor = data.result?.cursor;
-        if (!cursor) hasMore = false;
-      }
-    }
-  } catch {
-    // Events API may not be available
-  }
-
-  return all;
-}
-
-function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
-  if (!topics || topics.length < 3) return null;
-
-  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
-  const schemeId = schemeIdScVal.u32();
-
-  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
-  const stealthScAddress = stealthScVal.address();
-  const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
-
-  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
-  const valueVec = valueScVal.vec();
-  if (!valueVec || valueVec.length < 3) return null;
-
-  const callerScAddress = valueVec[0].address();
-  const caller = Address.fromScAddress(callerScAddress).toString();
-
-  const ephBytes = valueVec[1].bytes();
-  const ephemeralPubKey = bytesToHex(new Uint8Array(ephBytes));
-
-  const metaBytes = valueVec[2].bytes();
-  const metadata = bytesToHex(new Uint8Array(metaBytes));
-
-  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
-}
-
-function StellarStealthRow({
+function StellarMatchCardContainer({
   match,
   onWithdrawn,
+  labelData,
+  onSaveLabel,
+  onHide,
+  onUnhide,
+  onTagClick,
+  showPrivacyWarning,
+  onDismissPrivacyWarning,
 }: {
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
+  labelData: { label: string; tags: string[]; hiddenAt?: number } | null;
+  onSaveLabel: (label: string, tags: string[]) => void;
+  onHide: () => void;
+  onUnhide: () => void;
+  onTagClick: (tag: string) => void;
+  showPrivacyWarning: boolean;
+  onDismissPrivacyWarning: () => void;
 }) {
   const { t } = useTranslation();
+  const { address, signTransaction } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
-  const [loadingBal, setLoadingBal] = useState(true);
+  const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [dest, setDest] = useState('');
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
+  const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
 
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
@@ -170,7 +82,7 @@ function StellarStealthRow({
       } catch {
         setBalance('0');
       } finally {
-        setLoadingBal(false);
+        setBalanceState('loaded');
       }
     })();
   }, [match.stealthAddress]);
@@ -193,9 +105,30 @@ function StellarStealthRow({
       );
       if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
 
+      const currentBalance = parseFloat(xlmBal.balance);
       const subentryCount = account.subentry_count ?? 0;
-      const reserve = (2 + subentryCount) * 0.5;
-      const sendableAmount = (parseFloat(xlmBal.balance) - reserve - 0.00001).toFixed(7);
+      const baseReserve = 0.5; // 0.5 XLM per base reserve
+      const minAccountReserve = (2 + subentryCount) * baseReserve;
+      const estimatedFee = 0.00001; // 100 stroops base fee
+      const feeBumpFee = 0.0001; // Additional fee for fee-bump envelope
+
+      // Check if we need sponsored withdrawal
+      // We need sponsorship if balance can't cover: amount + fee + reserve
+      // For simplicity, if balance < 2 XLM (base reserve + buffer), we'll use mergeAccount
+      const needsSponsor = currentBalance < minAccountReserve + estimatedFee + feeBumpFee;
+
+      if (needsSponsor && !address) {
+        throw new Error('Sponsored withdrawal requires connected wallet');
+      }
+
+      if (needsSponsor) {
+        setShowSponsorPrompt(true);
+        setWithdrawing(false);
+        return;
+      }
+
+      // Standard withdrawal (account can pay its own fees)
+      const sendableAmount = (currentBalance - minAccountReserve - estimatedFee).toFixed(7);
       if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
@@ -215,10 +148,24 @@ function StellarStealthRow({
       const signatureBase64 = Buffer.from(signature).toString('base64');
       tx.addSignature(match.stealthAddress, signatureBase64);
 
+      const txHashHex = Buffer.from(txHash).toString('hex');
+      const signedXdrStr = encodeURIComponent(tx.toXDR());
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address || '',
+        kind: 'withdrawal',
+        direction: 'out',
+        status: 'pending',
+        amount: sendableAmount,
+        recipient: dest,
+        timestamp: Date.now(),
+      });
+
       const submitRes = await fetch(`${horizonUrl}/transactions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(tx.toXDR())}`,
+        body: `tx=${signedXdrStr}`,
       });
 
       const submitData = await submitRes.json();
@@ -231,9 +178,112 @@ function StellarStealthRow({
       }
 
       setWithdrawHash(submitData.hash);
+      updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      // In a real robust implementation we'd check if we submitted and mark failed
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  const handleSponsoredWithdraw = async () => {
+    if (!dest || !address) return;
+    setError('');
+    setWithdrawing(true);
+    setShowSponsorPrompt(false);
+
+    try {
+      const horizonUrl = STELLAR_NETWORK.horizonUrl;
+      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+
+      // Fetch stealth account
+      const stealthRes = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      if (!stealthRes.ok) throw new Error('Stealth account not found');
+      const stealthAccount = await stealthRes.json();
+
+      const xlmBal = stealthAccount.balances?.find(
+        (b: { asset_type: string }) => b.asset_type === 'native',
+      );
+      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+
+      // Build inner transaction: mergeAccount to recover all XLM including base reserve
+      const stealthSourceAccount = new Account(match.stealthAddress, stealthAccount.sequence);
+      const innerTx = new TransactionBuilder(stealthSourceAccount, {
+        fee: '0', // Fee will be paid by outer fee-bump transaction
+        networkPassphrase,
+      })
+        .addOperation(
+          Operation.accountMerge({
+            destination: dest,
+          }),
+        )
+        .setTimeout(30)
+        .build();
+
+      // Sign inner transaction with stealth key
+      const innerTxHash = innerTx.hash();
+      const innerSignature = signStellarTransaction(
+        innerTxHash,
+        match.stealthPrivateScalar,
+        match.stealthPubKeyBytes,
+      );
+      const innerSignatureBase64 = Buffer.from(innerSignature).toString('base64');
+      innerTx.addSignature(match.stealthAddress, innerSignatureBase64);
+
+      // Fetch sponsor account for fee-bump
+      const sponsorRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      if (!sponsorRes.ok) throw new Error('Sponsor account not found');
+
+      // Build fee-bump transaction
+      // Fee-bump fee must be higher than inner tx fee (which is 0)
+      // Set to 1000 stroops (0.0001 XLM) to ensure it's accepted
+      const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
+        address, // fee source (sponsor)
+        '1000', // fee in stroops
+        innerTx,
+        networkPassphrase,
+      );
+
+      // Sign fee-bump with sponsor wallet (Freighter will prompt)
+      const feeBumpXdr = feeBumpTx.toXDR();
+      const signedFeeBumpXdr = await signTransaction(feeBumpXdr);
+
+      const txHashHex = feeBumpTx.hash().toString('hex');
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address || '',
+        kind: 'withdrawal',
+        direction: 'out',
+        status: 'pending',
+        recipient: dest,
+        timestamp: Date.now(),
+      });
+
+      // Submit fee-bump transaction
+      const submitRes = await fetch(`${horizonUrl}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `tx=${encodeURIComponent(signedFeeBumpXdr)}`,
+      });
+
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) {
+        throw new Error(
+          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+        );
+      }
+
+      // Fee-bump transactions return the outer hash
+      setFeeBumpHash(submitData.hash);
+      setWithdrawHash(submitData.hash); // For UI consistency
+      updateActivity(txHashHex, 'confirmed');
+      onWithdrawn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sponsored withdraw failed');
     } finally {
       setWithdrawing(false);
     }
@@ -336,6 +386,31 @@ function StellarStealthRow({
         )}
       </div>
     </div>
+    <StellarMatchCard
+      stealthAddress={match.stealthAddress}
+      scalarHex={scalarHex}
+      balance={balance}
+      balanceState={balanceState}
+      dest={dest}
+      withdrawing={withdrawing}
+      withdrawHash={withdrawHash}
+      feeBumpHash={feeBumpHash}
+      error={error}
+      showKey={showKey}
+      showSponsorPrompt={showSponsorPrompt}
+      onDestChange={setDest}
+      onWithdraw={handleWithdraw}
+      onSponsoredWithdraw={handleSponsoredWithdraw}
+      onCancelSponsor={() => setShowSponsorPrompt(false)}
+      onRevealKey={() => setShowKey(true)}
+      labelData={labelData}
+      onSaveLabel={onSaveLabel}
+      onHide={onHide}
+      onUnhide={onUnhide}
+      onTagClick={onTagClick}
+      showPrivacyWarning={showPrivacyWarning}
+      onDismissPrivacyWarning={onDismissPrivacyWarning}
+    />
   );
 }
 
@@ -344,16 +419,75 @@ export function StellarReceive() {
   const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
+  const workerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+    };
+  }, []);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [importConflicts, setImportConflicts] = useState<ImportResult['conflicts'] | null>(null);
+  const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    labels,
+    saveLabel,
+    hideAddress,
+    unhideAddress,
+    exportLabels,
+    importLabels,
+    shouldShowPrivacyWarning,
+    dismissPrivacyWarning,
+    getAllTags,
+  } = useStealthLabels(address);
+
+  const allTags = useMemo(() => getAllTags(), [getAllTags, labels]);
+
+  const filteredMatched = useMemo(() => {
+    return matched.filter((m) => {
+      const labelData = labels[m.stealthAddress];
+
+      if (!showHidden && labelData?.hiddenAt) return false;
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesLabel = labelData?.label?.toLowerCase().includes(q);
+        const matchesTag = labelData?.tags?.some((t) => t.toLowerCase().includes(q));
+        const matchesAddress = m.stealthAddress.toLowerCase().includes(q);
+        if (!matchesLabel && !matchesTag && !matchesAddress) return false;
+      }
+
+      if (activeTag) {
+        if (!labelData?.tags?.includes(activeTag)) return false;
+      }
+
+      return true;
+    });
+  }, [matched, labels, showHidden, searchQuery, activeTag]);
+
+  const hiddenCount = useMemo(() => {
+    return matched.filter((m) => labels[m.stealthAddress]?.hiddenAt).length;
+  }, [matched, labels]);
 
   // Check if already registered on-chain
   useEffect(() => {
@@ -458,8 +592,19 @@ export function StellarReceive() {
       );
 
       if (response.status === 'ERROR') throw new Error('Transaction submission failed');
+      const txHashHex = response.hash;
 
-      setRegHash(response.hash);
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address,
+        kind: 'name-registration',
+        direction: 'out',
+        status: 'pending',
+        timestamp: Date.now(),
+      });
+
+      setRegHash(txHashHex);
 
       let attempts = 0;
       while (attempts < 30) {
@@ -472,11 +617,15 @@ export function StellarReceive() {
           }
           if (result.status === 'SUCCESS') {
             setIsRegSuccess(true);
+            updateActivity(txHashHex, 'confirmed');
+          } else if (result.status === 'FAILED') {
+            updateActivity(txHashHex, 'failed');
           }
           break;
         } catch (pollErr: unknown) {
           if (pollErr instanceof Error && pollErr.message?.includes('Bad union switch')) {
             setIsRegSuccess(true);
+            updateActivity(txHashHex, 'confirmed');
             break;
           }
           throw pollErr;
@@ -493,22 +642,57 @@ export function StellarReceive() {
     if (!stellarKeys) return;
     setIsScanning(true);
     setError('');
+
     try {
-      const announcements = await fetchAnnouncementEvents(
-        STELLAR_NETWORK.rpcUrl,
-        ANNOUNCER_CONTRACT,
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+
+      workerRef.current = new Worker(
+        new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
+        { type: 'module' },
       );
-      const results = scanAnnouncements(
-        announcements,
-        stellarKeys.viewingKey,
-        stellarKeys.spendingPubKey,
-        stellarKeys.spendingScalar,
-      );
-      setMatched(results);
-      setHasScanned(true);
+      workerRef.current.onmessage = (e) => {
+        if (e.data.type === 'SUCCESS') {
+          const results = e.data.results;
+          setMatched(results);
+          
+          results.forEach((m: MatchedAnnouncement) => {
+            addActivity({
+              id: m.stealthAddress, // use address as unique id for receives
+              chain: 'stellar',
+              wallet: address || '',
+              kind: 'stealth-receive',
+              direction: 'in',
+              status: 'confirmed', // immediately confirmed since it's discovered
+              timestamp: Date.now(),
+            });
+          });
+
+          setHasScanned(true);
+          setIsScanning(false);
+        } else if (e.data.type === 'ERROR') {
+          setError(e.data.error);
+          setIsScanning(false);
+        }
+      };
+
+      workerRef.current.onerror = () => {
+        setError('Worker crashed');
+        setIsScanning(false);
+      };
+
+      workerRef.current.postMessage({
+        rpcUrl: STELLAR_NETWORK.rpcUrl,
+        announcerContract: ANNOUNCER_CONTRACT,
+        viewingKey: stellarKeys.viewingKey,
+        spendingPubKey: stellarKeys.spendingPubKey,
+        spendingScalar: stellarKeys.spendingScalar,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
+      setError(err instanceof Error ? err.message : 'Failed to start worker');
       setIsScanning(false);
     }
   }, [stellarKeys, t]);
@@ -628,9 +812,114 @@ export function StellarReceive() {
           {error && <p className="text-sm text-error">{error}</p>}
 
           {matched.length > 0 && (
+  const handleExport = () => {
+    const json = exportLabels();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `wraith-labels-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = ev.target?.result as string;
+        JSON.parse(json);
+        const result = importLabels(json, false);
+        if (result.conflicts.length > 0) {
+          setImportConflicts(result.conflicts);
+          setPendingImportJson(json);
+        } else {
+          setImportMessage(`Imported ${result.imported} label${result.imported !== 1 ? 's' : ''}.`);
+          setTimeout(() => setImportMessage(null), 3000);
+        }
+      } catch {
+        setImportMessage('Invalid JSON file.');
+        setTimeout(() => setImportMessage(null), 3000);
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleConflictResolve = (action: 'keep-all' | 'overwrite-all') => {
+    if (action === 'overwrite-all' && pendingImportJson) {
+      const result = importLabels(pendingImportJson, true);
+      setImportMessage(
+        `Imported ${result.imported} label${result.imported !== 1 ? 's' : ''} (overwritten).`,
+      );
+    } else {
+      setImportMessage('Kept existing labels.');
+    }
+    setImportConflicts(null);
+    setPendingImportJson(null);
+    setTimeout(() => setImportMessage(null), 3000);
+  };
+
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleImportFile}
+        className="hidden"
+      />
+      <StellarReceiveView
+        isConnected={isConnected}
+        isDerivingKeys={isDerivingKeys}
+        keysDerived={!!stellarKeys}
+        metaAddress={stellarMetaAddress}
+        registered={registered}
+        isRegistering={isRegistering}
+        regHash={regHash}
+        isScanning={isScanning}
+        hasScanned={hasScanned}
+        matchCount={matched.length}
+        error={error}
+        onDeriveKeys={deriveKeysFromWallet}
+        onRegister={registerOnChain}
+        onScan={scanPayments}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filteredMatchCount={filteredMatched.length}
+        activeTag={activeTag}
+        allTags={allTags}
+        onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
+        showHidden={showHidden}
+        hiddenCount={hiddenCount}
+        onToggleShowHidden={() => setShowHidden(!showHidden)}
+        onExport={handleExport}
+        onImport={() => fileInputRef.current?.click()}
+        importMessage={importMessage}
+        importConflicts={importConflicts}
+        onImportConflictResolve={handleConflictResolve}
+        onCloseImportModal={() => {
+          setImportConflicts(null);
+          setPendingImportJson(null);
+        }}
+        matches={
+          filteredMatched.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {matched.map((m, i) => (
-                <StellarStealthRow key={i} match={m} onWithdrawn={() => {}} />
+              {filteredMatched.map((m, i) => (
+                <StellarMatchCardContainer
+                  key={i}
+                  match={m}
+                  onWithdrawn={() => {}}
+                  labelData={labels[m.stealthAddress] ?? null}
+                  onSaveLabel={(label, tags) => saveLabel(m.stealthAddress, label, tags)}
+                  onHide={() => hideAddress(m.stealthAddress)}
+                  onUnhide={() => unhideAddress(m.stealthAddress)}
+                  onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
+                  showPrivacyWarning={shouldShowPrivacyWarning}
+                  onDismissPrivacyWarning={dismissPrivacyWarning}
+                />
               ))}
             </div>
           )}
@@ -648,5 +937,9 @@ export function StellarReceive() {
         </>
       )}
     </section>
+          ) : null
+        }
+      />
+    </>
   );
 }

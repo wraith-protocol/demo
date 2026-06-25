@@ -4,11 +4,19 @@ import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
 import { LocaleSwitcher } from './LocaleSwitcher';
+import { useTheme } from '@/context/ThemeContext';
+
+const navLinks = [
+  { to: '/send', label: 'Send' },
+  { to: '/receive', label: 'Receive' },
+  { to: '/vault', label: 'Vault' },
+];
 
 export function Header() {
   const location = useLocation();
   const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const navLinks = [
     { to: '/send', label: t('nav.send') },
@@ -48,6 +56,34 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           <LocaleSwitcher />
+          <button
+            onClick={toggleTheme}
+            className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant"
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M8 1v2M8 13v2M3 8h2M11 8h2M4.5 4.5l1.4 1.4M10.1 10.1l1.4 1.4M4.5 11.5l1.4-1.4M10.1 5.9l1.4-1.4M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+              </svg>
+            ) : (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M12 9a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" />
+                <path d="M10 2a6 6 0 0 0-6 6" />
+              </svg>
+            )}
+          </button>
           <ChainSwitcher />
           <WalletConnect />
           <button
