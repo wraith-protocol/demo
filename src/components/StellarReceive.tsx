@@ -22,6 +22,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
@@ -318,6 +319,7 @@ export function StellarReceive() {
     useStealthKeys();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const notifications = useStellarNotifications();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -435,12 +437,21 @@ export function StellarReceive() {
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
+      
+      // Auto-register viewing key for notifications if enabled
+      if (notifications.state.enabled && address && derived) {
+        try {
+          await notifications.registerViewingKey(address, derived);
+        } catch (err) {
+          console.error('Failed to register viewing key for notifications:', err);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Key derivation failed');
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setStellarKeys, setStellarMetaAddress]);
+  }, [signMessage, setStellarKeys, setStellarMetaAddress, notifications.state.enabled, address, notifications]);
 
   const registerOnChain = useCallback(async () => {
     if (!stellarKeys || !address) return;
@@ -642,6 +653,29 @@ export function StellarReceive() {
     setTimeout(() => setImportMessage(null), 3000);
   };
 
+  const handleToggleNotifications = useCallback(async () => {
+    if (notifications.state.enabled) {
+      await notifications.disableNotifications();
+      if (address) {
+        await notifications.unregisterViewingKey(address);
+      }
+    } else {
+      await notifications.enableNotifications();
+      if (address && stellarKeys) {
+        await notifications.registerViewingKey(address, stellarKeys);
+      }
+    }
+  }, [notifications, address, stellarKeys]);
+
+  const handleFireTestNotification = useCallback(async () => {
+    try {
+      await notifications.fireTestNotification();
+    } catch (err) {
+      console.error('Failed to fire test notification:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
+    }
+  }, [notifications]);
+
   return (
     <>
       <input
@@ -684,12 +718,17 @@ export function StellarReceive() {
           setImportConflicts(null);
           setPendingImportJson(null);
         }}
+        notificationsEnabled={notifications.state.enabled}
+        notificationsSupported={notifications.state.supported}
+        notificationsPermission={notifications.state.permission}
+        onToggleNotifications={handleToggleNotifications}
+        onFireTestNotification={handleFireTestNotification}
         matches={
           filteredMatched.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {filteredMatched.map((m, i) => (
+              {filteredMatched.map((m) => (
                 <StellarMatchCardContainer
-                  key={i}
+                  key={m.stealthAddress}
                   match={m}
                   onWithdrawn={() => {}}
                   labelData={labels[m.stealthAddress] ?? null}
