@@ -3,7 +3,13 @@ export const walletBtnBase =
 export const walletBtnConnected =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-mono text-[10px] text-primary transition-colors hover:bg-surface-bright sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
 
-export type FreighterStatus = 'disconnected' | 'connecting' | 'connected' | 'mismatch';
+export type FreighterStatus =
+  | 'checking'
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'mismatch'
+  | 'not-installed';
 
 interface FreighterConnectButtonProps {
   status: FreighterStatus;
@@ -18,6 +24,27 @@ export function FreighterConnectButton({
   onConnect,
   onDisconnect,
 }: FreighterConnectButtonProps) {
+  if (status === 'checking') {
+    return (
+      <button disabled className={walletBtnBase}>
+        ...
+      </button>
+    );
+  }
+
+  if (status === 'not-installed') {
+    return (
+      <a
+        href="https://freighter.app"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={walletBtnBase}
+      >
+        Install Freighter
+      </a>
+    );
+  }
+
   if (status === 'connected' && address) {
     return (
       <button onClick={onDisconnect} className={walletBtnConnected}>

@@ -4,10 +4,13 @@ import { StellarWalletContext } from '@/context/StellarWalletContext';
 interface StellarWalletOverrides {
   address?: string | null;
   isConnected?: boolean;
+  isInstalled?: boolean | null;
+  isNetworkMismatch?: boolean;
   connect?: () => Promise<void>;
   disconnect?: () => void;
   signMessage?: (message: string) => Promise<Uint8Array>;
   signTransaction?: (xdr: string) => Promise<string>;
+  subscribeToDisconnect?: (cb: () => void) => () => void;
 }
 
 /**
@@ -20,10 +23,13 @@ export function withStellarWallet(overrides: StellarWalletOverrides = {}): Decor
   const value = {
     address,
     isConnected: overrides.isConnected ?? address !== null,
+    isInstalled: overrides.isInstalled !== undefined ? overrides.isInstalled : true,
+    isNetworkMismatch: overrides.isNetworkMismatch ?? false,
     connect: overrides.connect ?? (async () => {}),
     disconnect: overrides.disconnect ?? (() => {}),
     signMessage: overrides.signMessage ?? (async () => new Uint8Array(64)),
     signTransaction: overrides.signTransaction ?? (async () => ''),
+    subscribeToDisconnect: overrides.subscribeToDisconnect ?? ((_cb: () => void) => () => {}),
   };
   return function StellarWalletDecorator(Story) {
     return (
