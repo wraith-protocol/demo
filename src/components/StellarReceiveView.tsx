@@ -19,6 +19,7 @@ export interface StellarReceiveViewProps {
   matchCount: number;
   matches: ReactNode;
   error: string;
+  retryStatus?: string;
   onDeriveKeys: () => void;
   onRegister: () => void;
   onScan: () => void;
@@ -59,6 +60,7 @@ export function StellarReceiveView({
   matchCount,
   matches,
   error,
+  retryStatus = '',
   onDeriveKeys,
   onRegister,
   onScan,
@@ -122,6 +124,7 @@ export function StellarReceiveView({
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
           </button>
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
           {vaultPanel}
         </div>
@@ -253,6 +256,7 @@ export function StellarReceiveView({
             )}
           </div>
 
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           {/* Search, filter, and toolbar */}

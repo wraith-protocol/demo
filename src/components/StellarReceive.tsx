@@ -27,6 +27,7 @@ import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
+import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
 import { KeyVault } from '@/vault';
@@ -65,6 +66,7 @@ function StellarMatchCardContainer({
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
 
@@ -73,7 +75,12 @@ function StellarMatchCardContainer({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
+        const res = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`,
+          {},
+          { onRetry: (attempt) => setRetryStatus(`Retrying (${attempt}/3)…`) },
+        );
+        setRetryStatus('');
         if (!res.ok) {
           setBalance('0');
           return;
@@ -82,6 +89,7 @@ function StellarMatchCardContainer({
         const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
         setBalance(xlm?.balance ?? '0');
       } catch {
+        setRetryStatus('');
         setBalance('0');
       } finally {
         setBalanceState('loaded');
@@ -92,13 +100,21 @@ function StellarMatchCardContainer({
   const handleWithdraw = async () => {
     if (!dest) return;
     setError('');
+    setRetryStatus('');
     setWithdrawing(true);
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const res = await fetchWithRetry(
+        `${horizonUrl}/accounts/${match.stealthAddress}`,
+        {},
+        { onRetry },
+      );
+      setRetryStatus('');
       if (!res.ok) throw new Error('Account not found');
       const account = await res.json();
 
@@ -181,8 +197,10 @@ function StellarMatchCardContainer({
       updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
-      // In a real robust implementation we'd check if we submitted and mark failed
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Withdraw failed',
+      );
     } finally {
       setWithdrawing(false);
     }
@@ -191,15 +209,22 @@ function StellarMatchCardContainer({
   const handleSponsoredWithdraw = async () => {
     if (!dest || !address) return;
     setError('');
+    setRetryStatus('');
     setWithdrawing(true);
     setShowSponsorPrompt(false);
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      // Fetch stealth account
-      const stealthRes = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const stealthRes = await fetchWithRetry(
+        `${horizonUrl}/accounts/${match.stealthAddress}`,
+        {},
+        { onRetry },
+      );
+      setRetryStatus('');
       if (!stealthRes.ok) throw new Error('Stealth account not found');
       const stealthAccount = await stealthRes.json();
 
@@ -233,7 +258,8 @@ function StellarMatchCardContainer({
       innerTx.addSignature(match.stealthAddress, innerSignatureBase64);
 
       // Fetch sponsor account for fee-bump
-      const sponsorRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const sponsorRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+      setRetryStatus('');
       if (!sponsorRes.ok) throw new Error('Sponsor account not found');
 
       // Build fee-bump transaction
@@ -282,7 +308,10 @@ function StellarMatchCardContainer({
       updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sponsored withdraw failed');
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Sponsored withdraw failed',
+      );
     } finally {
       setWithdrawing(false);
     }
@@ -299,6 +328,7 @@ function StellarMatchCardContainer({
       withdrawHash={withdrawHash}
       feeBumpHash={feeBumpHash}
       error={error}
+      retryStatus={retryStatus}
       showKey={showKey}
       showSponsorPrompt={showSponsorPrompt}
       onDestChange={setDest}
@@ -339,6 +369,7 @@ export function StellarReceive() {
   }, []);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
@@ -407,7 +438,9 @@ export function StellarReceive() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-        const accountResponse = await soroban.getAccount(address);
+        const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
+        const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry });
+        setRetryStatus('');
         const sourceAccount = new Account(
           accountResponse.accountId(),
           accountResponse.sequenceNumber(),
@@ -425,11 +458,13 @@ export function StellarReceive() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(tx);
+        const simulated = await withRetry(() => soroban.simulateTransaction(tx), { onRetry });
+        setRetryStatus('');
         if (!('error' in simulated) && 'result' in simulated) {
           setIsAlreadyRegistered(true);
         }
       } catch {
+        setRetryStatus('');
         // Not registered or contract not available
       }
     })();
@@ -636,12 +671,15 @@ export function StellarReceive() {
     if (!stellarKeys || !address) return;
     setIsRegistering(true);
     setError('');
+    setRetryStatus('');
+    const onRetryReg = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
       const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountResponse = await soroban.getAccount(address);
+      const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry: onRetryReg });
+      setRetryStatus('');
       const sourceAccount = new Account(
         accountResponse.accountId(),
         accountResponse.sequenceNumber(),
@@ -664,7 +702,8 @@ export function StellarReceive() {
         .setTimeout(30)
         .build();
 
-      const simulated = await soroban.simulateTransaction(tx);
+      const simulated = await withRetry(() => soroban.simulateTransaction(tx), { onRetry: onRetryReg });
+      setRetryStatus('');
       if ('error' in simulated) {
         throw new Error((simulated as { error: string }).error || 'Simulation failed');
       }
@@ -719,7 +758,10 @@ export function StellarReceive() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Registration failed',
+      );
     } finally {
       setIsRegistering(false);
     }
@@ -877,6 +919,7 @@ export function StellarReceive() {
         hasScanned={hasScanned}
         matchCount={matched.length}
         error={error}
+        retryStatus={retryStatus}
         onDeriveKeys={deriveKeysFromWallet}
         onRegister={registerOnChain}
         onScan={scanPayments}
