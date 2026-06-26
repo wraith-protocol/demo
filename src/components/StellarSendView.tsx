@@ -19,6 +19,7 @@ export interface StellarSendViewProps {
   simulationReturnValue: string | null;
   simulationEvents: string[];
   error: string;
+  retryStatus?: string;
   canSubmit: boolean;
   isPending: boolean;
   stealthResult: { stealthAddress: string } | null;
@@ -60,6 +61,7 @@ export function StellarSendView({
   simulationReturnValue,
   simulationEvents,
   error,
+  retryStatus = '',
   canSubmit,
   isPending,
   stealthResult,
@@ -312,6 +314,7 @@ export function StellarSendView({
             <p className="text-sm text-error">{simulationError}</p>
           )}
 
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           <button
