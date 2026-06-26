@@ -10,6 +10,7 @@ export interface StellarReceiveViewProps {
   isDerivingKeys: boolean;
   keysDerived: boolean;
   metaAddress: string | null;
+  vaultPanel?: ReactNode;
   registered: boolean;
   isRegistering: boolean;
   regHash: string | null;
@@ -18,6 +19,7 @@ export interface StellarReceiveViewProps {
   matchCount: number;
   matches: ReactNode;
   error: string;
+  retryStatus?: string;
   onDeriveKeys: () => void;
   onRegister: () => void;
   onScan: () => void;
@@ -36,6 +38,12 @@ export interface StellarReceiveViewProps {
   importConflicts?: ImportResult['conflicts'] | null;
   onImportConflictResolve?: (action: 'keep-all' | 'overwrite-all') => void;
   onCloseImportModal?: () => void;
+  // Notification props
+  notificationsEnabled?: boolean;
+  notificationsSupported?: boolean;
+  notificationsPermission?: NotificationPermission;
+  onToggleNotifications?: () => void;
+  onFireTestNotification?: () => void;
 }
 
 export function StellarReceiveView({
@@ -43,6 +51,7 @@ export function StellarReceiveView({
   isDerivingKeys,
   keysDerived,
   metaAddress,
+  vaultPanel,
   registered,
   isRegistering,
   regHash,
@@ -51,6 +60,7 @@ export function StellarReceiveView({
   matchCount,
   matches,
   error,
+  retryStatus = '',
   onDeriveKeys,
   onRegister,
   onScan,
@@ -69,6 +79,11 @@ export function StellarReceiveView({
   importConflicts,
   onImportConflictResolve,
   onCloseImportModal,
+  notificationsEnabled,
+  notificationsSupported,
+  notificationsPermission,
+  onToggleNotifications,
+  onFireTestNotification,
 }: StellarReceiveViewProps) {
   if (!isConnected) {
     return (
@@ -109,7 +124,9 @@ export function StellarReceiveView({
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
           </button>
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
+          {vaultPanel}
         </div>
       )}
 
@@ -126,6 +143,8 @@ export function StellarReceiveView({
               {metaAddress}
             </code>
           </div>
+
+          {vaultPanel}
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -169,6 +188,59 @@ export function StellarReceiveView({
 
           <StellarPaymentLink metaAddress={metaAddress} />
 
+          {/* Notification Settings */}
+          {notificationsSupported && (
+            <div className="border border-outline-variant bg-surface-container p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Background Notifications
+                </span>
+                <button
+                  onClick={onToggleNotifications}
+                  disabled={!notificationsSupported}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    notificationsEnabled ? 'bg-primary' : 'bg-outline-variant'
+                  } disabled:opacity-30`}
+                >
+                  <span
+                    className={`absolute top-1 h-4 w-4 rounded-full bg-surface transition-transform ${
+                      notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              {notificationsEnabled ? (
+                <div className="space-y-3">
+                  <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+                    Receive notifications when new stealth payments are detected, even when the tab is closed.
+                  </p>
+                  <div className="rounded bg-surface-container-high p-3">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-outline mb-2">
+                      Privacy Disclosure
+                    </p>
+                    <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
+                      Your viewing key is stored encrypted in IndexedDB using your wallet-derived key. 
+                      The service worker periodically scans for new payments and shows notifications. 
+                      You can disable this feature at any time.
+                    </p>
+                  </div>
+                  {notificationsPermission === 'granted' && onFireTestNotification && (
+                    <button
+                      onClick={onFireTestNotification}
+                      className="h-9 w-full border border-outline-variant font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                    >
+                      Test Notification
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+                  Enable notifications to receive alerts about incoming stealth payments even when the tab is closed.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <button
               onClick={onScan}
@@ -184,6 +256,7 @@ export function StellarReceiveView({
             )}
           </div>
 
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           {/* Search, filter, and toolbar */}

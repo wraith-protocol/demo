@@ -10,6 +10,7 @@ import {
   FreighterConnectButton,
   walletBtnBase as btnBase,
   walletBtnConnected as btnConnected,
+  type FreighterStatus,
 } from '@/components/FreighterConnectButton';
 
 function HorizenButton() {
@@ -44,6 +45,8 @@ function HorizenButton() {
 function FreighterButton() {
   const { t } = useTranslation();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const { address, isConnected, isInstalled, isNetworkMismatch, connect, disconnect } =
+    useStellarWallet();
   const [isConnecting, setIsConnecting] = useState(false);
 
   const handleConnect = async () => {
@@ -55,8 +58,18 @@ function FreighterButton() {
     }
   };
 
-  const status =
-    isConnected && address ? 'connected' : isConnecting ? 'connecting' : 'disconnected';
+  const status: FreighterStatus =
+    isInstalled === null
+      ? 'checking'
+      : !isInstalled
+        ? 'not-installed'
+        : isNetworkMismatch
+          ? 'mismatch'
+          : isConnected && address
+            ? 'connected'
+            : isConnecting
+              ? 'connecting'
+              : 'disconnected';
 
   return (
     <button onClick={connect} className={btnBase}>

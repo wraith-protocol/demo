@@ -7,6 +7,8 @@ Supports two chains:
 - **Horizen** (EVM) — wagmi + RainbowKit
 - **Stellar** — Freighter wallet
 
+See [docs/vault.md](docs/vault.md) for the browser vault threat model and usage notes.
+
 ## Setup
 
 ```bash

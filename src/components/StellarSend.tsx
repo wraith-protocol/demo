@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   TransactionBuilder,
@@ -14,7 +14,6 @@ import {
 import {
   generateStealthAddress,
   decodeStealthMetaAddress,
-  resolveName,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +21,12 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 import { StellarSendView } from '@/components/StellarSendView';
 import { useActivityStore } from '@/stores/activityStore';
+import {
+  emptyStellarSendSimulation,
+  simulateStellarSendAnnouncement,
+  type StellarSendSimulationState,
+} from '@/lib/stellarSimulation';
+import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -91,6 +96,10 @@ export function StellarSend() {
   const [balanceLookupError, setBalanceLookupError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
+  const [retryStatus, setRetryStatus] = useState('');
+  const [simulation, setSimulation] = useState<StellarSendSimulationState>(
+    emptyStellarSendSimulation(),
+  );
 
   useEffect(() => {
     if (paramExp) {
@@ -109,53 +118,7 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [resolvedMetaAddress, setResolvedMetaAddress] = useState<string | null>(null);
-  const [isResolvingName, setIsResolvingName] = useState(false);
-  const [resolveError, setResolveError] = useState<string | null>(null);
-  const resolveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const isMetaAddress = recipient.startsWith('st:xlm:');
-  const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
-  const isWraithName = !isMetaAddress && cleanedName.length >= 3 && cleanedName.length <= 32 && /^[a-z0-9]+$/.test(cleanedName);
-
-  useEffect(() => {
-    if (resolveTimeoutRef.current) {
-      clearTimeout(resolveTimeoutRef.current);
-    }
-
-    if (!isWraithName) {
-      setResolvedMetaAddress(null);
-      setResolveError(null);
-      return;
-    }
-
-    setIsResolvingName(true);
-    setResolveError(null);
-
-    resolveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const metaAddress = await resolveName(cleanedName);
-        if (metaAddress === null) {
-          setResolveError('Name not registered on Stellar testnet');
-          setResolvedMetaAddress(null);
-        } else {
-          setResolvedMetaAddress(metaAddress);
-          setResolveError(null);
-        }
-      } catch (err) {
-        setResolveError('Failed to resolve name');
-        setResolvedMetaAddress(null);
-      } finally {
-        setIsResolvingName(false);
-      }
-    }, 300);
-
-    return () => {
-      if (resolveTimeoutRef.current) {
-        clearTimeout(resolveTimeoutRef.current);
-      }
-    };
-  }, [isWraithName, cleanedName]);
+  const simulationTimeoutRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   const metaAddress = recipient.trim();
   const amountValue = amount.trim();
@@ -183,6 +146,56 @@ export function StellarSend() {
     !isExpired;
 
   useEffect(() => {
+    if (simulationTimeoutRef.current) {
+      globalThis.clearTimeout(simulationTimeoutRef.current);
+    }
+
+    if (!address || !metaAddress || validationError || isPending || isExpired) {
+      setSimulation(emptyStellarSendSimulation());
+      return;
+    }
+
+    setSimulation({ status: 'loading', error: '', fee: null, returnValue: null, events: [] });
+
+    simulationTimeoutRef.current = globalThis.setTimeout(async () => {
+      try {
+        const result = await simulateStellarSendAnnouncement(
+          { address, recipient: metaAddress },
+          { onRetry: (attempt, _, err) => {
+              const msg = err instanceof Error ? err.message : '';
+              setRetryStatus(`Retrying (${attempt}/3)…${msg ? ` (${msg})` : ''}`);
+            },
+          },
+        );
+        setRetryStatus('');
+        setSimulation({
+          status: 'success',
+          error: '',
+          fee: result.fee,
+          returnValue: result.returnValue,
+          events: result.events,
+        });
+      } catch (err) {
+        setRetryStatus('');
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSimulation({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Simulation failed',
+          fee: null,
+          returnValue: null,
+          events: [],
+        });
+      }
+    }, 500);
+
+    return () => {
+      if (simulationTimeoutRef.current) {
+        globalThis.clearTimeout(simulationTimeoutRef.current);
+      }
+    };
+  }, [address, metaAddress, validationError, isPending, isExpired]);
+
+  useEffect(() => {
     setSourceBalance(null);
     setBalanceLookupError('');
 
@@ -196,9 +209,15 @@ export function StellarSend() {
       setIsBalanceLoading(true);
 
       try {
-        const accountRes = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${address}`, {
-          signal: controller.signal,
-        });
+        const accountRes = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${address}`,
+          { signal: controller.signal },
+          {
+            signal: controller.signal,
+            onRetry: (attempt) => setRetryStatus(`Retrying (${attempt}/3)…`),
+          },
+        );
+        setRetryStatus('');
         if (!accountRes.ok) throw new Error('Failed to load sender account');
 
         const accountData = (await accountRes.json()) as HorizonAccount;
@@ -208,8 +227,15 @@ export function StellarSend() {
 
         setSourceBalance(parsedBalance);
       } catch (err) {
+        setRetryStatus('');
         if (!controller.signal.aborted) {
-          setBalanceLookupError(err instanceof Error ? err.message : 'Failed to check XLM balance');
+          setBalanceLookupError(
+            err instanceof RetryExhaustedError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : 'Failed to check XLM balance',
+          );
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -220,7 +246,7 @@ export function StellarSend() {
 
     return () => {
       controller.abort();
-      window.clearTimeout(timeout);
+      globalThis.clearTimeout(timeout);
     };
   }, [address, amountError, amountValue]);
 
@@ -240,7 +266,10 @@ export function StellarSend() {
 
     setError('');
     setIsPending(true);
+    setRetryStatus('');
     let txHashHex = '';
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
       const metaAddress = recipient;
@@ -257,14 +286,25 @@ export function StellarSend() {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+      setRetryStatus('');
       if (!accountRes.ok) throw new Error('Failed to load sender account');
       const accountData = (await accountRes.json()) as HorizonAccount;
       const sourceAccount = new Account(address, accountData.sequence);
 
-      const stealthExists = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then(
-        (r) => r.ok,
-      );
+      let stealthExists = false;
+      try {
+        const stealthCheckRes = await fetchWithRetry(
+          `${horizonUrl}/accounts/${result.stealthAddress}`,
+          {},
+          { onRetry },
+        );
+        stealthExists = stealthCheckRes.ok;
+      } catch {
+        // Transient network error on existence check — assume not created yet
+      } finally {
+        setRetryStatus('');
+      }
 
       let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
 
@@ -332,7 +372,8 @@ export function StellarSend() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const announcerContract = new Contract(ANNOUNCER_CONTRACT);
 
-        const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
+        const freshRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+        setRetryStatus('');
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
@@ -349,7 +390,8 @@ export function StellarSend() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(announceTx);
+        const simulated = await withRetry(() => soroban.simulateTransaction(announceTx), { onRetry });
+        setRetryStatus('');
         if (!('error' in simulated)) {
           const assembled = rpcMod
             .assembleTransaction(
@@ -365,6 +407,8 @@ export function StellarSend() {
         }
       } catch {
         // Announcement is best-effort — payment already succeeded
+      } finally {
+        setRetryStatus('');
       }
 
       setIsSuccess(true);
@@ -375,12 +419,9 @@ export function StellarSend() {
       setIsPending(false);
     }
   }, [address, recipient, amount, signTransaction, t]);
+      setRetryStatus('');
       if (txHashHex) updateActivity(txHashHex, 'failed');
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Transaction failed');
-      }
+      setError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {
       setIsPending(false);
     }
@@ -595,8 +636,16 @@ export function StellarSend() {
       amountInvalid={!!(amountError || balanceLookupError || balanceError)}
       balanceText={balanceText}
       balanceIsError={!!(balanceLookupError || balanceError)}
+      simulationStatus={simulation.status}
+      simulationError={simulation.status === 'error' ? simulation.error : ''}
+      simulationFee={simulation.status === 'success' ? simulation.fee : null}
+      simulationReturnValue={
+        simulation.status === 'success' ? simulation.returnValue : null
+      }
+      simulationEvents={simulation.status === 'success' ? simulation.events : []}
       error={error}
-      canSubmit={canSubmit}
+      retryStatus={retryStatus}
+      canSubmit={canSubmit && simulation.status === 'success'}
       isPending={isPending}
       stealthResult={stealthResult}
       txHash={txHash}

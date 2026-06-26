@@ -19,14 +19,21 @@ import {
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
+import type {
+  MatchedAnnouncement,
+  StealthKeys as StellarStealthKeys,
+} from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
+import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
+import { KeyVault } from '@/vault';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -63,6 +70,7 @@ function StellarMatchCardContainer({
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
 
@@ -71,7 +79,12 @@ function StellarMatchCardContainer({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`);
+        const res = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`,
+          {},
+          { onRetry: (attempt) => setRetryStatus(`Retrying (${attempt}/3)…`) },
+        );
+        setRetryStatus('');
         if (!res.ok) {
           setBalance('0');
           return;
@@ -80,6 +93,7 @@ function StellarMatchCardContainer({
         const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
         setBalance(xlm?.balance ?? '0');
       } catch {
+        setRetryStatus('');
         setBalance('0');
       } finally {
         setBalanceState('loaded');
@@ -90,13 +104,21 @@ function StellarMatchCardContainer({
   const handleWithdraw = async () => {
     if (!dest) return;
     setError('');
+    setRetryStatus('');
     setWithdrawing(true);
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const res = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const res = await fetchWithRetry(
+        `${horizonUrl}/accounts/${match.stealthAddress}`,
+        {},
+        { onRetry },
+      );
+      setRetryStatus('');
       if (!res.ok) throw new Error('Account not found');
       const account = await res.json();
 
@@ -184,6 +206,10 @@ function StellarMatchCardContainer({
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
       setError(err instanceof Error ? err.message : 'Withdraw failed');
       // In a real robust implementation we'd check if we submitted and mark failed
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Withdraw failed',
+      );
     } finally {
       setWithdrawing(false);
     }
@@ -192,15 +218,22 @@ function StellarMatchCardContainer({
   const handleSponsoredWithdraw = async () => {
     if (!dest || !address) return;
     setError('');
+    setRetryStatus('');
     setWithdrawing(true);
     setShowSponsorPrompt(false);
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      // Fetch stealth account
-      const stealthRes = await fetch(`${horizonUrl}/accounts/${match.stealthAddress}`);
+      const stealthRes = await fetchWithRetry(
+        `${horizonUrl}/accounts/${match.stealthAddress}`,
+        {},
+        { onRetry },
+      );
+      setRetryStatus('');
       if (!stealthRes.ok) throw new Error('Stealth account not found');
       const stealthAccount = await stealthRes.json();
 
@@ -234,7 +267,8 @@ function StellarMatchCardContainer({
       innerTx.addSignature(match.stealthAddress, innerSignatureBase64);
 
       // Fetch sponsor account for fee-bump
-      const sponsorRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const sponsorRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+      setRetryStatus('');
       if (!sponsorRes.ok) throw new Error('Sponsor account not found');
 
       // Build fee-bump transaction
@@ -283,7 +317,10 @@ function StellarMatchCardContainer({
       updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sponsored withdraw failed');
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Sponsored withdraw failed',
+      );
     } finally {
       setWithdrawing(false);
     }
@@ -396,6 +433,7 @@ function StellarMatchCardContainer({
       withdrawHash={withdrawHash}
       feeBumpHash={feeBumpHash}
       error={error}
+      retryStatus={retryStatus}
       showKey={showKey}
       showSponsorPrompt={showSponsorPrompt}
       onDestChange={setDest}
@@ -421,6 +459,7 @@ export function StellarReceive() {
     useStealthKeys();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const notifications = useStellarNotifications();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -436,6 +475,7 @@ export function StellarReceive() {
   }, []);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [retryStatus, setRetryStatus] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
@@ -447,6 +487,11 @@ export function StellarReceive() {
   const [importConflicts, setImportConflicts] = useState<ImportResult['conflicts'] | null>(null);
   const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [vaultPassphrase, setVaultPassphrase] = useState('');
+  const [vaultMessage, setVaultMessage] = useState<string | null>(null);
+  const [vaultBusy, setVaultBusy] = useState<'idle' | 'unlocking' | 'saving' | 'locking'>('idle');
+  const [vaultSupported, setVaultSupported] = useState(false);
+  const vaultRef = useRef<KeyVault | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -499,7 +544,9 @@ export function StellarReceive() {
         const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-        const accountResponse = await soroban.getAccount(address);
+        const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
+        const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry });
+        setRetryStatus('');
         const sourceAccount = new Account(
           accountResponse.accountId(),
           accountResponse.sequenceNumber(),
@@ -517,11 +564,13 @@ export function StellarReceive() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(tx);
+        const simulated = await withRetry(() => soroban.simulateTransaction(tx), { onRetry });
+        setRetryStatus('');
         if (!('error' in simulated) && 'result' in simulated) {
           setIsAlreadyRegistered(true);
         }
       } catch {
+        setRetryStatus('');
         // Not registered or contract not available
       }
     })();
@@ -538,23 +587,206 @@ export function StellarReceive() {
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
+      
+      // Auto-register viewing key for notifications if enabled
+      if (notifications.state.enabled && address && derived) {
+        try {
+          await notifications.registerViewingKey(address, derived);
+        } catch (err) {
+          console.error('Failed to register viewing key for notifications:', err);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
       setIsDerivingKeys(false);
     }
   }, [signMessage, setStellarKeys, setStellarMetaAddress, t]);
+  }, [signMessage, setStellarKeys, setStellarMetaAddress, notifications.state.enabled, address, notifications]);
+
+  useEffect(() => {
+    try {
+      vaultRef.current = new KeyVault({
+        idleTimeoutMs: 2 * 60 * 1000,
+        lockOnBlur: true,
+      });
+      setVaultSupported(true);
+    } catch {
+      vaultRef.current = null;
+      setVaultSupported(false);
+    }
+
+    return () => {
+      void vaultRef.current?.lock();
+    };
+  }, []);
+
+  const saveKeysToVault = useCallback(async () => {
+    if (!stellarKeys) return;
+    if (!vaultRef.current) {
+      setVaultMessage('Browser vault is unavailable in this environment.');
+      return;
+    }
+    if (!vaultPassphrase) {
+      setVaultMessage('Enter a passphrase to save the keys.');
+      return;
+    }
+
+    setVaultBusy('saving');
+    setVaultMessage(null);
+
+    try {
+      await vaultRef.current.unlock(vaultPassphrase);
+      await vaultRef.current.put('stellar', stellarKeys);
+      setVaultMessage('Keys saved in the browser vault.');
+    } catch (err) {
+      setVaultMessage(err instanceof Error ? err.message : 'Failed to save vault keys');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, [stellarKeys, vaultPassphrase]);
+
+  const unlockKeysFromVault = useCallback(async () => {
+    if (!vaultRef.current) {
+      setVaultMessage('Browser vault is unavailable in this environment.');
+      return;
+    }
+    if (!vaultPassphrase) {
+      setVaultMessage('Enter a passphrase to unlock the vault.');
+      return;
+    }
+
+    setVaultBusy('unlocking');
+    setVaultMessage(null);
+
+    try {
+      await vaultRef.current.unlock(vaultPassphrase);
+      const savedKeys = await vaultRef.current.get<StellarStealthKeys>('stellar');
+      if (!savedKeys) {
+        throw new Error('No Stellar keys found in the vault');
+      }
+
+      setStellarKeys(savedKeys);
+      setStellarMetaAddress(
+        encodeStealthMetaAddress(savedKeys.spendingPubKey, savedKeys.viewingPubKey),
+      );
+      setVaultMessage('Keys restored from the browser vault.');
+    } catch (err) {
+      setVaultMessage(err instanceof Error ? err.message : 'Failed to unlock vault');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, [setStellarKeys, setStellarMetaAddress, vaultPassphrase]);
+
+  const lockVault = useCallback(async () => {
+    if (!vaultRef.current) return;
+    setVaultBusy('locking');
+    setVaultMessage(null);
+    try {
+      await vaultRef.current.lock();
+      setVaultMessage('Vault locked.');
+    } finally {
+      setVaultBusy('idle');
+    }
+  }, []);
+
+  const vaultPanel = useMemo(() => {
+    if (!vaultSupported) return null;
+
+    const busy = vaultBusy !== 'idle';
+    const title = stellarKeys ? 'Save to Browser Vault' : 'Unlock Browser Vault';
+    const description = stellarKeys
+      ? 'Store the derived Stellar keys encrypted in this browser for brief reuse.'
+      : 'Restore the last saved Stellar keys from this browser vault using your passphrase.';
+
+    return (
+      <div className="border border-outline-variant bg-surface-container p-5">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Browser Vault
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Opt-in
+            </span>
+          </div>
+          <p className="text-sm leading-relaxed text-on-surface-variant">{description}</p>
+          <p className="text-xs leading-relaxed text-on-surface-variant">
+            Not a replacement for a hardware wallet.
+          </p>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Passphrase
+            </label>
+            <input
+              type="password"
+              value={vaultPassphrase}
+              onChange={(e) => setVaultPassphrase(e.target.value)}
+              placeholder="Unlock the vault"
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {stellarKeys ? (
+              <>
+                <button
+                  onClick={saveKeysToVault}
+                  disabled={busy || !vaultPassphrase}
+                  className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {vaultBusy === 'saving' ? 'Saving...' : title}
+                </button>
+                <button
+                  onClick={lockVault}
+                  disabled={busy}
+                  className="h-11 border border-outline-variant px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  {vaultBusy === 'locking' ? 'Locking...' : 'Lock Vault'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={unlockKeysFromVault}
+                disabled={busy || !vaultPassphrase}
+                className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              >
+                {vaultBusy === 'unlocking' ? 'Unlocking...' : title}
+              </button>
+            )}
+          </div>
+
+          {vaultMessage && <p className="text-xs text-on-surface-variant">{vaultMessage}</p>}
+        </div>
+      </div>
+    );
+  }, [
+    lockVault,
+    saveKeysToVault,
+    stellarKeys,
+    unlockKeysFromVault,
+    vaultBusy,
+    vaultMessage,
+    vaultPassphrase,
+    vaultSupported,
+  ]);
 
   const registerOnChain = useCallback(async () => {
     if (!stellarKeys || !address) return;
     setIsRegistering(true);
     setError('');
+    setRetryStatus('');
+    const onRetryReg = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
       const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountResponse = await soroban.getAccount(address);
+      const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry: onRetryReg });
+      setRetryStatus('');
       const sourceAccount = new Account(
         accountResponse.accountId(),
         accountResponse.sequenceNumber(),
@@ -577,7 +809,8 @@ export function StellarReceive() {
         .setTimeout(30)
         .build();
 
-      const simulated = await soroban.simulateTransaction(tx);
+      const simulated = await withRetry(() => soroban.simulateTransaction(tx), { onRetry: onRetryReg });
+      setRetryStatus('');
       if ('error' in simulated) {
         throw new Error((simulated as { error: string }).error || 'Simulation failed');
       }
@@ -632,7 +865,10 @@ export function StellarReceive() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setRetryStatus('');
+      setError(
+        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Registration failed',
+      );
     } finally {
       setIsRegistering(false);
     }
@@ -862,6 +1098,29 @@ export function StellarReceive() {
     setTimeout(() => setImportMessage(null), 3000);
   };
 
+  const handleToggleNotifications = useCallback(async () => {
+    if (notifications.state.enabled) {
+      await notifications.disableNotifications();
+      if (address) {
+        await notifications.unregisterViewingKey(address);
+      }
+    } else {
+      await notifications.enableNotifications();
+      if (address && stellarKeys) {
+        await notifications.registerViewingKey(address, stellarKeys);
+      }
+    }
+  }, [notifications, address, stellarKeys]);
+
+  const handleFireTestNotification = useCallback(async () => {
+    try {
+      await notifications.fireTestNotification();
+    } catch (err) {
+      console.error('Failed to fire test notification:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
+    }
+  }, [notifications]);
+
   return (
     <>
       <input
@@ -876,6 +1135,7 @@ export function StellarReceive() {
         isDerivingKeys={isDerivingKeys}
         keysDerived={!!stellarKeys}
         metaAddress={stellarMetaAddress}
+        vaultPanel={vaultPanel}
         registered={registered}
         isRegistering={isRegistering}
         regHash={regHash}
@@ -883,6 +1143,7 @@ export function StellarReceive() {
         hasScanned={hasScanned}
         matchCount={matched.length}
         error={error}
+        retryStatus={retryStatus}
         onDeriveKeys={deriveKeysFromWallet}
         onRegister={registerOnChain}
         onScan={scanPayments}
@@ -904,12 +1165,17 @@ export function StellarReceive() {
           setImportConflicts(null);
           setPendingImportJson(null);
         }}
+        notificationsEnabled={notifications.state.enabled}
+        notificationsSupported={notifications.state.supported}
+        notificationsPermission={notifications.state.permission}
+        onToggleNotifications={handleToggleNotifications}
+        onFireTestNotification={handleFireTestNotification}
         matches={
           filteredMatched.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {filteredMatched.map((m, i) => (
+              {filteredMatched.map((m) => (
                 <StellarMatchCardContainer
-                  key={i}
+                  key={m.stealthAddress}
                   match={m}
                   onWithdrawn={() => {}}
                   labelData={labels[m.stealthAddress] ?? null}

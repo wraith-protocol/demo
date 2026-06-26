@@ -12,7 +12,13 @@ export interface StellarSendViewProps {
   amountInvalid: boolean;
   balanceText: string;
   balanceIsError: boolean;
+  simulationStatus: 'idle' | 'loading' | 'success' | 'error';
+  simulationError: string;
+  simulationFee: string | null;
+  simulationReturnValue: string | null;
+  simulationEvents: string[];
   error: string;
+  retryStatus?: string;
   canSubmit: boolean;
   isPending: boolean;
   stealthResult: { stealthAddress: string } | null;
@@ -45,7 +51,13 @@ export function StellarSendView({
   amountInvalid,
   balanceText,
   balanceIsError,
+  simulationStatus,
+  simulationError,
+  simulationFee,
+  simulationReturnValue,
+  simulationEvents,
   error,
+  retryStatus = '',
   canSubmit,
   isPending,
   stealthResult,
@@ -205,6 +217,70 @@ export function StellarSendView({
             </div>
           </div>
 
+          {simulationStatus === 'loading' && (
+            <div className="border border-outline-variant bg-surface-container p-4">
+              <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                Predicted transfer
+              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">Simulating Soroban pre-flight...</p>
+            </div>
+          )}
+
+          {simulationStatus === 'success' && simulationFee && simulationReturnValue !== null && (
+            <div className="border border-outline-variant bg-surface-container p-4">
+              <div className="flex items-center justify-between gap-4">
+                <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                  Predicted transfer
+                </p>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Predicted
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted fee
+                  </span>
+                  <span className="text-right font-mono text-xs text-on-surface-variant">
+                    {simulationFee}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted return value
+                  </span>
+                  <span className="max-w-[65%] text-right font-mono text-xs text-on-surface-variant">
+                    {simulationReturnValue}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted contract events
+                  </span>
+                  {simulationEvents.length > 0 ? (
+                    <ul className="flex flex-col gap-1">
+                      {simulationEvents.map((event, index) => (
+                        <li
+                          key={`${event}-${index}`}
+                          className="border-l border-outline-variant pl-3 font-mono text-xs text-on-surface-variant"
+                        >
+                          {event}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="font-mono text-xs text-on-surface-variant">None</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {simulationStatus === 'error' && simulationError && (
+            <p className="text-sm text-error">{simulationError}</p>
+          )}
+
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           <button
@@ -226,7 +302,7 @@ export function StellarSendView({
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isSuccess ? 'Final Transfer' : 'Pending Transfer'}
             </span>
           </div>
 
@@ -251,7 +327,7 @@ export function StellarSendView({
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  Final Transaction Hash
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
