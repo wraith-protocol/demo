@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   TransactionBuilder,
   Operation,
@@ -24,6 +24,7 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
+import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
@@ -535,6 +536,7 @@ export function StellarReceive() {
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const workerRef = useRef<Worker | null>(null);
 
@@ -660,7 +662,7 @@ export function StellarReceive() {
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
-      
+
       // Auto-register viewing key for notifications if enabled
       if (notifications.state.enabled && address && derived) {
         try {
@@ -674,7 +676,14 @@ export function StellarReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setStellarKeys, setStellarMetaAddress, notifications.state.enabled, address, notifications]);
+  }, [
+    signMessage,
+    setStellarKeys,
+    setStellarMetaAddress,
+    notifications.state.enabled,
+    address,
+    notifications,
+  ]);
 
   useEffect(() => {
     try {
@@ -975,7 +984,7 @@ export function StellarReceive() {
         if (e.data.type === 'SUCCESS') {
           const results = e.data.results;
           setMatched(results);
-          
+
           results.forEach((m: MatchedAnnouncement) => {
             addActivity({
               id: m.stealthAddress, // use address as unique id for receives
@@ -1101,6 +1110,7 @@ export function StellarReceive() {
         isDerivingKeys={isDerivingKeys}
         keysDerived={!!stellarKeys}
         metaAddress={stellarMetaAddress}
+        onShowQR={() => setShowQRModal(true)}
         vaultPanel={vaultPanel}
         registered={registered}
         isRegistering={isRegistering}
@@ -1157,6 +1167,9 @@ export function StellarReceive() {
           ) : null
         }
       />
+      {showQRModal && stellarMetaAddress && (
+        <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
+      )}
     </>
   );
 }
