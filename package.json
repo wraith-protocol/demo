@@ -30,6 +30,8 @@
     "@stellar/freighter-api": "^3.1.0",
     "@stellar/stellar-sdk": "^13.1.0",
     "@tanstack/react-query": "^5.64.0",
+    "@walletconnect/core": "^2.23.10",
+    "@walletconnect/sign-client": "^2.23.10",
     "@wraith-protocol/sdk": "^1.4.5",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",

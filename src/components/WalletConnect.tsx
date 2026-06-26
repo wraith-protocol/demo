@@ -5,9 +5,10 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ccc } from '@ckb-ccc/connector-react';
 import { useTranslation } from 'react-i18next';
 import { useChain } from '@/context/ChainContext';
-import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useStellarWallet as useStellarWalletContext } from '@/context/StellarWalletContext';
+import { useStellarWallet as useStellarWalletHook } from '@/hooks/useStellarWallet';
+import { StellarWalletPicker } from '@/components/StellarWalletPicker';
 import {
-  FreighterConnectButton,
   walletBtnBase as btnBase,
   walletBtnConnected as btnConnected,
   type FreighterStatus,
@@ -42,6 +43,9 @@ function HorizenButton() {
   );
 }
 
+function StellarButton() {
+  const stellarWallet = useStellarWalletHook();
+  const { address, isConnected, connect } = useStellarWalletContext();
 function FreighterButton() {
   const { t } = useTranslation();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
@@ -81,6 +85,20 @@ function FreighterButton() {
       onConnect={handleConnect}
       onDisconnect={disconnect}
     />
+    <>
+      <button
+        onClick={handleConnect}
+        disabled={isConnecting}
+        className={status === 'connected' ? btnConnected : btnBase}
+      >
+        {status === 'connected' && address
+          ? `${address.slice(0, 4)}...${address.slice(-4)}`
+          : isConnecting
+          ? 'Connecting...'
+          : 'Connect Wallet'}
+      </button>
+      <StellarWalletPicker state={stellarWallet} />
+    </>
   );
 }
 
@@ -131,7 +149,7 @@ function CkbButton() {
 export function WalletConnect() {
   const { chain } = useChain();
 
-  if (chain === 'stellar') return <FreighterButton />;
+  if (chain === 'stellar') return <StellarButton />;
   if (chain === 'solana') return <SolanaButton />;
   if (chain === 'ckb') return <CkbButton />;
   return <HorizenButton />;

@@ -7,9 +7,11 @@ onlyBuiltDependencies:
   - utf-8-validate@6.0.6
 
 allowBuilds:
+  '@swc/core': set this to true or false
   bufferutil: true
   esbuild: true
   keccak: true
+  msw: set this to true or false
   utf-8-validate: true
 
 dangerouslyAllowAllBuilds: true
