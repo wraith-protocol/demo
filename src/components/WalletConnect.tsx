@@ -5,11 +5,12 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ccc } from '@ckb-ccc/connector-react';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-
-const btnBase =
-  'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
-const btnConnected =
-  'bg-transparent border border-outline-variant px-3 py-1.5 font-mono text-[10px] text-primary transition-colors hover:bg-surface-bright sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
+import {
+  FreighterConnectButton,
+  walletBtnBase as btnBase,
+  walletBtnConnected as btnConnected,
+  type FreighterStatus,
+} from '@/components/FreighterConnectButton';
 
 function HorizenButton() {
   return (
@@ -42,14 +43,31 @@ function HorizenButton() {
 function FreighterButton() {
   const { address, isConnected, connect, disconnect } = useStellarWallet();
   const [error, setError] = useState<string | null>(null);
+  const { address, isConnected, isInstalled, isNetworkMismatch, connect, disconnect } =
+    useStellarWallet();
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  if (isConnected && address) {
-    return (
-      <button onClick={disconnect} className={btnConnected}>
-        {address.slice(0, 4)}...{address.slice(-4)}
-      </button>
-    );
-  }
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      await connect();
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const status: FreighterStatus =
+    isInstalled === null
+      ? 'checking'
+      : !isInstalled
+        ? 'not-installed'
+        : isNetworkMismatch
+          ? 'mismatch'
+          : isConnected && address
+            ? 'connected'
+            : isConnecting
+              ? 'connecting'
+              : 'disconnected';
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -68,6 +86,12 @@ function FreighterButton() {
       </button>
       {error && <span className="text-[10px] text-error font-mono">{error}</span>}
     </div>
+    <FreighterConnectButton
+      status={status}
+      address={address}
+      onConnect={handleConnect}
+      onDisconnect={disconnect}
+    />
   );
 }
 
