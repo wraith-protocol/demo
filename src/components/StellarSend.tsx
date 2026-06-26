@@ -20,6 +20,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 import { StellarSendView } from '@/components/StellarSendView';
 import { useActivityStore } from '@/stores/activityStore';
+import { QrReader } from 'react-qr-reader';
 import {
   emptyStellarSendSimulation,
   simulateStellarSendAnnouncement,
@@ -88,6 +89,135 @@ export function StellarSend() {
   const [error, setError] = useState('');
   const [touched, setTouched] = useState({ recipient: false, amount: false });
   const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  const [isScanningQR, setIsScanningQR] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const closeScannerRef = useRef<HTMLButtonElement>(null);
+
+  // Focus close button on mount and handle Escape key to close
+  useEffect(() => {
+    if (isScanningQR) {
+      setScannerError('');
+      if (closeScannerRef.current) {
+        closeScannerRef.current.focus();
+      }
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setIsScanningQR(false);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isScanningQR]);
+
+  const handleScanResult = useCallback((result: any, error: any) => {
+    if (result) {
+      const text = result.text?.trim();
+      if (!text) return;
+
+      // 1. Check if it's a payment link
+      try {
+        const url = new URL(text);
+        const toParam = url.searchParams.get('to');
+        if (toParam && toParam.startsWith('st:xlm:')) {
+          setRecipient(toParam);
+          const amtParam = url.searchParams.get('amount');
+          if (amtParam) setAmount(amtParam);
+          const memoParam = url.searchParams.get('memo');
+          if (memoParam) setMemo(memoParam);
+          setIsScanningQR(false);
+          return;
+        }
+      } catch {
+        // Not a URL, continue checking if it's a raw meta-address
+      }
+
+      // 2. Check if it's a raw meta-address
+      if (text.startsWith('st:xlm:')) {
+        setRecipient(text);
+        setIsScanningQR(false);
+      } else {
+        setScannerError('Invalid QR code. Must be a stealth meta-address or payment link.');
+      }
+    }
+  }, []);
+
+  const scannerElement = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scanner-modal-title"
+    >
+      <div className="w-full max-w-md border border-outline-variant bg-surface-container p-6 shadow-xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2
+            id="scanner-modal-title"
+            className="font-heading text-lg font-bold uppercase tracking-tight text-on-surface"
+          >
+            Scan Recipient QR
+          </h2>
+          <button
+            ref={closeScannerRef}
+            onClick={() => setIsScanningQR(false)}
+            aria-label="Close scanner"
+            className="text-outline hover:text-primary transition-colors focus:outline-none focus:ring-1 focus:ring-primary p-1"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-xs text-on-surface-variant text-center">
+            Point your camera at a stealth meta-address or payment link QR code.
+          </p>
+
+          <div className="relative w-full max-w-[280px] aspect-square overflow-hidden rounded-lg border border-outline-variant bg-black flex items-center justify-center">
+            {isScanningQR && (
+              <QrReader
+                onResult={handleScanResult}
+                constraints={{ facingMode: 'environment' }}
+                containerStyle={{ width: '100%', height: '100%' }}
+                videoStyle={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            )}
+            {/* Visual scan target overlay */}
+            <div className="absolute inset-8 border-2 border-primary/40 pointer-events-none rounded border-dashed animate-pulse"></div>
+          </div>
+
+          {scannerError && (
+            <p className="text-xs text-error text-center font-semibold bg-error/10 p-2 border border-error/20 w-full">
+              {scannerError}
+            </p>
+          )}
+
+          <button
+            onClick={() => setIsScanningQR(false)}
+            className="w-full mt-2 border border-outline-variant py-2.5 font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
   const [sourceBalance, setSourceBalance] = useState<number | null>(null);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
   const [balanceLookupError, setBalanceLookupError] = useState('');
@@ -423,9 +553,7 @@ export function StellarSend() {
       simulationStatus={simulation.status}
       simulationError={simulation.status === 'error' ? simulation.error : ''}
       simulationFee={simulation.status === 'success' ? simulation.fee : null}
-      simulationReturnValue={
-        simulation.status === 'success' ? simulation.returnValue : null
-      }
+      simulationReturnValue={simulation.status === 'success' ? simulation.returnValue : null}
       simulationEvents={simulation.status === 'success' ? simulation.events : []}
       error={error}
       canSubmit={canSubmit && simulation.status === 'success'}
@@ -446,6 +574,9 @@ export function StellarSend() {
       paramTo={!!paramTo}
       paramAmount={!!paramAmount}
       paramMemo={!!paramMemo}
+      onScanQRClick={() => setIsScanningQR(true)}
+      isScanningQR={isScanningQR}
+      scannerElement={scannerElement}
     />
   );
 }
