@@ -6,5 +6,11 @@ reference/
 *.local
 
 # Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+package-lock.json
 playwright-report/
 test-results/
+public/mockServiceWorker.js
