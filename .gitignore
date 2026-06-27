@@ -4,3 +4,7 @@ dist/
 .env.*
 reference/
 *.local
+
+# Playwright
+playwright-report/
+test-results/
