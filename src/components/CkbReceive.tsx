@@ -11,6 +11,7 @@ import {
 } from '@wraith-protocol/sdk/chains/ckb';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
   const [showKey, setShowKey] = useState(false);
@@ -129,6 +130,7 @@ export function CkbReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scan failed');
     } finally {

@@ -11,6 +11,7 @@ import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 export function SolanaSend() {
   const { publicKey, connected, sendTransaction } = useWallet();
@@ -48,6 +49,7 @@ export function SolanaSend() {
         amount: lamports,
         senderPubkey: publicKey.toBase58(),
       });
+      trackEvent('send_submitted');
       setStealthResult({
         stealthAddress: result.stealthAddress,
         ephemeralPubKey: result.ephemeralPubKey,

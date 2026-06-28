@@ -5,6 +5,7 @@ import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/cha
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 export function HorizenSend() {
   const { isConnected, address } = useAccount();
@@ -61,6 +62,7 @@ export function HorizenSend() {
       });
 
       setStealthResult(result);
+      trackEvent('send_submitted');
 
       sendTransaction({
         to: result.transaction.to as `0x${string}`,

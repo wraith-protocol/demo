@@ -1,6 +1,19 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
+    <script>
+      (function () {
+        const THEME_KEY = 'wraith-theme';
+        const stored = localStorage.getItem(THEME_KEY);
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme =
+          stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+        document.documentElement.style.visibility = 'visible';
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
@@ -18,8 +31,8 @@
     <link rel="manifest" href="/site.webmanifest" />
 
     <!-- Theme -->
-    <meta name="theme-color" content="#0e0e0e" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light dark" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -40,7 +53,10 @@
       content="Send and receive private payments on Horizen and Stellar using stealth addresses."
     />
     <meta name="twitter:image" content="/og-image.png" />
-
+    <!-- Plausible Analytics -->
+    <script defer data-domain="demo.usewraith.xyz" src="https://plausible.io/js/script.js"></script>
+    <script>window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }</script>
+    
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -49,7 +65,7 @@
       rel="stylesheet"
     />
   </head>
-  <body class="bg-surface text-on-surface">
+  <body class="bg-surface text-on-surface" style="visibility: hidden">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
