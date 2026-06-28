@@ -5,6 +5,10 @@ import { TelemetryBanner } from '@/components/TelemetryBanner';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
+import { HelpButton } from '@/components/HelpButton';
+import Send from '@/pages/Send';
+import Receive from '@/pages/Receive';
+import Vault from '@/pages/Vault';
 
 export function App() {
   return (
@@ -17,9 +21,12 @@ export function App() {
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/vault" element={<Vault />} />
+          <Route path="/pay" element={<Send />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>
+      <HelpButton />
     </div>
   );
 }
