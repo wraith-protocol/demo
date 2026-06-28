@@ -5,7 +5,7 @@ export default function History() {
   const { chain } = useChain();
 
   if (chain === 'stellar') return <StellarHistory />;
-  
+
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3">
@@ -13,7 +13,8 @@ export default function History() {
           History
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Transaction history for {chain.charAt(0).toUpperCase() + chain.slice(1)} is not yet implemented.
+          Transaction history for {chain.charAt(0).toUpperCase() + chain.slice(1)} is not yet
+          implemented.
         </p>
       </section>
     </div>

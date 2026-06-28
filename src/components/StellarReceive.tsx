@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   TransactionBuilder,
@@ -24,13 +23,14 @@ import type {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { StellarMatchCard } from '@/components/StellarMatchCard';
+import { StellarMatchCard, type BalanceEntry } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
+import { STELLAR_ASSETS } from '@/lib/stellar/assets';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
 import { KeyVault } from '@/vault';
@@ -147,7 +147,6 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
   return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
-function StellarStealthRow({
 function StellarMatchCardContainer({
   match,
   onWithdrawn,
@@ -170,9 +169,10 @@ function StellarMatchCardContainer({
   onDismissPrivacyWarning: () => void;
 }) {
   const { address, signTransaction } = useStellarWallet();
-  const [balance, setBalance] = useState<string | null>(null);
-  const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [balances, setBalances] = useState<BalanceEntry[] | null>(null);
+  const [balancesState, setBalancesState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [dest, setDest] = useState('');
+  const [withdrawAssetCode, setWithdrawAssetCode] = useState('XLM');
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [withdrawing, setWithdrawing] = useState(false);
@@ -195,31 +195,38 @@ function StellarMatchCardContainer({
         );
         setRetryStatus('');
         if (!res.ok) {
-          setBalance('0');
+          setBalances([{ code: 'XLM', balance: '0', type: 'native' }]);
           return;
         }
         const data = await res.json();
-        const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
-        setBalance(xlm?.balance ?? '0');
+        const rawBalances = (data.balances ?? []) as Array<{
+          asset_type: string;
+          asset_code?: string;
+          asset_issuer?: string;
+          balance: string;
+        }>;
+        const entries: BalanceEntry[] = rawBalances.map((b) => ({
+          code: b.asset_type === 'native' ? 'XLM' : (b.asset_code ?? 'UNKNOWN'),
+          issuer: b.asset_issuer,
+          balance: b.balance,
+          type: b.asset_type as BalanceEntry['type'],
+        }));
+        setBalances(entries);
       } catch {
         setRetryStatus('');
-        setBalance('0');
+        setBalances([{ code: 'XLM', balance: '0', type: 'native' }]);
       } finally {
-        setBalanceState('loaded');
+        setBalancesState('loaded');
       }
-      const data = await res.json();
-      const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
-      return xlm?.balance ?? '0';
-    },
-    staleTime: 60000,
-    retry: 3,
-  });
+    })();
+  }, [match.stealthAddress]);
 
-  useEffect(() => {
-    if (!loadingBal && balance) {
-      onBalanceFetched(match.stealthAddress, balance);
-    }
-  }, [balance, loadingBal, match.stealthAddress, onBalanceFetched]);
+  function getStellarAssetForCode(code: string): Asset {
+    if (code === 'XLM') return Asset.native();
+    const entry = STELLAR_ASSETS.find((a) => a.code === code);
+    if (entry && entry.type !== 'native') return new Asset(entry.code, entry.issuer!);
+    return Asset.native();
+  }
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -242,88 +249,153 @@ function StellarMatchCardContainer({
       if (!res.ok) throw new Error('Account not found');
       const account = await res.json();
 
-      const xlmBal = account.balances?.find(
-        (b: { asset_type: string }) => b.asset_type === 'native',
-      );
-      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+      const stellarAsset = getStellarAssetForCode(withdrawAssetCode);
+      const isNative = withdrawAssetCode === 'XLM';
 
-      const currentBalance = parseFloat(xlmBal.balance);
-      const subentryCount = account.subentry_count ?? 0;
-      const baseReserve = 0.5; // 0.5 XLM per base reserve
-      const minAccountReserve = (2 + subentryCount) * baseReserve;
-      const estimatedFee = 0.00001; // 100 stroops base fee
-      const feeBumpFee = 0.0001; // Additional fee for fee-bump envelope
-
-      // Check if we need sponsored withdrawal
-      // We need sponsorship if balance can't cover: amount + fee + reserve
-      // For simplicity, if balance < 2 XLM (base reserve + buffer), we'll use mergeAccount
-      const needsSponsor = currentBalance < minAccountReserve + estimatedFee + feeBumpFee;
-
-      if (needsSponsor && !address) {
-        throw new Error('Sponsored withdrawal requires connected wallet');
-      }
-
-      if (needsSponsor) {
-        setShowSponsorPrompt(true);
-        setWithdrawing(false);
-        return;
-      }
-
-      // Standard withdrawal (account can pay its own fees)
-      const sendableAmount = (currentBalance - minAccountReserve - estimatedFee).toFixed(7);
-      if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
-
-      const sourceAccount = new Account(match.stealthAddress, account.sequence);
-      const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-        .addOperation(
-          Operation.payment({ destination: dest, asset: Asset.native(), amount: sendableAmount }),
-        )
-        .setTimeout(30)
-        .build();
-
-      const txHash = tx.hash();
-      const signature = signStellarTransaction(
-        txHash,
-        match.stealthPrivateScalar,
-        match.stealthPubKeyBytes,
-      );
-      const signatureBase64 = Buffer.from(signature).toString('base64');
-      tx.addSignature(match.stealthAddress, signatureBase64);
-
-      const txHashHex = Buffer.from(txHash).toString('hex');
-      const signedXdrStr = encodeURIComponent(tx.toXDR());
-      addActivity({
-        id: txHashHex,
-        chain: 'stellar',
-        wallet: address || '',
-        kind: 'withdrawal',
-        direction: 'out',
-        status: 'pending',
-        amount: sendableAmount,
-        recipient: dest,
-        timestamp: Date.now(),
+      const assetBal = account.balances?.find((b: { asset_type: string; asset_code?: string }) => {
+        if (isNative) return b.asset_type === 'native';
+        return b.asset_code === withdrawAssetCode;
       });
+      if (!assetBal || parseFloat(assetBal.balance) === 0)
+        throw new Error(`No ${withdrawAssetCode} balance`);
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${signedXdrStr}`,
-      });
+      const currentBalance = parseFloat(assetBal.balance);
 
-      const submitData = await submitRes.json();
-      if (!submitRes.ok) {
-        throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+      if (isNative) {
+        // XLM withdraw needs reserve/fee calculations
+        const subentryCount = account.subentry_count ?? 0;
+        const baseReserve = 0.5;
+        const minAccountReserve = (2 + subentryCount) * baseReserve;
+        const estimatedFee = 0.00001;
+        const feeBumpFee = 0.0001;
+        const needsSponsor = currentBalance < minAccountReserve + estimatedFee + feeBumpFee;
+
+        if (needsSponsor && !address) {
+          throw new Error('Sponsored withdrawal requires connected wallet');
+        }
+
+        if (needsSponsor) {
+          setShowSponsorPrompt(true);
+          setWithdrawing(false);
+          return;
+        }
+
+        const sendableAmount = (currentBalance - minAccountReserve - estimatedFee).toFixed(7);
+        if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
+
+        const sourceAccount = new Account(match.stealthAddress, account.sequence);
+        const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
+          .addOperation(
+            Operation.payment({ destination: dest, asset: stellarAsset, amount: sendableAmount }),
+          )
+          .setTimeout(30)
+          .build();
+
+        const txHash = tx.hash();
+        const signature = signStellarTransaction(
+          txHash,
+          match.stealthPrivateScalar,
+          match.stealthPubKeyBytes,
         );
+        const signatureBase64 = Buffer.from(signature).toString('base64');
+        tx.addSignature(match.stealthAddress, signatureBase64);
+
+        const txHashHex = Buffer.from(txHash).toString('hex');
+        const signedXdrStr = encodeURIComponent(tx.toXDR());
+        addActivity({
+          id: txHashHex,
+          chain: 'stellar',
+          wallet: address || '',
+          kind: 'withdrawal',
+          direction: 'out',
+          status: 'pending',
+          amount: sendableAmount,
+          recipient: dest,
+          timestamp: Date.now(),
+        });
+
+        const submitRes = await fetch(`${horizonUrl}/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `tx=${signedXdrStr}`,
+        });
+
+        const submitData = await submitRes.json();
+        if (!submitRes.ok) {
+          throw new Error(
+            submitData.extras?.result_codes?.transaction ||
+              submitData.title ||
+              'Transaction failed',
+          );
+        }
+
+        setWithdrawHash(submitData.hash);
+        updateActivity(txHashHex, 'confirmed');
+      } else {
+        // Non-native asset withdraw
+        const sourceAccount = new Account(match.stealthAddress, account.sequence);
+        const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
+          .addOperation(
+            Operation.payment({
+              destination: dest,
+              asset: stellarAsset,
+              amount: currentBalance.toFixed(7),
+            }),
+          )
+          .setTimeout(30)
+          .build();
+
+        const txHash = tx.hash();
+        const signature = signStellarTransaction(
+          txHash,
+          match.stealthPrivateScalar,
+          match.stealthPubKeyBytes,
+        );
+        const signatureBase64 = Buffer.from(signature).toString('base64');
+        tx.addSignature(match.stealthAddress, signatureBase64);
+
+        const txHashHex = Buffer.from(txHash).toString('hex');
+        const signedXdrStr = encodeURIComponent(tx.toXDR());
+        addActivity({
+          id: txHashHex,
+          chain: 'stellar',
+          wallet: address || '',
+          kind: 'withdrawal',
+          direction: 'out',
+          status: 'pending',
+          amount: currentBalance.toFixed(7),
+          recipient: dest,
+          timestamp: Date.now(),
+        });
+
+        const submitRes = await fetch(`${horizonUrl}/transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `tx=${signedXdrStr}`,
+        });
+
+        const submitData = await submitRes.json();
+        if (!submitRes.ok) {
+          throw new Error(
+            submitData.extras?.result_codes?.transaction ||
+              submitData.title ||
+              'Transaction failed',
+          );
+        }
+
+        setWithdrawHash(submitData.hash);
+        updateActivity(txHashHex, 'confirmed');
       }
 
-      setWithdrawHash(submitData.hash);
-      updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
       setRetryStatus('');
       setError(
-        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Withdraw failed',
+        err instanceof RetryExhaustedError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Withdraw failed',
       );
     } finally {
       setWithdrawing(false);
@@ -336,75 +408,6 @@ function StellarMatchCardContainer({
     setRetryStatus('');
     setWithdrawing(true);
     setShowSponsorPrompt(false);
-
-      {!withdrawHash && balance && parseFloat(balance) > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="withdraw-dest"
-            className="font-mono text-[10px] uppercase tracking-widest text-outline"
-          >
-            Withdraw to
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="withdraw-dest"
-              type="text"
-              value={dest}
-              onChange={(e) => setDest(e.target.value)}
-              placeholder="Destination address (G...)"
-              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
-            />
-            <button
-              onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
-              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-            >
-              {withdrawing ? '...' : 'Withdraw'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && <p className="text-xs text-error">{error}</p>}
-
-      {withdrawHash && (
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-          <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
-            <a
-              href={stellarTxUrl(withdrawHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline"
-            >
-              {withdrawHash.slice(0, 14)}...
-            </a>
-          </span>
-        </div>
-      )}
-
-      <div className="border-t border-outline-variant/30 pt-3">
-        {!showKey ? (
-          <button
-            onClick={() => setShowKey(true)}
-            className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-          >
-            Reveal secret key
-          </button>
-        ) : (
-          <div className="border border-error/20 bg-error/5 p-3">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
-              </span>
-              <CopyButton text={scalarHex} />
-            </div>
-            <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
-          </div>
-        )}
-      </div>
-    </div>
     const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
@@ -502,7 +505,11 @@ function StellarMatchCardContainer({
     } catch (err) {
       setRetryStatus('');
       setError(
-        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Sponsored withdraw failed',
+        err instanceof RetryExhaustedError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Sponsored withdraw failed',
       );
     } finally {
       setWithdrawing(false);
@@ -513,8 +520,8 @@ function StellarMatchCardContainer({
     <StellarMatchCard
       stealthAddress={match.stealthAddress}
       scalarHex={scalarHex}
-      balance={balance}
-      balanceState={balanceState}
+      balances={balances}
+      balancesState={balancesState}
       dest={dest}
       withdrawing={withdrawing}
       withdrawHash={withdrawHash}
@@ -528,6 +535,8 @@ function StellarMatchCardContainer({
       onSponsoredWithdraw={handleSponsoredWithdraw}
       onCancelSponsor={() => setShowSponsorPrompt(false)}
       onRevealKey={() => setShowKey(true)}
+      withdrawAssetCode={withdrawAssetCode}
+      onWithdrawAssetChange={setWithdrawAssetCode}
       labelData={labelData}
       onSaveLabel={onSaveLabel}
       onHide={onHide}
@@ -568,40 +577,6 @@ export function StellarReceive() {
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [knownBalances, setKnownBalances] = useState<Record<string, string>>({});
-  const [visibleCount, setVisibleCount] = useState(25);
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const handleBalanceFetched = useCallback((addr: string, bal: string) => {
-    setKnownBalances((prev) => {
-      if (prev[addr] === bal) return prev;
-      return { ...prev, [addr]: bal };
-    });
-  }, []);
-
-  const filteredMatches = useMemo(() => {
-    if (!searchQuery) return matched;
-    const lowerQuery = searchQuery.toLowerCase();
-    return matched.filter((m) => {
-      const addrMatch = m.stealthAddress.toLowerCase().includes(lowerQuery);
-      const bal = knownBalances[m.stealthAddress];
-      const balMatch = bal && bal.includes(lowerQuery);
-      return addrMatch || balMatch;
-    });
-  }, [matched, searchQuery, knownBalances]);
-
-  const visibleMatches = useMemo(() => {
-    return filteredMatches.slice(0, visibleCount);
-  }, [filteredMatches, visibleCount]);
-
-  const rowVirtualizer = useVirtualizer({
-    count: visibleMatches.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 200,
-    overscan: 5,
-  });
-
-  const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [importConflicts, setImportConflicts] = useState<ImportResult['conflicts'] | null>(null);
@@ -627,6 +602,8 @@ export function StellarReceive() {
   } = useStealthLabels(address);
 
   const allTags = useMemo(() => getAllTags(), [getAllTags, labels]);
+  const [visibleCount, setVisibleCount] = useState(25);
+  const parentRef = useRef<HTMLDivElement>(null);
 
   const filteredMatched = useMemo(() => {
     return matched.filter((m) => {
@@ -653,6 +630,17 @@ export function StellarReceive() {
   const hiddenCount = useMemo(() => {
     return matched.filter((m) => labels[m.stealthAddress]?.hiddenAt).length;
   }, [matched, labels]);
+
+  const visibleMatches = useMemo(() => {
+    return filteredMatched.slice(0, visibleCount);
+  }, [filteredMatched, visibleCount]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: visibleMatches.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200,
+    overscan: 5,
+  });
 
   // Check if already registered on-chain
   useEffect(() => {
@@ -913,7 +901,9 @@ export function StellarReceive() {
         (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-      const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry: onRetryReg });
+      const accountResponse = await withRetry(() => soroban.getAccount(address), {
+        onRetry: onRetryReg,
+      });
       setRetryStatus('');
       const sourceAccount = new Account(
         accountResponse.accountId(),
@@ -937,7 +927,9 @@ export function StellarReceive() {
         .setTimeout(30)
         .build();
 
-      const simulated = await withRetry(() => soroban.simulateTransaction(tx), { onRetry: onRetryReg });
+      const simulated = await withRetry(() => soroban.simulateTransaction(tx), {
+        onRetry: onRetryReg,
+      });
       setRetryStatus('');
       if ('error' in simulated) {
         throw new Error((simulated as { error: string }).error || 'Simulation failed');
@@ -995,7 +987,11 @@ export function StellarReceive() {
     } catch (err) {
       setRetryStatus('');
       setError(
-        err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Registration failed',
+        err instanceof RetryExhaustedError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Registration failed',
       );
     } finally {
       setIsRegistering(false);
@@ -1008,16 +1004,6 @@ export function StellarReceive() {
     setError('');
 
     try {
-      const announcements = await fetchAnnouncementEvents(
-        STELLAR_NETWORK.rpcUrl,
-        ANNOUNCER_CONTRACT,
-      );
-      const scanFn = (window as any).scanAnnouncementsMock || scanAnnouncements;
-      const results = scanFn(
-        announcements,
-        stellarKeys.viewingKey,
-        stellarKeys.spendingPubKey,
-        stellarKeys.spendingScalar,
       if (workerRef.current) {
         workerRef.current.terminate();
       }
@@ -1202,15 +1188,15 @@ export function StellarReceive() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 font-body text-sm text-on-surface placeholder:text-outline focus:border-primary"
               />
-              
-              {filteredMatches.length === 0 && (
+
+              {filteredMatched.length === 0 && (
                 <div className="py-4 text-center font-body text-xs text-on-surface-variant">
                   No matching transfers found for &quot;{searchQuery}&quot;
                 </div>
               )}
-              
-              <div 
-                ref={parentRef} 
+
+              <div
+                ref={parentRef}
                 className="max-h-[600px] overflow-y-auto overflow-x-hidden flex flex-col"
               >
                 <div
@@ -1236,18 +1222,24 @@ export function StellarReceive() {
                           paddingBottom: '16px', // gap equivalent
                         }}
                       >
-                        <StellarStealthRow 
-                          match={m} 
-                          onWithdrawn={() => {}} 
-                          onBalanceFetched={handleBalanceFetched}
+                        <StellarMatchCardContainer
+                          match={m}
+                          onWithdrawn={() => {}}
+                          labelData={labels[m.stealthAddress] ?? null}
+                          onSaveLabel={(label, tags) => saveLabel(m.stealthAddress, label, tags)}
+                          onHide={() => hideAddress(m.stealthAddress)}
+                          onUnhide={() => unhideAddress(m.stealthAddress)}
+                          onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
+                          showPrivacyWarning={shouldShowPrivacyWarning}
+                          onDismissPrivacyWarning={dismissPrivacyWarning}
                         />
                       </div>
                     );
                   })}
                 </div>
               </div>
-              
-              {visibleCount < filteredMatches.length && (
+
+              {visibleCount < filteredMatched.length && (
                 <button
                   onClick={() => setVisibleCount((v) => v + 25)}
                   className="mt-2 h-10 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"

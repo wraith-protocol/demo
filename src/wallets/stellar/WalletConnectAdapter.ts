@@ -45,7 +45,11 @@ export class WalletConnectAdapter implements StellarWallet {
       if (this.session) {
         const accounts = this.session.namespaces.stellar?.accounts || [];
         if (accounts.length === 0) {
-          throw new WalletError('No accounts in existing session', 'CONNECT_FAILED', 'walletconnect');
+          throw new WalletError(
+            'No accounts in existing session',
+            'CONNECT_FAILED',
+            'walletconnect',
+          );
         }
         const account = accounts[0];
         const parts = account.split(':');
@@ -72,7 +76,8 @@ export class WalletConnectAdapter implements StellarWallet {
         metadata: {
           name: 'Wraith Protocol Demo',
           description: 'Wraith Protocol - Privacy-preserving cross-chain transactions',
-          url: typeof window !== 'undefined' ? window.location.origin : 'https://wraith-protocol.com',
+          url:
+            typeof window !== 'undefined' ? window.location.origin : 'https://wraith-protocol.com',
           icons: ['https://walletconnect.com/walletconnect-logo.png'],
         },
       });
@@ -99,7 +104,11 @@ export class WalletConnectAdapter implements StellarWallet {
       // Extract public key from session
       const accounts = this.session.namespaces.stellar?.accounts || [];
       if (accounts.length === 0) {
-        throw new WalletError('No accounts received from wallet', 'CONNECT_FAILED', 'walletconnect');
+        throw new WalletError(
+          'No accounts received from wallet',
+          'CONNECT_FAILED',
+          'walletconnect',
+        );
       }
 
       // Parse account format: "stellar:testnet:<publicKey>"
@@ -146,7 +155,8 @@ export class WalletConnectAdapter implements StellarWallet {
         metadata: {
           name: 'Wraith Protocol Demo',
           description: 'Wraith Protocol - Privacy-preserving cross-chain transactions',
-          url: typeof window !== 'undefined' ? window.location.origin : 'https://wraith-protocol.com',
+          url:
+            typeof window !== 'undefined' ? window.location.origin : 'https://wraith-protocol.com',
           icons: ['https://walletconnect.com/walletconnect-logo.png'],
         },
       });
@@ -169,11 +179,13 @@ export class WalletConnectAdapter implements StellarWallet {
       (this as any).pendingApproval = approval;
 
       // Start approval in background
-      approval.then((session: any) => {
-        this.session = session;
-      }).catch((err: Error) => {
-        console.error('WalletConnect approval failed:', err);
-      });
+      approval
+        .then((session: any) => {
+          this.session = session;
+        })
+        .catch((err: Error) => {
+          console.error('WalletConnect approval failed:', err);
+        });
 
       return uri || '';
     } catch (err) {
@@ -204,7 +216,11 @@ export class WalletConnectAdapter implements StellarWallet {
       // Extract public key from session
       const accounts = this.session.namespaces.stellar?.accounts || [];
       if (accounts.length === 0) {
-        throw new WalletError('No accounts received from wallet', 'CONNECT_FAILED', 'walletconnect');
+        throw new WalletError(
+          'No accounts received from wallet',
+          'CONNECT_FAILED',
+          'walletconnect',
+        );
       }
 
       // Parse account format: "stellar:testnet:<publicKey>"
@@ -256,11 +272,15 @@ export class WalletConnectAdapter implements StellarWallet {
   async signTransaction(xdr: string, opts: SignOpts = {}): Promise<SignResult> {
     try {
       if (!this.client || !this.session) {
-        throw new WalletError('WalletConnect session not established', 'SIGN_FAILED', 'walletconnect');
+        throw new WalletError(
+          'WalletConnect session not established',
+          'SIGN_FAILED',
+          'walletconnect',
+        );
       }
 
-      const chain = opts.networkPassphrase?.includes('Public') 
-        ? STELLAR_CHAINS.PUBNET 
+      const chain = opts.networkPassphrase?.includes('Public')
+        ? STELLAR_CHAINS.PUBNET
         : STELLAR_CHAINS.TESTNET;
 
       const result = await this.client.request({
@@ -289,7 +309,11 @@ export class WalletConnectAdapter implements StellarWallet {
       if (err instanceof WalletError) throw err;
       const msg = String(err);
       if (msg.toLowerCase().includes('reject') || msg.toLowerCase().includes('user')) {
-        throw new WalletError('WalletConnect signing rejected by user', 'USER_REJECTED', 'walletconnect');
+        throw new WalletError(
+          'WalletConnect signing rejected by user',
+          'USER_REJECTED',
+          'walletconnect',
+        );
       }
       throw new WalletError(`WalletConnect sign failed: ${msg}`, 'SIGN_FAILED', 'walletconnect');
     }

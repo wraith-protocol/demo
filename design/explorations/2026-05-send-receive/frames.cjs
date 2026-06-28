@@ -94,12 +94,19 @@ function header(chain, title, subtitle) {
 }
 
 function field(label, placeholder, opts = {}) {
-  const cls = ['input', opts.large ? 'large' : '', opts.focused ? 'focused' : '', opts.errBorder ? 'error-border' : ''].filter(Boolean).join(' ');
+  const cls = [
+    'input',
+    opts.large ? 'large' : '',
+    opts.focused ? 'focused' : '',
+    opts.errBorder ? 'error-border' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const right = opts.unit
     ? `<span class="unit">${opts.unit}</span>`
     : opts.paste
-    ? `<span class="paste-btn">Paste</span>`
-    : '';
+      ? `<span class="paste-btn">Paste</span>`
+      : '';
   return `<div class="field">
   <div class="label">${label}</div>
   <div class="${cls}" style="position:relative">
@@ -109,7 +116,9 @@ function field(label, placeholder, opts = {}) {
 }
 
 function btn(text, opts = {}) {
-  const cls = ['btn-primary', opts.disabled ? 'disabled' : '', opts.loading ? 'loading' : ''].filter(Boolean).join(' ');
+  const cls = ['btn-primary', opts.disabled ? 'disabled' : '', opts.loading ? 'loading' : '']
+    .filter(Boolean)
+    .join(' ');
   return `<div class="${cls}">${text}</div>`;
 }
 
@@ -141,7 +150,10 @@ function stealthCard(addr, balance, opts = {}) {
   const balEl = opts.empty
     ? `<span class="mono" style="font-size:11px;color:${T.outline}">Empty</span>`
     : `<div class="row" style="gap:6px"><span class="dot green"></span><span class="balance-val">${balance} XLM</span></div>`;
-  const withdrawEl = opts.empty || opts.withdrawn ? '' : `
+  const withdrawEl =
+    opts.empty || opts.withdrawn
+      ? ''
+      : `
   <div class="field" style="margin-top:12px;margin-bottom:0">
     <div class="label">Withdraw to</div>
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -171,14 +183,17 @@ function stealthCard(addr, balance, opts = {}) {
 function sendA(width, state) {
   const isLoading = state === 'loading';
   const isError = state === 'error';
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Send', 'Send XLM privately using stealth addresses.')}
 ${field('Recipient Meta-Address', 'st:xlm:...', { focused: state === 'idle', paste: true })}
 ${field('Amount', '0.0', { unit: 'XLM' })}
 ${feeRow()}
 ${isError ? `<p class="error-text" style="margin-bottom:12px">Enter a valid Stellar meta-address (st:xlm:...)</p>` : ''}
 ${btn(isLoading ? 'Confirm in wallet...' : 'Send Privately', { loading: isLoading })}
-`);
+`,
+  );
 }
 
 // ─── SEND-B: Amount-First ────────────────────────────────────────────────────
@@ -187,14 +202,17 @@ function sendB(width, state) {
   const isLoading = state === 'loading';
   const isError = state === 'error';
   const isMobile = width <= 375;
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Send', 'Send XLM privately using stealth addresses.')}
 ${field('Amount', '0.0', { large: true, focused: state === 'idle', unit: 'XLM' })}
 ${field('Recipient Meta-Address', 'st:xlm:...', { paste: true, errBorder: isError })}
 ${feeRow()}
 ${isError ? `<p class="error-text" style="margin-bottom:12px">Enter a valid Stellar meta-address (st:xlm:...)</p>` : ''}
 ${btn(isLoading ? 'Confirm in wallet...' : 'Send Privately', { loading: isLoading })}
-`);
+`,
+  );
 }
 
 // ─── SEND-C: Flat Form ───────────────────────────────────────────────────────
@@ -203,7 +221,9 @@ function sendC(width, state) {
   const isLoading = state === 'loading';
   const isError = state === 'error';
   const formStyle = isLoading ? 'opacity:0.5' : '';
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Send', 'Send XLM privately using stealth addresses.')}
 <div class="flat-form" style="${formStyle};margin-bottom:16px">
   <div class="flat-row${isError ? ' error-border' : ''}">
@@ -220,7 +240,8 @@ ${header('Stellar Testnet / XLM', 'Send', 'Send XLM privately using stealth addr
 <p class="label" style="margin-bottom:16px">fee 100 stroops · soroban announcer</p>
 ${isError ? `<p class="error-text" style="margin-bottom:12px">Enter a valid Stellar meta-address (st:xlm:...)</p>` : ''}
 ${btn(isLoading ? 'Confirm in wallet...' : 'Send Privately', { loading: isLoading })}
-`);
+`,
+  );
 }
 
 // ─── RECEIVE-A: Dense Table ──────────────────────────────────────────────────
@@ -265,7 +286,9 @@ function receiveA(width, state) {
     }
   }
 
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register on-chain, then scan for payments.')}
 ${metaPanel()}
 <div class="scan-row">
@@ -273,7 +296,8 @@ ${metaPanel()}
   ${state === 'idle' ? '' : `<span class="found-count">${isLoading || isError ? '' : '3 transfers found'}</span>`}
 </div>
 <div class="panel" style="padding:0;overflow:hidden">${tableContent}</div>
-`);
+`,
+  );
 }
 
 // ─── RECEIVE-B: Card Stack ───────────────────────────────────────────────────
@@ -293,7 +317,9 @@ function receiveB(width, state) {
     cards = stealthCard('GABC...XYZ', '12.5000000') + stealthCard('GDEF...UVW', '0.5000000');
   }
 
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register on-chain, then scan for payments.')}
 ${metaPanel()}
 <div class="scan-row">
@@ -301,7 +327,8 @@ ${metaPanel()}
   ${state !== 'idle' ? `<span class="found-count">${isLoading || isError ? '' : '2 transfers found'}</span>` : ''}
 </div>
 ${cards}
-`);
+`,
+  );
 }
 
 // ─── RECEIVE-C: Empty-State-First ────────────────────────────────────────────
@@ -316,10 +343,10 @@ function receiveC(width, state) {
   // For "scanned" state we reuse 'idle' with keys derived — show collapsed steps + results
 
   if (state === 'idle' || isLoading || isError) {
-    const step1Btn = isLoading
-      ? btn('Sign in wallet...', { loading: true })
-      : btn('Derive Keys');
-    return page(width, `
+    const step1Btn = isLoading ? btn('Sign in wallet...', { loading: true }) : btn('Derive Keys');
+    return page(
+      width,
+      `
 ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register on-chain, then scan for payments.')}
 <div class="panel" style="margin-bottom:12px">
   <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
@@ -341,11 +368,14 @@ ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register
   </div>
   <p class="step-body" style="margin-top:6px;margin-bottom:0;font-size:11px">Complete step 02 first.</p>
 </div>
-`);
+`,
+    );
   }
 
   // "scanned" — show collapsed steps + results (0 matches = empty state)
-  return page(width, `
+  return page(
+    width,
+    `
 ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register on-chain, then scan for payments.')}
 <div class="panel" style="margin-bottom:8px;padding:12px 20px">
   <div style="display:flex;align-items:center;gap:8px">
@@ -375,7 +405,8 @@ ${header('Stellar Testnet / XLM', 'Receive', 'Derive your stealth keys, register
   </div>
   <div class="meta-addr" style="margin-top:4px">st:xlm:AAAA...BBBB...CCCC...DDDD</div>
 </div>
-`);
+`,
+  );
 }
 
 module.exports = { sendA, sendB, sendC, receiveA, receiveB, receiveC };

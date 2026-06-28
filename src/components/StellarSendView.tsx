@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import type { StellarAssetInfo } from '@/lib/stellar/assets';
 
 export interface StellarSendViewProps {
   isConnected: boolean;
@@ -42,6 +43,11 @@ export interface StellarSendViewProps {
   onScanQRClick?: () => void;
   isScanningQR?: boolean;
   scannerElement?: ReactNode;
+  // Asset selector props
+  assets?: StellarAssetInfo[];
+  selectedAsset?: StellarAssetInfo;
+  onAssetChange?: (asset: StellarAssetInfo) => void;
+  trustlineWarning?: string | null;
 }
 
 export function StellarSendView({
@@ -84,6 +90,10 @@ export function StellarSendView({
   onScanQRClick,
   isScanningQR = false,
   scannerElement,
+  assets,
+  selectedAsset,
+  onAssetChange,
+  trustlineWarning = null,
 }: StellarSendViewProps) {
   if (!isConnected) {
     return (
@@ -105,14 +115,14 @@ export function StellarSendView({
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet / {selectedAsset?.label ?? 'XLM'}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          Send {selectedAsset?.label ?? 'XLM'} privately using stealth addresses. The recipient gets
+          funds at a fresh address only they can control.
         </p>
       </div>
 
@@ -178,6 +188,29 @@ export function StellarSendView({
             </p>
           </div>
 
+          {assets && selectedAsset && onAssetChange && (
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Asset
+              </label>
+              <div className="flex gap-2">
+                {assets.map((a) => (
+                  <button
+                    key={a.code}
+                    onClick={() => onAssetChange(a)}
+                    className={`h-10 flex-1 border font-heading text-[11px] font-semibold uppercase tracking-widest transition-colors ${
+                      selectedAsset.code === a.code
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-outline-variant text-outline hover:border-primary hover:text-primary'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Amount
@@ -196,12 +229,44 @@ export function StellarSendView({
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
+                {selectedAsset?.label ?? 'XLM'}
               </span>
             </div>
             <p id="stellar-amount-error" className="min-h-5 text-xs text-error" aria-live="polite">
               {showAmountError && amountError ? amountError : ' '}
             </p>
+
+            {trustlineWarning && (
+              <p className="flex items-start gap-2 font-mono text-[10px] text-error">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mt-0.5 shrink-0"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+                <span>
+                  {trustlineWarning}{' '}
+                  <a
+                    href={`https://laboratory.stellar.org/#xdr?operation=changeTrust&asset=${selectedAsset?.code}:${selectedAsset?.issuer}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Add Trustline
+                  </a>
+                </span>
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

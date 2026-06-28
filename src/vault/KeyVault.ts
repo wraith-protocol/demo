@@ -34,7 +34,11 @@ const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const VERIFIER_PLAINTEXT = 'vault-ready';
 
 function assertBrowserOnly() {
-  if (typeof window === 'undefined' || typeof indexedDB === 'undefined' || !globalThis.crypto?.subtle) {
+  if (
+    typeof window === 'undefined' ||
+    typeof indexedDB === 'undefined' ||
+    !globalThis.crypto?.subtle
+  ) {
     throw new Error('KeyVault is browser-only and requires IndexedDB plus Web Crypto.');
   }
 }
@@ -302,7 +306,11 @@ export class KeyVault {
     return JSON.parse(decodeText(plaintext)) as T;
   }
 
-  private async readRecord<T>(db: IDBDatabase, storeName: string, key: IDBValidKey): Promise<T | null> {
+  private async readRecord<T>(
+    db: IDBDatabase,
+    storeName: string,
+    key: IDBValidKey,
+  ): Promise<T | null> {
     return new Promise<T | null>((resolve, reject) => {
       const tx = db.transaction(storeName, 'readonly');
       const store = tx.objectStore(storeName);
@@ -340,7 +348,12 @@ export class KeyVault {
 
     if (this.idleTimeoutMs > 0) {
       this.activityListenerAttached = true;
-      const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+      const events: Array<keyof WindowEventMap> = [
+        'pointerdown',
+        'keydown',
+        'touchstart',
+        'scroll',
+      ];
       for (const eventName of events) {
         window.addEventListener(eventName, this.handleActivity, { passive: true });
       }

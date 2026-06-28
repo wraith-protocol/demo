@@ -1,7 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import {
-  decodeStealthMetaAddress,
-} from '@wraith-protocol/sdk/chains/stellar';
+import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -79,8 +77,14 @@ export function StellarVaultDeposit() {
 
   const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
   const amountError = useMemo(() => validateAmount(amountValue), [amountValue]);
-  const unlockLedgerError = useMemo(() => validateUnlockLedger(unlockLedgerValue), [unlockLedgerValue]);
-  const refundWindowError = useMemo(() => validateRefundWindow(refundWindowValue), [refundWindowValue]);
+  const unlockLedgerError = useMemo(
+    () => validateUnlockLedger(unlockLedgerValue),
+    [unlockLedgerValue],
+  );
+  const refundWindowError = useMemo(
+    () => validateRefundWindow(refundWindowValue),
+    [refundWindowValue],
+  );
 
   const validationError = recipientError || amountError || unlockLedgerError || refundWindowError;
   const canSubmit =
@@ -125,7 +129,15 @@ export function StellarVaultDeposit() {
       setError(err instanceof Error ? err.message : 'Deposit failed');
       setDepositState('idle');
     }
-  }, [address, metaAddress, amountValue, unlockLedgerValue, refundWindowValue, canSubmit, validationError]);
+  }, [
+    address,
+    metaAddress,
+    amountValue,
+    unlockLedgerValue,
+    refundWindowValue,
+    canSubmit,
+    validationError,
+  ]);
 
   const reset = () => {
     setRecipient('');
@@ -158,11 +170,7 @@ export function StellarVaultDeposit() {
               placeholder="st:xlm:..."
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
-            <p
-              id="vault-recipient-error"
-              className="min-h-5 text-xs text-error"
-              aria-live="polite"
-            >
+            <p id="vault-recipient-error" className="min-h-5 text-xs text-error" aria-live="polite">
               {(touched.recipient || submitAttempted) && recipientError ? recipientError : ' '}
             </p>
           </div>
@@ -205,11 +213,7 @@ export function StellarVaultDeposit() {
               placeholder="e.g., 100000"
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
-            <p
-              id="vault-unlock-error"
-              className="min-h-5 text-xs text-error"
-              aria-live="polite"
-            >
+            <p id="vault-unlock-error" className="min-h-5 text-xs text-error" aria-live="polite">
               {(touched.unlockLedger || submitAttempted) && unlockLedgerError
                 ? unlockLedgerError
                 : ' '}
@@ -230,11 +234,7 @@ export function StellarVaultDeposit() {
               placeholder="e.g., 10000"
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
-            <p
-              id="vault-refund-error"
-              className="min-h-5 text-xs text-error"
-              aria-live="polite"
-            >
+            <p id="vault-refund-error" className="min-h-5 text-xs text-error" aria-live="polite">
               {(touched.refundWindow || submitAttempted) && refundWindowError
                 ? refundWindowError
                 : ' '}
@@ -300,18 +300,14 @@ export function StellarVaultDeposit() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Amount
               </span>
-              <div className="mt-0.5 font-mono text-xs text-on-surface">
-                {amountValue} XLM
-              </div>
+              <div className="mt-0.5 font-mono text-xs text-on-surface">{amountValue} XLM</div>
             </div>
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Unlock Ledger
               </span>
-              <div className="mt-0.5 font-mono text-xs text-on-surface">
-                {unlockLedgerValue}
-              </div>
+              <div className="mt-0.5 font-mono text-xs text-on-surface">{unlockLedgerValue}</div>
             </div>
 
             <div>

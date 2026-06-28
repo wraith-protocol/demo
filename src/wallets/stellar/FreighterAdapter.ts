@@ -12,7 +12,8 @@ import { WalletError } from './types';
 export class FreighterAdapter implements StellarWallet {
   readonly id = 'freighter' as const;
   readonly name = 'Freighter';
-  readonly icon = 'https://raw.githubusercontent.com/stellar/freighter/main/extension/public/favicon-128.png';
+  readonly icon =
+    'https://raw.githubusercontent.com/stellar/freighter/main/extension/public/favicon-128.png';
   readonly installUrl = 'https://www.freighter.app';
 
   async isAvailable(): Promise<boolean> {
@@ -84,11 +85,7 @@ export class FreighterAdapter implements StellarWallet {
       return { signedXdr: (result as { signedTxXdr?: string }).signedTxXdr ?? '' };
     } catch (err) {
       if (err instanceof WalletError) throw err;
-      throw new WalletError(
-        `Freighter sign failed: ${String(err)}`,
-        'SIGN_FAILED',
-        'freighter',
-      );
+      throw new WalletError(`Freighter sign failed: ${String(err)}`, 'SIGN_FAILED', 'freighter');
     }
   }
 

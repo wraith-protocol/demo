@@ -3,11 +3,18 @@ import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import { PrivacyTooltip } from '@/components/PrivacyTooltip';
 
+export interface BalanceEntry {
+  code: string;
+  issuer?: string;
+  balance: string;
+  type: 'native' | 'credit_alphanum4' | 'credit_alphanum12';
+}
+
 export interface StellarMatchCardProps {
   stealthAddress: string;
   scalarHex: string;
-  balance: string | null;
-  balanceState: 'loading' | 'loaded' | 'error';
+  balances: BalanceEntry[] | null;
+  balancesState: 'loading' | 'loaded' | 'error';
   dest: string;
   withdrawing: boolean;
   withdrawHash: string | null;
@@ -21,6 +28,8 @@ export interface StellarMatchCardProps {
   onSponsoredWithdraw: () => void;
   onCancelSponsor: () => void;
   onRevealKey: () => void;
+  withdrawAssetCode?: string;
+  onWithdrawAssetChange?: (code: string) => void;
   labelData?: { label: string; tags: string[]; hiddenAt?: number } | null;
   onSaveLabel?: (label: string, tags: string[]) => void;
   onHide?: () => void;
@@ -33,8 +42,8 @@ export interface StellarMatchCardProps {
 export function StellarMatchCard({
   stealthAddress,
   scalarHex,
-  balance,
-  balanceState,
+  balances,
+  balancesState,
   dest,
   withdrawing,
   withdrawHash,
@@ -48,6 +57,8 @@ export function StellarMatchCard({
   onSponsoredWithdraw,
   onCancelSponsor,
   onRevealKey,
+  withdrawAssetCode,
+  onWithdrawAssetChange,
   labelData,
   onSaveLabel,
   onHide,
@@ -56,7 +67,10 @@ export function StellarMatchCard({
   showPrivacyWarning,
   onDismissPrivacyWarning,
 }: StellarMatchCardProps) {
-  const hasBalance = balanceState === 'loaded' && balance != null && parseFloat(balance) > 0;
+  const hasBalance =
+    balancesState === 'loaded' &&
+    balances != null &&
+    balances.some((b) => parseFloat(b.balance) > 0);
   const isHidden = !!labelData?.hiddenAt;
   const currentLabel = labelData?.label ?? '';
   const currentTags = labelData?.tags ?? [];
@@ -173,55 +187,53 @@ export function StellarMatchCard({
               </div>
             )}
 
-            {isHidden ? (
-              onUnhide && (
-                <button
-                  onClick={onUnhide}
-                  className="shrink-0 text-outline transition-colors hover:text-primary"
-                  title="Unhide"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            {isHidden
+              ? onUnhide && (
+                  <button
+                    onClick={onUnhide}
+                    className="shrink-0 text-outline transition-colors hover:text-primary"
+                    title="Unhide"
                   >
-                    <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
-              )
-            ) : (
-              onHide && (
-                <button
-                  onClick={onHide}
-                  className="shrink-0 text-outline transition-colors hover:text-primary"
-                  title="Hide"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                )
+              : onHide && (
+                  <button
+                    onClick={onHide}
+                    className="shrink-0 text-outline transition-colors hover:text-primary"
+                    title="Hide"
                   >
-                    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
-                    <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
-                    <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
-                    <path d="m2 2 20 20" />
-                  </svg>
-                </button>
-              )
-            )}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+                      <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+                      <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+                      <path d="m2 2 20 20" />
+                    </svg>
+                  </button>
+                )}
           </div>
 
           {/* Tags */}
@@ -332,16 +344,22 @@ export function StellarMatchCard({
             <CopyButton text={stealthAddress} />
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {balanceState === 'loading' ? (
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {balancesState === 'loading' ? (
             <span className="font-mono text-xs text-outline">...</span>
-          ) : balanceState === 'error' ? (
+          ) : balancesState === 'error' ? (
             <span className="font-mono text-xs text-error">Balance error</span>
           ) : hasBalance ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
-            </>
+            balances!.map((b) => (
+              <div key={b.code} className="flex items-center gap-2">
+                {parseFloat(b.balance) > 0 && (
+                  <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+                )}
+                <span className="font-heading text-sm font-bold text-on-surface">
+                  {b.balance} {b.code}
+                </span>
+              </div>
+            ))
           ) : (
             <span className="font-mono text-xs text-outline">Empty</span>
           )}
@@ -369,6 +387,25 @@ export function StellarMatchCard({
               {withdrawing ? '...' : 'Withdraw'}
             </button>
           </div>
+          {onWithdrawAssetChange && balances && balances.length > 1 && (
+            <div className="mt-1 flex gap-1.5">
+              {balances
+                .filter((b) => parseFloat(b.balance) > 0)
+                .map((b) => (
+                  <button
+                    key={b.code}
+                    onClick={() => onWithdrawAssetChange(b.code)}
+                    className={`h-7 flex-1 border font-heading text-[10px] font-semibold uppercase tracking-widest transition-colors ${
+                      (withdrawAssetCode || 'XLM') === b.code
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-outline-variant text-outline hover:border-primary hover:text-primary'
+                    }`}
+                  >
+                    {b.code}
+                  </button>
+                ))}
+            </div>
+          )}
         </div>
       )}
 

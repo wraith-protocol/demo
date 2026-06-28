@@ -15,6 +15,7 @@ export interface FreighterMockConfig {
 export interface HorizonMockConfig {
   accountExists: boolean;
   accountBalance: string;
+  assetBalances?: Array<{ code: string; issuer: string; balance: string }>;
   txSuccess: boolean;
   txHash?: string;
   txErrorCode?: string;
@@ -177,13 +178,20 @@ export const test = base.extend<{
         const isSender = address === DEFAULT_WALLET_ADDRESS || address === config.address;
 
         if (isSender || mergedConfig.accountExists) {
+          const nativeBal = { asset_type: 'native', balance: mergedConfig.accountBalance };
+          const extraBals = (mergedConfig.assetBalances || []).map((a) => ({
+            asset_type: 'credit_alphanum4',
+            asset_code: a.code,
+            asset_issuer: a.issuer,
+            balance: a.balance,
+          }));
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
               id: address,
               sequence: '1',
-              balances: [{ asset_type: 'native', balance: mergedConfig.accountBalance }],
+              balances: [nativeBal, ...extraBals],
               subentry_count: 0,
             }),
           });

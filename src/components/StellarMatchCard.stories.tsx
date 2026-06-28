@@ -20,17 +20,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const BalanceLoading: Story = {
-  args: { balanceState: 'loading', balance: null },
+  args: { balancesState: 'loading', balances: null },
 };
 
 export const Funded: Story = {};
 
 export const Empty: Story = {
-  args: { balance: '0' },
+  args: { balances: [{ code: 'XLM', balance: '0', type: 'native' }] },
 };
 
 export const BalanceError: Story = {
-  args: { balanceState: 'error', balance: null },
+  args: { balancesState: 'error', balances: null },
 };
 
 export const Withdrawing: Story = {
@@ -46,11 +46,19 @@ export const RevealedKey: Story = {
 };
 
 export const WithdrawError: Story = {
-  args: { dest: SAMPLE_STEALTH_ADDRESS, error: 'No XLM balance' },
+  args: {
+    balances: [{ code: 'XLM', balance: '10', type: 'native' }],
+    dest: SAMPLE_STEALTH_ADDRESS,
+    error: 'No XLM balance',
+  },
 };
 
 export const SponsorPrompt: Story = {
-  args: { balance: '0.5', dest: SAMPLE_STEALTH_ADDRESS, showSponsorPrompt: true },
+  args: {
+    balances: [{ code: 'XLM', balance: '0.5', type: 'native' }],
+    dest: SAMPLE_STEALTH_ADDRESS,
+    showSponsorPrompt: true,
+  },
 };
 
 export const SponsoredWithdrawing: Story = {

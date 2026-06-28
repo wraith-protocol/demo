@@ -17,7 +17,10 @@ async function injectFreighterMock(page: Page) {
 
 test.describe('Stellar send simulation', () => {
   test('disables send and shows decoded Soroban error when simulation fails', async ({ page }) => {
-    const recipient = encodeStealthMetaAddress(new Uint8Array(32).fill(7), new Uint8Array(32).fill(9));
+    const recipient = encodeStealthMetaAddress(
+      new Uint8Array(32).fill(7),
+      new Uint8Array(32).fill(9),
+    );
     const sender = 'GDUKMGUGDZQK6YHYA5Z6AY2G4XDSZPSZ3SW5UN3ARVMO6QSRDWP5YLEX';
 
     await injectFreighterMock(page);
