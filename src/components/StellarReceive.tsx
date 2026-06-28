@@ -1,4 +1,6 @@
-﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   TransactionBuilder,
   Operation,
@@ -27,6 +29,7 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
+import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { STELLAR_NETWORK } from '@/config';
@@ -38,6 +41,116 @@ import { KeyVault } from '@/vault';
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
+async function fetchAnnouncementEvents(
+  rpcUrl: string,
+  contractId: string,
+): Promise<Announcement[]> {
+  const all: Announcement[] = [];
+
+  try {
+    let startLedger = 1;
+    const probeRes = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'getEvents',
+        params: {
+          startLedger: 1,
+          filters: [{ type: 'contract', contractIds: [contractId] }],
+          pagination: { limit: 1 },
+        },
+      }),
+    });
+    const probeData = await probeRes.json();
+
+    if (probeData.error?.message) {
+      const match = probeData.error.message.match(/range:\s*(\d+)\s*-\s*(\d+)/);
+      if (match) {
+        const oldest = parseInt(match[1], 10);
+        const latest = parseInt(match[2], 10);
+        startLedger = Math.max(oldest, latest - 5000);
+      } else {
+        return all;
+      }
+    }
+
+    let cursor: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const params: Record<string, unknown> = {
+        filters: [{ type: 'contract', contractIds: [contractId] }],
+        pagination: { limit: 1000 },
+      };
+
+      if (cursor) {
+        (params.pagination as Record<string, unknown>).cursor = cursor;
+      } else {
+        params.startLedger = startLedger;
+      }
+
+      const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
+      });
+
+      const data = await res.json();
+      const events = data.result?.events ?? [];
+
+      for (const event of events) {
+        try {
+          const ann = parseAnnouncementEvent(event);
+          if (ann) all.push(ann);
+        } catch (err) {
+          console.error('Failed to parse announcement event:', err);
+        }
+      }
+
+      if (events.length < 1000) {
+        hasMore = false;
+      } else {
+        cursor = data.result?.cursor;
+        if (!cursor) hasMore = false;
+      }
+    }
+  } catch {
+    // Events API may not be available
+  }
+
+  return all;
+}
+
+function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
+  const topics = event.topic as string[];
+  if (!topics || topics.length < 3) return null;
+
+  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
+  const schemeId = schemeIdScVal.u32();
+
+  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
+  const stealthScAddress = stealthScVal.address();
+  const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
+
+  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
+  const valueVec = valueScVal.vec();
+  if (!valueVec || valueVec.length < 3) return null;
+
+  const callerScAddress = valueVec[0].address();
+  const caller = Address.fromScAddress(callerScAddress).toString();
+
+  const ephBytes = valueVec[1].bytes();
+  const ephemeralPubKey = bytesToHex(new Uint8Array(ephBytes));
+
+  const metaBytes = valueVec[2].bytes();
+  const metadata = bytesToHex(new Uint8Array(metaBytes));
+
+  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
+}
+
+function StellarStealthRow({
 function StellarMatchCardContainer({
   match,
   onWithdrawn,
@@ -98,8 +211,19 @@ function StellarMatchCardContainer({
       } finally {
         setBalanceState('loaded');
       }
-    })();
-  }, [match.stealthAddress]);
+      const data = await res.json();
+      const xlm = data.balances?.find((b: { asset_type: string }) => b.asset_type === 'native');
+      return xlm?.balance ?? '0';
+    },
+    staleTime: 60000,
+    retry: 3,
+  });
+
+  useEffect(() => {
+    if (!loadingBal && balance) {
+      onBalanceFetched(match.stealthAddress, balance);
+    }
+  }, [balance, loadingBal, match.stealthAddress, onBalanceFetched]);
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -222,6 +346,74 @@ function StellarMatchCardContainer({
     setWithdrawing(true);
     setShowSponsorPrompt(false);
 
+      {!withdrawHash && balance && parseFloat(balance) > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="withdraw-dest"
+            className="font-mono text-[10px] uppercase tracking-widest text-outline"
+          >
+            Withdraw to
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="withdraw-dest"
+              type="text"
+              value={dest}
+              onChange={(e) => setDest(e.target.value)}
+              placeholder="Destination address (G...)"
+              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
+            />
+            <button
+              onClick={handleWithdraw}
+              disabled={!dest || withdrawing}
+              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {withdrawing ? '...' : 'Withdraw'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-error">{error}</p>}
+
+      {withdrawHash && (
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+          <span className="font-mono text-[10px] text-on-surface-variant">
+            Withdrawn —{' '}
+            <a
+              href={stellarTxUrl(withdrawHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline"
+            >
+              {withdrawHash.slice(0, 14)}...
+            </a>
+          </span>
+        </div>
+      )}
+
+      <div className="border-t border-outline-variant/30 pt-3">
+        {!showKey ? (
+          <button
+            onClick={() => setShowKey(true)}
+            className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+          >
+            Reveal secret key
+          </button>
+        ) : (
+          <div className="border border-error/20 bg-error/5 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
+                Stealth Key
+              </span>
+              <CopyButton text={scalarHex} />
+            </div>
+            <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
+          </div>
+        )}
+      </div>
+    </div>
     const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
@@ -463,6 +655,7 @@ export function StellarReceive() {
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const workerRef = useRef<Worker | null>(null);
 
@@ -480,6 +673,39 @@ export function StellarReceive() {
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [knownBalances, setKnownBalances] = useState<Record<string, string>>({});
+  const [visibleCount, setVisibleCount] = useState(25);
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const handleBalanceFetched = useCallback((addr: string, bal: string) => {
+    setKnownBalances((prev) => {
+      if (prev[addr] === bal) return prev;
+      return { ...prev, [addr]: bal };
+    });
+  }, []);
+
+  const filteredMatches = useMemo(() => {
+    if (!searchQuery) return matched;
+    const lowerQuery = searchQuery.toLowerCase();
+    return matched.filter((m) => {
+      const addrMatch = m.stealthAddress.toLowerCase().includes(lowerQuery);
+      const bal = knownBalances[m.stealthAddress];
+      const balMatch = bal && bal.includes(lowerQuery);
+      return addrMatch || balMatch;
+    });
+  }, [matched, searchQuery, knownBalances]);
+
+  const visibleMatches = useMemo(() => {
+    return filteredMatches.slice(0, visibleCount);
+  }, [filteredMatches, visibleCount]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: visibleMatches.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 200,
+    overscan: 5,
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -541,7 +767,8 @@ export function StellarReceive() {
     (async () => {
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const soroban =
+          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
         const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
@@ -587,7 +814,7 @@ export function StellarReceive() {
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setStellarMetaAddress(meta);
-      
+
       // Auto-register viewing key for notifications if enabled
       if (notifications.state.enabled && address && derived) {
         try {
@@ -603,6 +830,14 @@ export function StellarReceive() {
     }
   }, [signMessage, setStellarKeys, setStellarMetaAddress, t]);
   }, [signMessage, setStellarKeys, setStellarMetaAddress, notifications.state.enabled, address, notifications]);
+  }, [
+    signMessage,
+    setStellarKeys,
+    setStellarMetaAddress,
+    notifications.state.enabled,
+    address,
+    notifications,
+  ]);
 
   useEffect(() => {
     try {
@@ -782,7 +1017,8 @@ export function StellarReceive() {
     const onRetryReg = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-      const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+      const soroban =
+        (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
       const accountResponse = await withRetry(() => soroban.getAccount(address), { onRetry: onRetryReg });
@@ -880,6 +1116,16 @@ export function StellarReceive() {
     setError('');
 
     try {
+      const announcements = await fetchAnnouncementEvents(
+        STELLAR_NETWORK.rpcUrl,
+        ANNOUNCER_CONTRACT,
+      );
+      const scanFn = (window as any).scanAnnouncementsMock || scanAnnouncements;
+      const results = scanFn(
+        announcements,
+        stellarKeys.viewingKey,
+        stellarKeys.spendingPubKey,
+        stellarKeys.spendingScalar,
       if (workerRef.current) {
         workerRef.current.terminate();
       }
@@ -892,7 +1138,7 @@ export function StellarReceive() {
         if (e.data.type === 'SUCCESS') {
           const results = e.data.results;
           setMatched(results);
-          
+
           results.forEach((m: MatchedAnnouncement) => {
             addActivity({
               id: m.stealthAddress, // use address as unique id for receives
@@ -1135,6 +1381,7 @@ export function StellarReceive() {
         isDerivingKeys={isDerivingKeys}
         keysDerived={!!stellarKeys}
         metaAddress={stellarMetaAddress}
+        onShowQR={() => setShowQRModal(true)}
         vaultPanel={vaultPanel}
         registered={registered}
         isRegistering={isRegistering}
@@ -1173,20 +1420,66 @@ export function StellarReceive() {
         matches={
           filteredMatched.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {filteredMatched.map((m) => (
-                <StellarMatchCardContainer
-                  key={m.stealthAddress}
-                  match={m}
-                  onWithdrawn={() => {}}
-                  labelData={labels[m.stealthAddress] ?? null}
-                  onSaveLabel={(label, tags) => saveLabel(m.stealthAddress, label, tags)}
-                  onHide={() => hideAddress(m.stealthAddress)}
-                  onUnhide={() => unhideAddress(m.stealthAddress)}
-                  onTagClick={(tag) => setActiveTag(activeTag === tag ? null : tag)}
-                  showPrivacyWarning={shouldShowPrivacyWarning}
-                  onDismissPrivacyWarning={dismissPrivacyWarning}
-                />
-              ))}
+              <input
+                type="text"
+                placeholder="Search by address or amount..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-12 w-full border border-outline-variant bg-surface px-4 font-body text-sm text-on-surface placeholder:text-outline focus:border-primary"
+              />
+              
+              {filteredMatches.length === 0 && (
+                <div className="py-4 text-center font-body text-xs text-on-surface-variant">
+                  No matching transfers found for &quot;{searchQuery}&quot;
+                </div>
+              )}
+              
+              <div 
+                ref={parentRef} 
+                className="max-h-[600px] overflow-y-auto overflow-x-hidden flex flex-col"
+              >
+                <div
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                    const m = visibleMatches[virtualItem.index];
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        data-index={virtualItem.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualItem.start}px)`,
+                          paddingBottom: '16px', // gap equivalent
+                        }}
+                      >
+                        <StellarStealthRow 
+                          match={m} 
+                          onWithdrawn={() => {}} 
+                          onBalanceFetched={handleBalanceFetched}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {visibleCount < filteredMatches.length && (
+                <button
+                  onClick={() => setVisibleCount((v) => v + 25)}
+                  className="mt-2 h-10 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+                >
+                  Show 25 more
+                </button>
+              )}
             </div>
           )}
 
@@ -1206,6 +1499,9 @@ export function StellarReceive() {
           ) : null
         }
       />
+      {showQRModal && stellarMetaAddress && (
+        <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
+      )}
     </>
   );
 }

@@ -49,6 +49,8 @@ function StellarButton() {
 function FreighterButton() {
   const { t } = useTranslation();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const { address, isConnected, connect, disconnect } = useStellarWallet();
+  const [error, setError] = useState<string | null>(null);
   const { address, isConnected, isInstalled, isNetworkMismatch, connect, disconnect } =
     useStellarWallet();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -86,19 +88,28 @@ function FreighterButton() {
       onDisconnect={disconnect}
     />
     <>
+    <div className="flex flex-col items-end gap-1">
       <button
-        onClick={handleConnect}
-        disabled={isConnecting}
-        className={status === 'connected' ? btnConnected : btnBase}
+        onClick={async () => {
+          setError(null);
+          try {
+            await connect();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Connection failed');
+          }
+        }}
+        className={btnBase}
       >
-        {status === 'connected' && address
-          ? `${address.slice(0, 4)}...${address.slice(-4)}`
-          : isConnecting
-          ? 'Connecting...'
-          : 'Connect Wallet'}
+        Connect Freighter
       </button>
-      <StellarWalletPicker state={stellarWallet} />
-    </>
+      {error && <span className="text-[10px] text-error font-mono">{error}</span>}
+    </div>
+    <FreighterConnectButton
+      status={status}
+      address={address}
+      onConnect={handleConnect}
+      onDisconnect={disconnect}
+    />
   );
 }
 

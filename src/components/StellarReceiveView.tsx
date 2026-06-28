@@ -44,6 +44,7 @@ export interface StellarReceiveViewProps {
   notificationsPermission?: NotificationPermission;
   onToggleNotifications?: () => void;
   onFireTestNotification?: () => void;
+  onShowQR?: () => void;
 }
 
 export function StellarReceiveView({
@@ -84,6 +85,7 @@ export function StellarReceiveView({
   notificationsPermission,
   onToggleNotifications,
   onFireTestNotification,
+  onShowQR,
 }: StellarReceiveViewProps) {
   if (!isConnected) {
     return (
@@ -137,7 +139,34 @@ export function StellarReceiveView({
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
               </span>
-              <CopyButton text={metaAddress} />
+              <div className="flex items-center gap-2">
+                {onShowQR && (
+                  <button
+                    onClick={onShowQR}
+                    aria-label="Show QR Code for Meta-Address"
+                    className="text-outline hover:text-primary transition-colors p-1"
+                    title="Show QR Code"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                  </button>
+                )}
+                <CopyButton text={metaAddress} />
+              </div>
             </div>
             <code className="block break-all font-mono text-xs leading-relaxed text-primary">
               {metaAddress}
@@ -212,16 +241,17 @@ export function StellarReceiveView({
               {notificationsEnabled ? (
                 <div className="space-y-3">
                   <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-                    Receive notifications when new stealth payments are detected, even when the tab is closed.
+                    Receive notifications when new stealth payments are detected, even when the tab
+                    is closed.
                   </p>
                   <div className="rounded bg-surface-container-high p-3">
                     <p className="font-mono text-[9px] uppercase tracking-widest text-outline mb-2">
                       Privacy Disclosure
                     </p>
                     <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
-                      Your viewing key is stored encrypted in IndexedDB using your wallet-derived key. 
-                      The service worker periodically scans for new payments and shows notifications. 
-                      You can disable this feature at any time.
+                      Your viewing key is stored encrypted in IndexedDB using your wallet-derived
+                      key. The service worker periodically scans for new payments and shows
+                      notifications. You can disable this feature at any time.
                     </p>
                   </div>
                   {notificationsPermission === 'granted' && onFireTestNotification && (
@@ -235,7 +265,8 @@ export function StellarReceiveView({
                 </div>
               ) : (
                 <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-                  Enable notifications to receive alerts about incoming stealth payments even when the tab is closed.
+                  Enable notifications to receive alerts about incoming stealth payments even when
+                  the tab is closed.
                 </p>
               )}
             </div>
