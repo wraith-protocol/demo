@@ -220,7 +220,9 @@ export function StellarSendView({
               <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
                 Predicted transfer
               </p>
-              <p className="mt-2 text-sm text-on-surface-variant">Simulating Soroban pre-flight...</p>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Simulating Soroban pre-flight...
+              </p>
             </div>
           )}
 
@@ -247,7 +249,7 @@ export function StellarSendView({
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Predicted return value
                   </span>
-                  <span className="max-w-[65%] text-right font-mono text-xs text-on-surface-variant">
+                  <span className="max-w-[65%] min-w-0 break-all text-right font-mono text-xs text-on-surface-variant">
                     {simulationReturnValue}
                   </span>
                 </div>
@@ -308,7 +310,7 @@ export function StellarSendView({
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Stealth Address
               </span>
-              <div className="mt-0.5 flex items-center gap-2">
+              <div className="mt-0.5 flex min-w-0  items-center gap-2">
                 <a
                   href={stellarAddrUrl(stealthResult.stealthAddress)}
                   target="_blank"
@@ -326,7 +328,7 @@ export function StellarSendView({
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                   Final Transaction Hash
                 </span>
-                <div className="mt-0.5 flex items-center gap-2">
+                <div className="mt-0.5 flex min-w-0 items-center gap-2">
                   <a
                     href={stellarTxUrl(txHash)}
                     target="_blank"

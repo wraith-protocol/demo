@@ -108,7 +108,7 @@ export function Header() {
 
       {mobileMenuOpen && (
         <div className="border-t border-outline-variant/30 px-4 pb-3 sm:hidden">
-          <nav className="flex gap-0">
+          <nav className="flex flex-col gap-0">
             {navLinks.map((link) => (
               <Link
                 key={link.to}
