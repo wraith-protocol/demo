@@ -18,6 +18,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
@@ -55,6 +56,7 @@ export function StellarSend() {
       const decoded = decodeStealthMetaAddress(metaAddress);
       const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthResult(result);
+      trackEvent('send_submitted');
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;

@@ -22,6 +22,7 @@ import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/cha
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 
@@ -227,6 +228,7 @@ function StellarStealthRow({
       }
 
       setWithdrawHash(submitData.hash);
+      trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdraw failed');
@@ -501,6 +503,7 @@ export function StellarReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scan failed');
     } finally {

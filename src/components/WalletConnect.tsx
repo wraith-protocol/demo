@@ -5,6 +5,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ccc } from '@ckb-ccc/connector-react';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { trackEvent } from '@/lib/telemetry';
 
 const btnBase =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
@@ -24,7 +25,7 @@ function HorizenButton() {
             })}
           >
             {!connected ? (
-              <button onClick={openConnectModal} className={btnBase}>
+              <button onClick={() => { openConnectModal(); trackEvent('connect_wallet'); }} className={btnBase}>
                 Connect Wallet
               </button>
             ) : (
@@ -51,7 +52,7 @@ function FreighterButton() {
   }
 
   return (
-    <button onClick={connect} className={btnBase}>
+    <button onClick={() => { connect(); trackEvent('connect_wallet'); }} className={btnBase}>
       Connect Freighter
     </button>
   );
@@ -68,8 +69,8 @@ function SolanaButton() {
       </button>
     );
   }
-
-  return <WalletMultiButton className={btnBase} />;
+return <WalletMultiButton className={btnBase} onClick={() => trackEvent('connect_wallet')} />;
+  
 }
 
 function CkbButton() {
@@ -94,7 +95,7 @@ function CkbButton() {
   }
 
   return (
-    <button onClick={open} className={btnBase}>
+    <button onClick={() => { open(); trackEvent('connect_wallet'); }} className={btnBase}>
       Connect Wallet
     </button>
   );
