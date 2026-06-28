@@ -1,3 +1,6 @@
+import { createContext, useContext } from 'react';
+import { STELLAR_NETWORK } from '@/config';
+import { useStellarWallet as useStellarWalletHook } from '@/hooks/useStellarWallet';
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { STELLAR_NETWORK } from '@/config';
 import { useChain } from '@/context/ChainContext';
@@ -13,12 +16,30 @@ interface StellarWalletContextValue {
   disconnect: () => void;
   signMessage: (message: string) => Promise<Uint8Array>;
   signTransaction: (xdr: string) => Promise<string>;
+  openPicker: () => void;
+  closePicker: () => void;
+  walletId: string | null;
   subscribeToDisconnect: (cb: () => void) => () => void;
 }
 
 export const StellarWalletContext = createContext<StellarWalletContextValue | null>(null);
 
+async function getFreighter() {
+  if (typeof window !== 'undefined' && (window as any).freighterMock) {
+    return (window as any).freighterMock;
+  }
+  return await import('@stellar/freighter-api');
+}
+
 export function StellarWalletProvider({ children }: { children: React.ReactNode }) {
+  const stellarWallet = useStellarWalletHook();
+
+  // Legacy signMessage - only supported by Freighter currently
+  const signMessage = async (message: string): Promise<Uint8Array> => {
+    // For now, signMessage is only implemented for Freighter
+    // Other wallets don't support arbitrary message signing in the same way
+    throw new Error('Message signing is currently only supported by Freighter wallet');
+  };
   const { chain } = useChain();
   const [address, setAddress] = useState<string | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean | null>(null);
@@ -96,7 +117,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     const tryInit = async () => {
       if (stopped) return;
       try {
-        const freighter = await import('@stellar/freighter-api');
+        const freighter = await getFreighter();
         const { isConnected: connected } = await freighter.isConnected();
 
         if (!connected) {
@@ -193,7 +214,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const connect = useCallback(async () => {
-    const freighter = await import('@stellar/freighter-api');
+    const freighter = await getFreighter();
     const { isConnected: connected } = await freighter.isConnected();
     if (!connected) {
       throw new Error(
@@ -241,7 +262,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     async (message: string): Promise<Uint8Array> => {
       if (!address) throw new Error('Wallet not connected');
 
-      const freighter = await import('@stellar/freighter-api');
+      const freighter = await getFreighter();
       const { signedMessage } = await freighter.signMessage(message, {
         address,
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
@@ -284,7 +305,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     async (xdr: string): Promise<string> => {
       if (!address) throw new Error('Wallet not connected');
 
-      const freighter = await import('@stellar/freighter-api');
+      const freighter = await getFreighter();
       const { signedTxXdr } = await freighter.signTransaction(xdr, {
         address,
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
@@ -298,6 +319,25 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   return (
     <StellarWalletContext.Provider
       value={{
+        address: stellarWallet.publicKey,
+        isConnected: stellarWallet.status === 'connected',
+        connect: async () => {
+          // If no wallet is selected, open picker
+          if (!stellarWallet.walletId) {
+            stellarWallet.openPicker();
+            return;
+          }
+          // Otherwise reconnect with existing wallet
+          if (stellarWallet.walletId) {
+            await stellarWallet.connect(stellarWallet.walletId);
+          }
+        },
+        disconnect: () => stellarWallet.disconnect(),
+        signMessage,
+        signTransaction: stellarWallet.signTransaction,
+        openPicker: stellarWallet.openPicker,
+        closePicker: stellarWallet.closePicker,
+        walletId: stellarWallet.walletId,
         address,
         isConnected,
         isInstalled,

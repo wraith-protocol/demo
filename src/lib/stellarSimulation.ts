@@ -11,6 +11,7 @@ import {
 } from '@stellar/stellar-sdk';
 import { generateStealthAddress, decodeStealthMetaAddress, SCHEME_ID } from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
+import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;
@@ -86,14 +87,18 @@ function formatPredictedEvents(events: ReturnType<typeof humanizeEvents>) {
   });
 }
 
-export async function simulateStellarSendAnnouncement(params: {
-  address: string;
-  recipient: string;
-}) {
+export async function simulateStellarSendAnnouncement(
+  params: { address: string; recipient: string },
+  opts?: Pick<RetryOptions, 'signal' | 'onRetry'>,
+) {
   const decoded = decodeStealthMetaAddress(params.recipient);
   const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
 
-  const accountRes = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${params.address}`);
+  const accountRes = await fetchWithRetry(
+    `${STELLAR_NETWORK.horizonUrl}/accounts/${params.address}`,
+    {},
+    opts,
+  );
   if (!accountRes.ok) throw new Error('Failed to load sender account');
 
   const accountData = (await accountRes.json()) as { sequence: string };
@@ -117,7 +122,7 @@ export async function simulateStellarSendAnnouncement(params: {
     .build();
 
   const soroban = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-  const simulation = await soroban.simulateTransaction(announceTx);
+  const simulation = await withRetry(() => soroban.simulateTransaction(announceTx), opts);
 
   if ('error' in simulation) {
     throw new Error(decodeSimulationError(simulation.error));

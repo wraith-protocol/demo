@@ -6,6 +6,7 @@ import {
   getDeployment,
 } from '@wraith-protocol/sdk/chains/ckb';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
 
@@ -71,6 +72,7 @@ export function CkbSend() {
       await tx.completeFeeBy(signer, 1000);
 
       const hash = await signer.sendTransaction(tx);
+      trackEvent('send_submitted');
       setTxHash(hash);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');

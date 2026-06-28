@@ -48,6 +48,8 @@ export interface StellarWalletState {
   disconnect: () => Promise<void>;
   /** Sign a transaction with the active wallet. */
   signTransaction: (xdr: string, networkPassphrase?: string) => Promise<string>;
+  /** Set a pre-connected wallet (for WalletConnect QR flow). */
+  setPreconnectedWallet: (wallet: StellarWallet, id: WalletId, publicKey: string, network: string) => void;
 }
 
 export function useStellarWallet(): StellarWalletState {
@@ -161,10 +163,24 @@ export function useStellarWallet(): StellarWalletState {
     return result.signedXdr;
   }, [wallet, publicKey]);
 
+  const setPreconnectedWallet = useCallback((preconnectedWallet: StellarWallet, id: WalletId, pk: string, net: string) => {
+    setWallet(preconnectedWallet);
+    setWalletId(id);
+    setPublicKey(pk);
+    setNetwork(net);
+    setStatus('connected');
+    setPickerOpen(false);
+
+    // Persist for auto-reconnect
+    localStorage.setItem(STORAGE_KEY_WALLET, id);
+    localStorage.setItem(STORAGE_KEY_PUBKEY, pk);
+    localStorage.setItem(STORAGE_KEY_NETWORK, net);
+  }, []);
+
   return {
     wallet, walletId, publicKey, network,
     status, error, detecting, available,
     pickerOpen, openPicker, closePicker,
-    connect, disconnect, signTransaction,
+    connect, disconnect, signTransaction, setPreconnectedWallet,
   };
 }

@@ -13,6 +13,7 @@ export interface StellarMatchCardProps {
   withdrawHash: string | null;
   feeBumpHash: string | null;
   error: string;
+  retryStatus?: string;
   showKey: boolean;
   showSponsorPrompt: boolean;
   onDestChange: (value: string) => void;
@@ -39,6 +40,7 @@ export function StellarMatchCard({
   withdrawHash,
   feeBumpHash,
   error,
+  retryStatus = '',
   showKey,
   showSponsorPrompt,
   onDestChange,
@@ -402,6 +404,7 @@ export function StellarMatchCard({
         </div>
       )}
 
+      {retryStatus && <p className="text-xs text-on-surface-variant">{retryStatus}</p>}
       {error && <p className="text-xs text-error">{error}</p>}
 
       {withdrawHash && (

@@ -16,6 +16,7 @@ export { FreighterAdapter } from './FreighterAdapter';
 export { AlbedoAdapter }    from './AlbedoAdapter';
 export { XBullAdapter }     from './XBullAdapter';
 export { LobstrAdapter }    from './LobstrAdapter';
+export { WalletConnectAdapter } from './WalletConnectAdapter';
 
 import type { StellarWallet, WalletId } from './types';
 
@@ -42,11 +43,15 @@ export function getAdapter(id: WalletId): StellarWallet {
       const { LobstrAdapter } = require('./LobstrAdapter');
       return new LobstrAdapter();
     }
+    case 'walletconnect': {
+      const { WalletConnectAdapter } = require('./WalletConnectAdapter');
+      return new WalletConnectAdapter();
+    }
   }
 }
 
 /** All wallet IDs in display order. */
-export const WALLET_IDS: WalletId[] = ['freighter', 'albedo', 'xbull', 'lobstr'];
+export const WALLET_IDS: WalletId[] = ['freighter', 'albedo', 'xbull', 'lobstr', 'walletconnect'];
 
 /** Metadata used by the picker without instantiating adapters. */
 export const WALLET_META: Record<WalletId, { name: string; icon: string; installUrl: string }> = {
@@ -69,5 +74,10 @@ export const WALLET_META: Record<WalletId, { name: string; icon: string; install
     name: 'LOBSTR',
     icon: 'https://lobstr.co/static/img/lobstr-logo.svg',
     installUrl: 'https://lobstr.co/signer',
+  },
+  walletconnect: {
+    name: 'WalletConnect',
+    icon: 'https://walletconnect.com/walletconnect-logo.png',
+    installUrl: 'https://walletconnect.com/explore',
   },
 };

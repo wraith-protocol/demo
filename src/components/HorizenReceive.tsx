@@ -21,6 +21,7 @@ import {
 } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { trackEvent } from '@/lib/telemetry';
 import { CopyButton } from '@/components/CopyButton';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
@@ -87,6 +88,7 @@ function StealthRow({
       });
 
       setWithdrawHash(hash);
+      trackEvent('withdraw');
       onWithdrawn(hash);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Withdraw failed');
@@ -278,6 +280,7 @@ export function HorizenReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scan failed');
     } finally {

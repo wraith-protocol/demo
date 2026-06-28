@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -18,6 +19,7 @@ export interface StellarSendViewProps {
   simulationReturnValue: string | null;
   simulationEvents: string[];
   error: string;
+  retryStatus?: string;
   canSubmit: boolean;
   isPending: boolean;
   stealthResult: { stealthAddress: string } | null;
@@ -37,6 +39,9 @@ export interface StellarSendViewProps {
   paramTo?: boolean;
   paramAmount?: boolean;
   paramMemo?: boolean;
+  onScanQRClick?: () => void;
+  isScanningQR?: boolean;
+  scannerElement?: ReactNode;
 }
 
 export function StellarSendView({
@@ -56,6 +61,7 @@ export function StellarSendView({
   simulationReturnValue,
   simulationEvents,
   error,
+  retryStatus = '',
   canSubmit,
   isPending,
   stealthResult,
@@ -75,6 +81,9 @@ export function StellarSendView({
   paramTo = false,
   paramAmount = false,
   paramMemo = false,
+  onScanQRClick,
+  isScanningQR = false,
+  scannerElement,
 }: StellarSendViewProps) {
   if (!isConnected) {
     return (
@@ -124,15 +133,40 @@ export function StellarSendView({
                 aria-describedby="stellar-recipient-error"
                 placeholder="st:xlm:..."
                 disabled={paramTo || isExpired}
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
+                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-28 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               {!paramTo && !isExpired && (
-                <button
-                  onClick={onPaste}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-                >
-                  Paste
-                </button>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-3">
+                  {onScanQRClick && (
+                    <button
+                      onClick={onScanQRClick}
+                      aria-label="Scan QR Code"
+                      className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary flex items-center gap-1"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                      Scan
+                    </button>
+                  )}
+                  <button
+                    onClick={onPaste}
+                    className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                  >
+                    Paste
+                  </button>
+                </div>
               )}
             </div>
             <p
@@ -280,6 +314,7 @@ export function StellarSendView({
             <p className="text-sm text-error">{simulationError}</p>
           )}
 
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           <button
@@ -353,6 +388,7 @@ export function StellarSendView({
           )}
         </div>
       )}
+      {isScanningQR && scannerElement}
     </section>
   );
 }
