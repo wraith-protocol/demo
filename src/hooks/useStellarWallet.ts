@@ -12,16 +12,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getAdapter,
-  WALLET_IDS,
-  type StellarWallet,
-  type WalletId,
-} from '@/wallets/stellar';
+import { getAdapter, WALLET_IDS, type StellarWallet, type WalletId } from '@/wallets/stellar';
 
-const STORAGE_KEY_WALLET   = 'wraith:stellar:wallet';
-const STORAGE_KEY_PUBKEY   = 'wraith:stellar:pubkey';
-const STORAGE_KEY_NETWORK  = 'wraith:stellar:network';
+const STORAGE_KEY_WALLET = 'wraith:stellar:wallet';
+const STORAGE_KEY_PUBKEY = 'wraith:stellar:pubkey';
+const STORAGE_KEY_NETWORK = 'wraith:stellar:network';
 
 export type WalletStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -49,19 +44,24 @@ export interface StellarWalletState {
   /** Sign a transaction with the active wallet. */
   signTransaction: (xdr: string, networkPassphrase?: string) => Promise<string>;
   /** Set a pre-connected wallet (for WalletConnect QR flow). */
-  setPreconnectedWallet: (wallet: StellarWallet, id: WalletId, publicKey: string, network: string) => void;
+  setPreconnectedWallet: (
+    wallet: StellarWallet,
+    id: WalletId,
+    publicKey: string,
+    network: string,
+  ) => void;
 }
 
 export function useStellarWallet(): StellarWalletState {
-  const [walletId, setWalletId]     = useState<WalletId | null>(null);
-  const [wallet, setWallet]         = useState<StellarWallet | null>(null);
-  const [publicKey, setPublicKey]   = useState<string | null>(null);
-  const [network, setNetwork]       = useState<string | null>(null);
-  const [status, setStatus]         = useState<WalletStatus>('idle');
-  const [error, setError]           = useState<string | null>(null);
+  const [walletId, setWalletId] = useState<WalletId | null>(null);
+  const [wallet, setWallet] = useState<StellarWallet | null>(null);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
+  const [network, setNetwork] = useState<string | null>(null);
+  const [status, setStatus] = useState<WalletStatus>('idle');
+  const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [detecting, setDetecting]   = useState(true);
-  const [available, setAvailable]   = useState<Partial<Record<WalletId, boolean>>>({});
+  const [detecting, setDetecting] = useState(true);
+  const [available, setAvailable] = useState<Partial<Record<WalletId, boolean>>>({});
 
   const connectingRef = useRef(false);
 
@@ -82,12 +82,14 @@ export function useStellarWallet(): StellarWalletState {
 
       if (cancelled) return;
       const map: Partial<Record<WalletId, boolean>> = {};
-      results.forEach(([id, avail]) => { map[id] = avail; });
+      results.forEach(([id, avail]) => {
+        map[id] = avail;
+      });
       setAvailable(map);
       setDetecting(false);
 
       // Auto-reconnect if we have a persisted session
-      const savedId  = localStorage.getItem(STORAGE_KEY_WALLET) as WalletId | null;
+      const savedId = localStorage.getItem(STORAGE_KEY_WALLET) as WalletId | null;
       const savedKey = localStorage.getItem(STORAGE_KEY_PUBKEY);
       const savedNet = localStorage.getItem(STORAGE_KEY_NETWORK);
 
@@ -102,12 +104,14 @@ export function useStellarWallet(): StellarWalletState {
     }
 
     init().catch(console.error);
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
-  const openPicker  = useCallback(() => setPickerOpen(true),  []);
+  const openPicker = useCallback(() => setPickerOpen(true), []);
   const closePicker = useCallback(() => setPickerOpen(false), []);
 
   const connect = useCallback(async (id: WalletId) => {
@@ -118,7 +122,7 @@ export function useStellarWallet(): StellarWalletState {
 
     try {
       const adapter = getAdapter(id);
-      const result  = await adapter.connect();
+      const result = await adapter.connect();
 
       setWallet(adapter);
       setWalletId(id);
@@ -128,8 +132,8 @@ export function useStellarWallet(): StellarWalletState {
       setPickerOpen(false);
 
       // Persist for auto-reconnect
-      localStorage.setItem(STORAGE_KEY_WALLET,  id);
-      localStorage.setItem(STORAGE_KEY_PUBKEY,  result.publicKey);
+      localStorage.setItem(STORAGE_KEY_WALLET, id);
+      localStorage.setItem(STORAGE_KEY_PUBKEY, result.publicKey);
       localStorage.setItem(STORAGE_KEY_NETWORK, result.network);
     } catch (err) {
       setStatus('error');
@@ -141,7 +145,11 @@ export function useStellarWallet(): StellarWalletState {
 
   const disconnect = useCallback(async () => {
     if (wallet) {
-      try { await wallet.disconnect(); } catch { /* best-effort */ }
+      try {
+        await wallet.disconnect();
+      } catch {
+        /* best-effort */
+      }
     }
     setWallet(null);
     setWalletId(null);
@@ -154,33 +162,50 @@ export function useStellarWallet(): StellarWalletState {
     localStorage.removeItem(STORAGE_KEY_NETWORK);
   }, [wallet]);
 
-  const signTransaction = useCallback(async (xdr: string, networkPassphrase?: string) => {
-    if (!wallet) throw new Error('No wallet connected');
-    const result = await wallet.signTransaction(xdr, {
-      networkPassphrase,
-      publicKey: publicKey ?? undefined,
-    });
-    return result.signedXdr;
-  }, [wallet, publicKey]);
+  const signTransaction = useCallback(
+    async (xdr: string, networkPassphrase?: string) => {
+      if (!wallet) throw new Error('No wallet connected');
+      const result = await wallet.signTransaction(xdr, {
+        networkPassphrase,
+        publicKey: publicKey ?? undefined,
+      });
+      return result.signedXdr;
+    },
+    [wallet, publicKey],
+  );
 
-  const setPreconnectedWallet = useCallback((preconnectedWallet: StellarWallet, id: WalletId, pk: string, net: string) => {
-    setWallet(preconnectedWallet);
-    setWalletId(id);
-    setPublicKey(pk);
-    setNetwork(net);
-    setStatus('connected');
-    setPickerOpen(false);
+  const setPreconnectedWallet = useCallback(
+    (preconnectedWallet: StellarWallet, id: WalletId, pk: string, net: string) => {
+      setWallet(preconnectedWallet);
+      setWalletId(id);
+      setPublicKey(pk);
+      setNetwork(net);
+      setStatus('connected');
+      setPickerOpen(false);
 
-    // Persist for auto-reconnect
-    localStorage.setItem(STORAGE_KEY_WALLET, id);
-    localStorage.setItem(STORAGE_KEY_PUBKEY, pk);
-    localStorage.setItem(STORAGE_KEY_NETWORK, net);
-  }, []);
+      // Persist for auto-reconnect
+      localStorage.setItem(STORAGE_KEY_WALLET, id);
+      localStorage.setItem(STORAGE_KEY_PUBKEY, pk);
+      localStorage.setItem(STORAGE_KEY_NETWORK, net);
+    },
+    [],
+  );
 
   return {
-    wallet, walletId, publicKey, network,
-    status, error, detecting, available,
-    pickerOpen, openPicker, closePicker,
-    connect, disconnect, signTransaction, setPreconnectedWallet,
+    wallet,
+    walletId,
+    publicKey,
+    network,
+    status,
+    error,
+    detecting,
+    available,
+    pickerOpen,
+    openPicker,
+    closePicker,
+    connect,
+    disconnect,
+    signTransaction,
+    setPreconnectedWallet,
   };
 }

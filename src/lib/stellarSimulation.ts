@@ -9,7 +9,11 @@ import {
   scValToNative,
   xdr,
 } from '@stellar/stellar-sdk';
-import { generateStealthAddress, decodeStealthMetaAddress, SCHEME_ID } from '@wraith-protocol/sdk/chains/stellar';
+import {
+  generateStealthAddress,
+  decodeStealthMetaAddress,
+  SCHEME_ID,
+} from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
 import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
 
@@ -129,7 +133,9 @@ export async function simulateStellarSendAnnouncement(
   }
 
   const fee = formatPredictedFee(simulation.minResourceFee);
-  const returnValue = simulation.result ? stringifyNativeValue(scValToNative(simulation.result.retval)) : 'void';
+  const returnValue = simulation.result
+    ? stringifyNativeValue(scValToNative(simulation.result.retval))
+    : 'void';
   const events = formatPredictedEvents(humanizeEvents(simulation.events));
 
   return {

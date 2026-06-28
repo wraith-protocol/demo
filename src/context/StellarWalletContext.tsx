@@ -56,8 +56,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
 
   const isConnected = !!address;
   const isNetworkMismatch =
-    freighterPassphrase !== null &&
-    freighterPassphrase !== STELLAR_NETWORK.networkPassphrase;
+    freighterPassphrase !== null && freighterPassphrase !== STELLAR_NETWORK.networkPassphrase;
 
   // Isolated per-listener invocation so one throwing callback never blocks the rest
   // or the BroadcastChannel broadcast that follows.

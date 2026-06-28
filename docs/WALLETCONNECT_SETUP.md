@@ -33,11 +33,14 @@ VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here
 ### Option 2: Deployment platforms
 
 #### Vercel
+
 Add as an environment variable in your Vercel project settings:
+
 - Name: `VITE_WALLETCONNECT_PROJECT_ID`
 - Value: Your Project ID
 
 #### Other platforms
+
 Add `VITE_WALLETCONNECT_PROJECT_ID` as an environment variable in your deployment configuration.
 
 ## Supported Wallets
@@ -71,15 +74,18 @@ To test WalletConnect integration:
 ## Troubleshooting
 
 ### "WalletConnect project ID not configured"
+
 - Ensure `VITE_WALLETCONNECT_PROJECT_ID` is set in your environment
 - Restart your development server after adding the environment variable
 
 ### QR code not displaying
+
 - Check browser console for errors
 - Verify the WalletConnect client initialized successfully
 - Ensure your Project ID is valid
 
 ### Connection fails
+
 - Ensure your mobile wallet supports WalletConnect v2
 - Check that your mobile wallet supports Stellar
 - Verify you're on the correct network (testnet/mainnet)

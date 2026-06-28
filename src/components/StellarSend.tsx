@@ -8,18 +8,15 @@ import {
   nativeToScVal,
   Address,
   Operation,
-  Asset,
   Memo,
 } from '@stellar/stellar-sdk';
-import {
-  generateStealthAddress,
-  decodeStealthMetaAddress,
-  SCHEME_ID,
-} from '@wraith-protocol/sdk/chains/stellar';
+import { decodeStealthMetaAddress, SCHEME_ID } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
 import { StellarSendView } from '@/components/StellarSendView';
 import { useActivityStore } from '@/stores/activityStore';
+import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
+import { CopyButton } from '@/components/CopyButton';
 import { QrReader } from 'react-qr-reader';
 import {
   emptyStellarSendSimulation,
@@ -27,6 +24,16 @@ import {
   type StellarSendSimulationState,
 } from '@/lib/stellarSimulation';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
+import {
+  STELLAR_ASSETS,
+  getDefaultStellarAsset,
+  toStellarAsset,
+  getAssetBalance,
+  hasTrustline,
+  validateAssetAmount,
+  type StellarAssetInfo,
+} from '@/lib/stellar/assets';
+import { buildSendStellarAsset } from '@/lib/stellar/buildSendStellarAsset';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -35,6 +42,8 @@ const MIN_XLM_AMOUNT = 0.0000001;
 
 type HorizonBalance = {
   asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
   balance: string;
 };
 
@@ -59,21 +68,6 @@ function validateMetaAddress(value: string) {
   }
 }
 
-function validateAmount(value: string) {
-  if (!value) return 'Amount is required';
-  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return 'Enter a valid XLM amount';
-
-  const decimalPart = value.split('.')[1];
-  if (decimalPart && decimalPart.length > 7) return 'XLM supports up to 7 decimals';
-
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= MIN_XLM_AMOUNT) {
-    return 'Amount must be greater than 0.0000001 XLM';
-  }
-
-  return '';
-}
-
 export function StellarSend() {
   const [searchParams] = useSearchParams();
   const paramTo = searchParams.get('to');
@@ -87,12 +81,14 @@ export function StellarSend() {
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
   const [memo, setMemo] = useState(paramMemo || '');
+  const [selectedAsset, setSelectedAsset] = useState<StellarAssetInfo>(getDefaultStellarAsset());
   const [error, setError] = useState('');
-  const [touched, setTouched] = useState({ recipient: false, amount: false });
+  const [touched, setTouched] = useState({ recipient: false, amount: false, asset: false });
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   const [isScanningQR, setIsScanningQR] = useState(false);
   const [scannerError, setScannerError] = useState('');
+  const [trustlineWarning, setTrustlineWarning] = useState<string | null>(null);
   const closeScannerRef = useRef<HTMLButtonElement>(null);
 
   // Focus close button on mount and handle Escape key to close
@@ -252,15 +248,23 @@ export function StellarSend() {
   const amountValue = amount.trim();
 
   const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
-  const amountError = useMemo(() => validateAmount(amountValue), [amountValue]);
+  const amountError = useMemo(
+    () => validateAssetAmount(amountValue, selectedAsset),
+    [amountValue, selectedAsset],
+  );
   const parsedAmount = amountError ? null : Number(amountValue);
+  const isNative = selectedAsset.type === 'native';
   const requiredBalance =
-    parsedAmount === null ? null : parsedAmount + STELLAR_BASE_FEE_XLM + STELLAR_BASE_RESERVE_XLM;
+    parsedAmount === null
+      ? null
+      : isNative
+        ? parsedAmount + STELLAR_BASE_FEE_XLM + STELLAR_BASE_RESERVE_XLM
+        : parsedAmount;
   const isAwaitingBalance =
     !!address && !amountError && !!amountValue && sourceBalance === null && !balanceLookupError;
   const balanceError =
     requiredBalance !== null && sourceBalance !== null && requiredBalance > sourceBalance
-      ? `Insufficient XLM (you have ${formatXlm(sourceBalance)}, need ${formatXlm(requiredBalance)})`
+      ? `Insufficient ${selectedAsset.label} (you have ${sourceBalance}, need ${requiredBalance})`
       : '';
   const validationError = recipientError || amountError || balanceLookupError || balanceError;
   const canSubmit =
@@ -289,7 +293,8 @@ export function StellarSend() {
       try {
         const result = await simulateStellarSendAnnouncement(
           { address, recipient: metaAddress },
-          { onRetry: (attempt, _, err) => {
+          {
+            onRetry: (attempt, _, err) => {
               const msg = err instanceof Error ? err.message : '';
               setRetryStatus(`Retrying (${attempt}/3)…${msg ? ` (${msg})` : ''}`);
             },
@@ -349,9 +354,10 @@ export function StellarSend() {
         if (!accountRes.ok) throw new Error('Failed to load sender account');
 
         const accountData = (await accountRes.json()) as HorizonAccount;
-        const nativeBalance = accountData.balances?.find((bal) => bal.asset_type === 'native');
-        const parsedBalance = Number(nativeBalance?.balance);
-        if (!Number.isFinite(parsedBalance)) throw new Error('Failed to read XLM balance');
+        const balances = accountData.balances ?? [];
+        const parsedBalance = Number(getAssetBalance(balances, selectedAsset));
+        if (!Number.isFinite(parsedBalance))
+          throw new Error(`Failed to read ${selectedAsset.label} balance`);
 
         setSourceBalance(parsedBalance);
       } catch (err) {
@@ -362,7 +368,7 @@ export function StellarSend() {
               ? err.message
               : err instanceof Error
                 ? err.message
-                : 'Failed to check XLM balance',
+                : `Failed to check ${selectedAsset.label} balance`,
           );
         }
       } finally {
@@ -376,11 +382,57 @@ export function StellarSend() {
       controller.abort();
       globalThis.clearTimeout(timeout);
     };
-  }, [address, amountError, amountValue]);
+  }, [address, amountError, amountValue, selectedAsset]);
+
+  // Trustline check for non-native assets
+  useEffect(() => {
+    setTrustlineWarning(null);
+
+    if (selectedAsset.type === 'native' || !metaAddress || recipientError) {
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const result = buildSendStellarAsset(metaAddress, selectedAsset);
+        const res = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${result.stealthAddress}`,
+          {},
+          { onRetry: (attempt) => setRetryStatus(`Retrying (${attempt}/3)…`) },
+        );
+        setRetryStatus('');
+        if (cancelled) return;
+        if (res.ok) {
+          const data = (await res.json()) as HorizonAccount;
+          const trustlineOk = hasTrustline(data.balances ?? [], selectedAsset);
+          if (!trustlineOk) {
+            setTrustlineWarning(
+              `Recipient lacks a ${selectedAsset.label} trustline. They won't be able to receive ${selectedAsset.label}.`,
+            );
+          }
+        } else {
+          setTrustlineWarning(
+            `Stealth account doesn't exist yet. Send XLM first to create it before sending ${selectedAsset.label}.`,
+          );
+        }
+      } catch {
+        setRetryStatus('');
+        if (!cancelled) {
+          setTrustlineWarning(`Could not verify recipient's ${selectedAsset.label} trustline.`);
+        }
+      }
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(timeout);
+    };
+  }, [metaAddress, selectedAsset, recipientError]);
 
   const handleSend = useCallback(async () => {
     setSubmitAttempted(true);
-    setTouched({ recipient: true, amount: true });
+    setTouched({ recipient: true, amount: true, asset: true });
 
     if (!address) {
       setError('Wallet not connected');
@@ -400,10 +452,10 @@ export function StellarSend() {
     const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
-      const decoded = decodeStealthMetaAddress(metaAddress);
-      const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+      const result = buildSendStellarAsset(metaAddress, selectedAsset);
       setStealthResult(result);
 
+      const stellarAsset = toStellarAsset(selectedAsset);
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
@@ -420,11 +472,21 @@ export function StellarSend() {
           {},
           { onRetry },
         );
-        stealthExists = stealthCheckRes.ok;
+        if (stealthCheckRes.ok) {
+          stealthExists = true;
+        }
       } catch {
         // Transient network error on existence check — assume not created yet
       } finally {
         setRetryStatus('');
+      }
+
+      if (!stealthExists && selectedAsset.type !== 'native') {
+        setError(
+          `The stealth account doesn't exist yet. Send XLM first to create it, then send ${selectedAsset.label}.`,
+        );
+        setIsPending(false);
+        return;
       }
 
       let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
@@ -433,7 +495,7 @@ export function StellarSend() {
         builder = builder.addOperation(
           Operation.payment({
             destination: result.stealthAddress,
-            asset: Asset.native(),
+            asset: stellarAsset,
             amount: amountValue,
           }),
         );
@@ -510,7 +572,9 @@ export function StellarSend() {
           .setTimeout(30)
           .build();
 
-        const simulated = await withRetry(() => soroban.simulateTransaction(announceTx), { onRetry });
+        const simulated = await withRetry(() => soroban.simulateTransaction(announceTx), {
+          onRetry,
+        });
         setRetryStatus('');
         if (!('error' in simulated)) {
           const assembled = rpcMod
@@ -552,7 +616,7 @@ export function StellarSend() {
     if (!isExpired) {
       setError('');
     }
-    setTouched({ recipient: false, amount: false });
+    setTouched({ recipient: false, amount: false, asset: false });
     setSubmitAttempted(false);
     setSourceBalance(null);
     setBalanceLookupError('');
@@ -573,200 +637,206 @@ export function StellarSend() {
       ? 'Checking...'
       : balanceLookupError ||
         balanceError ||
-        (sourceBalance !== null ? `${formatXlm(sourceBalance)} XLM` : 'Enter amount');
+        (sourceBalance !== null ? `${sourceBalance} ${selectedAsset.label}` : 'Enter amount');
 
   return (
-    <section className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
-        </span>
-        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
-        </h1>
-        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
-        </p>
-      </div>
-
-      {!stealthResult && (
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="recipient-meta-address"
-              className="font-mono text-[10px] uppercase tracking-widest text-outline"
-            >
-              Recipient Meta-Address
-            </label>
-            <div className="relative">
-              <input
-                id="recipient-meta-address"
-                type="text"
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:xlm:..."
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
-              />
-              <button
-                onClick={handlePaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-              >
-                Paste
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label
-              htmlFor="amount"
-              className="font-mono text-[10px] uppercase tracking-widest text-outline"
-            >
-              Amount
-            </label>
-            <div className="relative">
-              <input
-                id="amount"
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
-              </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Announcer contract
-              </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
-            </div>
-          </div>
-
-          {error && <p className="text-sm text-error">{error}</p>}
-
-          <button
-            onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
-            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-          >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
-          </button>
+    <>
+      <section className="flex flex-col gap-8">
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            Stellar Testnet / XLM
+          </span>
+          <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
+            Send
+          </h1>
+          <p className="font-body text-sm leading-relaxed text-on-surface-variant">
+            Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
+            only they can control.
+          </p>
         </div>
-      )}
 
-      {stealthResult && (
-        <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
-          <div className="flex items-center gap-2">
-            {isSuccess ? (
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-            ) : (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
-            )}
-            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
-              </span>
-              <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
+        {!stealthResult && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="recipient-meta-address"
+                className="font-mono text-[10px] uppercase tracking-widest text-outline"
+              >
+                Recipient Meta-Address
+              </label>
+              <div className="relative">
+                <input
+                  id="recipient-meta-address"
+                  type="text"
+                  value={recipient}
+                  onChange={(e) => setRecipient(e.target.value)}
+                  placeholder="st:xlm:..."
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                />
+                <button
+                  onClick={handlePaste}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
                 >
-                  {stealthResult.stealthAddress}
-                </a>
-                <CopyButton text={stealthResult.stealthAddress} />
+                  Paste
+                </button>
               </div>
             </div>
 
-            {txHash && (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="amount"
+                className="font-mono text-[10px] uppercase tracking-widest text-outline"
+              >
+                Amount
+              </label>
+              <div className="relative">
+                <input
+                  id="amount"
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
+                  XLM
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Network fee
+                </span>
+                <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Announcer contract
+                </span>
+                <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
+              </div>
+            </div>
+
+            {error && <p className="text-sm text-error">{error}</p>}
+
+            <button
+              onClick={handleSend}
+              disabled={!recipient || !amount || isPending}
+              className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            </button>
+          </div>
+        )}
+
+        {stealthResult && (
+          <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
+            <div className="flex items-center gap-2">
+              {isSuccess ? (
+                <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+              ) : (
+                <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
+              )}
+              <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
+                {isSuccess ? 'Transfer Complete' : 'Pending'}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3">
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  Stealth Address
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
-                    href={stellarTxUrl(txHash)}
+                    href={stellarAddrUrl(stealthResult.stealthAddress)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block truncate font-mono text-xs text-primary underline"
                   >
-                    {txHash}
+                    {stealthResult.stealthAddress}
                   </a>
-                  <CopyButton text={txHash} />
+                  <CopyButton text={stealthResult.stealthAddress} />
                 </div>
               </div>
+
+              {txHash && (
+                <div>
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Transaction Hash
+                  </span>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <a
+                      href={stellarTxUrl(txHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block truncate font-mono text-xs text-primary underline"
+                    >
+                      {txHash}
+                    </a>
+                    <CopyButton text={txHash} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {isSuccess && (
+              <button
+                onClick={reset}
+                className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+              >
+                New Transfer
+              </button>
             )}
           </div>
-
-          {isSuccess && (
-            <button
-              onClick={reset}
-              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
-            >
-              New Transfer
-            </button>
-          )}
-        </div>
-      )}
-    </section>
-    <StellarSendView
-      isConnected={isConnected}
-      recipient={recipient}
-      amount={amount}
-      recipientError={recipientError}
-      showRecipientError={touched.recipient || submitAttempted}
-      amountError={amountError}
-      showAmountError={touched.amount || submitAttempted}
-      amountInvalid={!!(amountError || balanceLookupError || balanceError)}
-      balanceText={balanceText}
-      balanceIsError={!!(balanceLookupError || balanceError)}
-      simulationStatus={simulation.status}
-      simulationError={simulation.status === 'error' ? simulation.error : ''}
-      simulationFee={simulation.status === 'success' ? simulation.fee : null}
-      simulationReturnValue={simulation.status === 'success' ? simulation.returnValue : null}
-      simulationEvents={simulation.status === 'success' ? simulation.events : []}
-      error={error}
-      retryStatus={retryStatus}
-      canSubmit={canSubmit && simulation.status === 'success'}
-      isPending={isPending}
-      stealthResult={stealthResult}
-      txHash={txHash}
-      isSuccess={isSuccess}
-      onRecipientChange={setRecipient}
-      onRecipientBlur={() => setTouched((prev) => ({ ...prev, recipient: true }))}
-      onAmountChange={setAmount}
-      onAmountBlur={() => setTouched((prev) => ({ ...prev, amount: true }))}
-      onPaste={handlePaste}
-      onSend={handleSend}
-      onReset={reset}
-      memo={memo}
-      onMemoChange={setMemo}
-      isExpired={isExpired}
-      paramTo={!!paramTo}
-      paramAmount={!!paramAmount}
-      paramMemo={!!paramMemo}
-      onScanQRClick={() => setIsScanningQR(true)}
-      isScanningQR={isScanningQR}
-      scannerElement={scannerElement}
-    />
+        )}
+      </section>
+      <StellarSendView
+        isConnected={isConnected}
+        recipient={recipient}
+        amount={amount}
+        recipientError={recipientError}
+        showRecipientError={touched.recipient || submitAttempted}
+        amountError={amountError}
+        showAmountError={touched.amount || submitAttempted}
+        amountInvalid={!!(amountError || balanceLookupError || balanceError)}
+        balanceText={balanceText}
+        balanceIsError={!!(balanceLookupError || balanceError)}
+        simulationStatus={simulation.status}
+        simulationError={simulation.status === 'error' ? simulation.error : ''}
+        simulationFee={simulation.status === 'success' ? simulation.fee : null}
+        simulationReturnValue={simulation.status === 'success' ? simulation.returnValue : null}
+        simulationEvents={simulation.status === 'success' ? simulation.events : []}
+        error={error}
+        retryStatus={retryStatus}
+        canSubmit={canSubmit && simulation.status === 'success'}
+        isPending={isPending}
+        stealthResult={stealthResult}
+        txHash={txHash}
+        isSuccess={isSuccess}
+        onRecipientChange={setRecipient}
+        onRecipientBlur={() => setTouched((prev) => ({ ...prev, recipient: true }))}
+        onAmountChange={setAmount}
+        onAmountBlur={() => setTouched((prev) => ({ ...prev, amount: true }))}
+        onPaste={handlePaste}
+        onSend={handleSend}
+        onReset={reset}
+        memo={memo}
+        onMemoChange={setMemo}
+        isExpired={isExpired}
+        paramTo={!!paramTo}
+        paramAmount={!!paramAmount}
+        paramMemo={!!paramMemo}
+        onScanQRClick={() => setIsScanningQR(true)}
+        isScanningQR={isScanningQR}
+        scannerElement={scannerElement}
+        assets={STELLAR_ASSETS}
+        selectedAsset={selectedAsset}
+        onAssetChange={setSelectedAsset}
+        trustlineWarning={trustlineWarning}
+      />
+    </>
   );
 }

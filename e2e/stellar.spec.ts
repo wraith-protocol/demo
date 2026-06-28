@@ -372,4 +372,191 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await expect(page.getByText('Withdrawn —')).toBeVisible();
     await expect(page.getByText('tx_withdrawal')).toBeVisible();
   });
+
+  test('Send - 16. Asset selector switches between XLM and USDC', async ({ page, freighter }) => {
+    const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+    await freighter.mock({ isConnected: true, address: mockAddress });
+
+    await page.goto('/send');
+    await page.selectOption('select', 'stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+
+    // Default is XLM
+    await expect(page.getByText('Stellar Testnet / XLM')).toBeVisible();
+    await expect(page.getByText('XLM', { exact: true })).toBeVisible();
+
+    // Switch to USDC
+    await page.getByRole('button', { name: 'USDC' }).click();
+    await expect(page.getByText('Stellar Testnet / USDC')).toBeVisible();
+  });
+
+  test('Send - 17. Shows trustline warning when recipient lacks USDC trustline', async ({
+    page,
+    freighter,
+    horizon,
+  }) => {
+    const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+    const recipientMetaAddress =
+      'st:xlm:5a1922b5614eed2ef72ebad40abc5d014f7c27b6e1de5dc36976e9eec4cbe29e6b912a495f9f14513d54a00a7887f986d394a30a77239475caf211e8094b6cdb';
+
+    await freighter.mock({ isConnected: true, address: mockAddress });
+    await horizon.mock({
+      accountExists: true,
+      accountBalance: '1000',
+      txSuccess: true,
+      txHash: 'tx_usdc_send',
+    });
+
+    await page.goto('/send');
+    await page.selectOption('select', 'stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+
+    // Switch to USDC
+    await page.getByRole('button', { name: 'USDC' }).click();
+
+    // Fill recipient with a valid meta-address
+    await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
+    await page.getByPlaceholder('0.0').fill('10');
+
+    // Click Send to trigger trustline check
+    await page.getByRole('button', { name: 'Send Privately' }).click();
+
+    // Trustline warning should appear (no USDC trustline on stealth account)
+    await expect(page.getByText(/lacks a USDC trustline/)).toBeVisible();
+  });
+
+  test('Send - 18. Successfully executes USDC payment', async ({ page, freighter, horizon }) => {
+    const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+    const recipientMetaAddress =
+      'st:xlm:5a1922b5614eed2ef72ebad40abc5d014f7c27b6e1de5dc36976e9eec4cbe29e6b912a495f9f14513d54a00a7887f986d394a30a77239475caf211e8094b6cdb';
+
+    await freighter.mock({ isConnected: true, address: mockAddress });
+    // Mock stealth address EXISTS with USDC trustline
+    await horizon.mock({
+      accountExists: true,
+      accountBalance: '1000',
+      assetBalances: [
+        {
+          code: 'USDC',
+          issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NOATFQRAHX4WJ4A',
+          balance: '50',
+        },
+      ],
+      txSuccess: true,
+      txHash: 'tx_usdc_payment_success',
+    });
+
+    await page.goto('/send');
+    await page.selectOption('select', 'stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+
+    // Switch to USDC
+    await page.getByRole('button', { name: 'USDC' }).click();
+    await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
+    await page.getByPlaceholder('0.0').fill('10');
+
+    await page.getByRole('button', { name: 'Send Privately' }).click();
+
+    // Success screen
+    await expect(page.getByText('Transfer Complete')).toBeVisible();
+    await expect(page.getByText('tx_usdc_payment_success')).toBeVisible();
+  });
+
+  test('Receive - 19. Displays USDC balance on matched stealth address', async ({
+    page,
+    freighter,
+    horizon,
+  }) => {
+    const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+    const matchedStealthAddress = 'GAL77LMANDOA32MTLU3GG3Z22G2543PDIE5REOEOIU5QL4VEYHJ5WKON';
+
+    await freighter.mock({ isConnected: true, address: mockAddress });
+
+    await horizon.mock({
+      accountExists: true,
+      accountBalance: '100',
+      assetBalances: [
+        {
+          code: 'USDC',
+          issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NOATFQRAHX4WJ4A',
+          balance: '250',
+        },
+      ],
+      sorobanEvents: [
+        {
+          schemeId: 1,
+          stealthAddress: matchedStealthAddress,
+          caller: mockAddress,
+          ephemeralPubKey: new Uint8Array(32),
+          viewTag: 42,
+        },
+      ],
+    });
+
+    await page.goto('/receive');
+    await page.selectOption('select', 'stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+
+    await page.getByRole('button', { name: 'Scan for Payments' }).click();
+
+    // Check both balances displayed
+    await expect(page.getByText('1 transfer found')).toBeVisible();
+    await expect(page.getByText('100 XLM')).toBeVisible();
+    await expect(page.getByText('250 USDC')).toBeVisible();
+  });
+
+  test('Receive - 20. Per-asset withdraw switches between XLM and USDC', async ({
+    page,
+    freighter,
+    horizon,
+  }) => {
+    const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+    const matchedStealthAddress = 'GAL77LMANDOA32MTLU3GG3Z22G2543PDIE5REOEOIU5QL4VEYHJ5WKON';
+
+    await freighter.mock({ isConnected: true, address: mockAddress });
+
+    await horizon.mock({
+      accountExists: true,
+      accountBalance: '100',
+      assetBalances: [
+        {
+          code: 'USDC',
+          issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NOATFQRAHX4WJ4A',
+          balance: '50',
+        },
+      ],
+      txSuccess: true,
+      txHash: 'tx_usdc_withdraw',
+      sorobanEvents: [
+        {
+          schemeId: 1,
+          stealthAddress: matchedStealthAddress,
+          caller: mockAddress,
+          ephemeralPubKey: new Uint8Array(32),
+          viewTag: 42,
+        },
+      ],
+    });
+
+    await page.goto('/receive');
+    await page.selectOption('select', 'stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+
+    await page.getByRole('button', { name: 'Scan for Payments' }).click();
+
+    // Verify both balances
+    await expect(page.getByText('100 XLM')).toBeVisible();
+    await expect(page.getByText('50 USDC')).toBeVisible();
+
+    // Switch to USDC asset for withdraw
+    await page.getByRole('button', { name: 'USDC' }).first().click();
+
+    // Fill destination and withdraw USDC
+    await page.getByPlaceholder('Destination address (G...)').fill(matchedStealthAddress);
+    await page.getByRole('button', { name: 'Withdraw' }).click();
+
+    // Confirm withdrawal
+    await expect(page.getByText('Withdrawn —')).toBeVisible();
+    await expect(page.getByText('tx_usdc_withdraw')).toBeVisible();
+  });
 });

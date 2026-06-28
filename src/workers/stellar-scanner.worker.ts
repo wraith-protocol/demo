@@ -1,7 +1,4 @@
-import {
-  scanAnnouncements,
-  bytesToHex,
-} from '@wraith-protocol/sdk/chains/stellar';
+import { scanAnnouncements, bytesToHex } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
 import { Address, xdr } from '@stellar/stellar-sdk';
 
@@ -119,17 +116,12 @@ self.onmessage = async (e: MessageEvent) => {
 
   try {
     const announcements = await fetchAnnouncementEvents(rpcUrl, announcerContract);
-    const results = scanAnnouncements(
-      announcements,
-      viewingKey,
-      spendingPubKey,
-      spendingScalar,
-    );
+    const results = scanAnnouncements(announcements, viewingKey, spendingPubKey, spendingScalar);
     self.postMessage({ type: 'SUCCESS', results });
   } catch (err) {
-    self.postMessage({ 
-      type: 'ERROR', 
-      error: err instanceof Error ? err.message : 'Scan failed in worker' 
+    self.postMessage({
+      type: 'ERROR',
+      error: err instanceof Error ? err.message : 'Scan failed in worker',
     });
   }
 };

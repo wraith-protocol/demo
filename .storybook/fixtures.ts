@@ -45,8 +45,8 @@ export function makeMatch(
   return {
     stealthAddress: addressForIndex(i),
     scalarHex: SAMPLE_SCALAR_HEX,
-    balance: (10 + i).toFixed(7),
-    balanceState: 'loaded',
+    balances: [{ code: 'XLM', balance: (10 + i).toFixed(7), type: 'native' }],
+    balancesState: 'loaded',
     dest: '',
     withdrawing: false,
     withdrawHash: null,

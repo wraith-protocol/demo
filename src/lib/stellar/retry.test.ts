@@ -20,7 +20,8 @@ describe('withRetry', () => {
 
   it('retries on TypeError (network error) and succeeds', async () => {
     vi.useFakeTimers();
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValue('ok');
 
@@ -34,7 +35,8 @@ describe('withRetry', () => {
 
   it.each([408, 429, 502, 503, 504])('retries on HttpError %d', async (status) => {
     vi.useFakeTimers();
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce(new HttpError(status, `HTTP ${status}`))
       .mockResolvedValue('ok');
 
@@ -86,7 +88,8 @@ describe('withRetry', () => {
 
   it('calls onRetry with correct next attempt number before each delay', async () => {
     vi.useFakeTimers();
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError('net'))
       .mockRejectedValueOnce(new TypeError('net'))
       .mockResolvedValue('ok');
@@ -116,9 +119,7 @@ describe('withRetry', () => {
   it('jitter keeps delay in [baseDelayMs, 2 * baseDelayMs) on first retry', async () => {
     vi.useFakeTimers();
     const recorded: number[] = [];
-    const fn = vi.fn()
-      .mockRejectedValueOnce(new TypeError('net'))
-      .mockResolvedValue('ok');
+    const fn = vi.fn().mockRejectedValueOnce(new TypeError('net')).mockResolvedValue('ok');
 
     const promise = withRetry(fn, {
       baseDelayMs: 200,
@@ -162,9 +163,7 @@ afterEach(() => server.resetHandlers());
 describe('fetchWithRetry', () => {
   it('returns 200 on first success', async () => {
     server.use(
-      http.get('https://horizon.test/accounts/G1', () =>
-        HttpResponse.json({ balance: '100' }),
-      ),
+      http.get('https://horizon.test/accounts/G1', () => HttpResponse.json({ balance: '100' })),
     );
     const res = await fetchWithRetry('https://horizon.test/accounts/G1');
     expect(res.ok).toBe(true);
@@ -205,9 +204,7 @@ describe('fetchWithRetry', () => {
   it('throws RetryExhaustedError after 3 x 503', async () => {
     vi.useFakeTimers();
     server.use(
-      http.get('https://horizon.test/accounts/G3', () =>
-        new HttpResponse(null, { status: 503 }),
-      ),
+      http.get('https://horizon.test/accounts/G3', () => new HttpResponse(null, { status: 503 })),
     );
 
     const promise = fetchWithRetry(

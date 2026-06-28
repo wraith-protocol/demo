@@ -1,6 +1,6 @@
 /**
  * Service Worker for Stellar Payment Notifications
- * 
+ *
  * This service worker handles:
  * - Periodic background sync to scan for new stealth payments
  * - Showing notifications when new payments are detected
@@ -35,10 +35,10 @@ interface NotificationData {
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
+
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-    
+
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -54,18 +54,22 @@ async function getViewingKey(db: IDBDatabase, publicKey: string): Promise<Stored
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(publicKey);
-    
+
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result || null);
   });
 }
 
-async function updateLastScannedLedger(db: IDBDatabase, publicKey: string, ledger: number): Promise<void> {
+async function updateLastScannedLedger(
+  db: IDBDatabase,
+  publicKey: string,
+  ledger: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(publicKey);
-    
+
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const data = request.result as StoredViewingKey;
@@ -93,7 +97,7 @@ async function fetchLatestLedger(): Promise<number> {
       method: 'getLatestLedger',
     }),
   });
-  
+
   const data = await response.json();
   return data.result?.sequence || 0;
 }
@@ -116,28 +120,24 @@ async function fetchAnnouncementEvents(
       },
     }),
   });
-  
+
   const data = await response.json();
   const events = data.result?.events || [];
   const latestLedger = await fetchLatestLedger();
-  
+
   return { events, latestLedger };
 }
 
 // Simple decryption using Web Crypto API
 async function decryptData(encryptedHex: string, key: CryptoKey): Promise<Uint8Array> {
   const encryptedData = hexToBytes(encryptedHex);
-  
+
   // Extract IV (first 12 bytes) and ciphertext
   const iv = encryptedData.slice(0, 12);
   const ciphertext = encryptedData.slice(12);
-  
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    ciphertext,
-  );
-  
+
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+
   return new Uint8Array(decrypted);
 }
 
@@ -176,25 +176,25 @@ async function showPaymentNotification(match: any): Promise<void> {
     requireInteraction: false,
     silent: false,
   };
-  
+
   await self.registration.showNotification('New Stellar Payment', options);
 }
 
 // Background sync handler
 async function handleSync(event: ExtendableEvent): Promise<void> {
   if (!event.tag) return;
-  
+
   try {
     const db = await openDB();
     const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
       const transaction = db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
-      
+
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve(request.result || []);
     });
-    
+
     for (const storedKey of allKeys) {
       // In a real implementation, we would:
       // 1. Decrypt the viewing key using the stored encryption key
@@ -202,23 +202,23 @@ async function handleSync(event: ExtendableEvent): Promise<void> {
       // 3. Match announcements against the viewing key
       // 4. Show notifications for new matches
       // 5. Update lastScannedLedger
-      
+
       // For now, we'll implement a simplified version
       const startLedger = storedKey.lastScannedLedger || 1;
       const { events, latestLedger } = await fetchAnnouncementEvents(startLedger);
-      
+
       if (events.length > 0) {
         // In production, we would decrypt and scan here
         // For demo purposes, we'll just show a notification if we found events
         console.log(`Found ${events.length} events for ${storedKey.publicKey}`);
-        
+
         // TODO: Implement actual scanning with decrypted keys
         // This requires the Wraith SDK to be available in the service worker
       }
-      
+
       await updateLastScannedLedger(db, storedKey.publicKey, latestLedger);
     }
-    
+
     await db.close();
   } catch (error) {
     console.error('Background sync error:', error);
@@ -265,9 +265,9 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('notificationclick', (event) => {
   const notification = event.notification;
   const data = notification.data as NotificationData;
-  
+
   notification.close();
-  
+
   // Open the app and navigate to the receive page
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
@@ -283,7 +283,7 @@ self.addEventListener('notificationclick', (event) => {
           return;
         }
       }
-      
+
       // Open new window
       if (clients.openWindow) {
         return clients.openWindow('/receive?match=' + data.stealthAddress);
@@ -294,8 +294,9 @@ self.addEventListener('notificationclick', (event) => {
 
 // Handle messages from client
 self.addEventListener('message', (event) => {
-  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } = event.data;
-  
+  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
+    event.data;
+
   if (type === 'REGISTER_VIEWING_KEY') {
     event.waitUntil(
       (async () => {
@@ -303,7 +304,7 @@ self.addEventListener('message', (event) => {
           const db = await openDB();
           const transaction = db.transaction([STORE_NAME], 'readwrite');
           const store = transaction.objectStore(STORE_NAME);
-          
+
           const data: StoredViewingKey = {
             publicKey,
             encryptedViewingKey,
@@ -311,28 +312,28 @@ self.addEventListener('message', (event) => {
             encryptedSpendingScalar,
             timestamp: Date.now(),
           };
-          
+
           await new Promise<void>((resolve, reject) => {
             const request = store.put(data);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
           });
-          
+
           await db.close();
-          
+
           // Respond to client
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
         } catch (error) {
           console.error('Failed to register viewing key:', error);
-          (event.source as Client)?.postMessage({ 
-            type: 'VIEWING_KEY_ERROR', 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+          (event.source as Client)?.postMessage({
+            type: 'VIEWING_KEY_ERROR',
+            error: error instanceof Error ? error.message : 'Unknown error',
           });
         }
       })(),
     );
   }
-  
+
   if (type === 'UNREGISTER_VIEWING_KEY') {
     event.waitUntil(
       (async () => {
@@ -340,15 +341,15 @@ self.addEventListener('message', (event) => {
           const db = await openDB();
           const transaction = db.transaction([STORE_NAME], 'readwrite');
           const store = transaction.objectStore(STORE_NAME);
-          
+
           await new Promise<void>((resolve, reject) => {
             const request = store.delete(publicKey);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
           });
-          
+
           await db.close();
-          
+
           // Unregister periodic sync if no keys remain
           const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
             const tx = db.transaction([STORE_NAME], 'readonly');
@@ -357,11 +358,11 @@ self.addEventListener('message', (event) => {
             req.onerror = () => reject(req.error);
             req.onsuccess = () => resolve(req.result || []);
           });
-          
+
           if (allKeys.length === 0 && 'periodicSync' in self.registration) {
             await (self.registration as any).periodicSync.unregister(SYNC_TAG);
           }
-          
+
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_UNREGISTERED' });
         } catch (error) {
           console.error('Failed to unregister viewing key:', error);
@@ -369,7 +370,7 @@ self.addEventListener('message', (event) => {
       })(),
     );
   }
-  
+
   if (type === 'TRIGGER_SCAN') {
     // Manual trigger for testing
     event.waitUntil(handleSync(event as unknown as ExtendableEvent));

@@ -13,9 +13,9 @@ export * from './types';
 
 // Re-export adapters for direct use in tests
 export { FreighterAdapter } from './FreighterAdapter';
-export { AlbedoAdapter }    from './AlbedoAdapter';
-export { XBullAdapter }     from './XBullAdapter';
-export { LobstrAdapter }    from './LobstrAdapter';
+export { AlbedoAdapter } from './AlbedoAdapter';
+export { XBullAdapter } from './XBullAdapter';
+export { LobstrAdapter } from './LobstrAdapter';
 export { WalletConnectAdapter } from './WalletConnectAdapter';
 
 import type { StellarWallet, WalletId } from './types';

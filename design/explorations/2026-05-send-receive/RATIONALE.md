@@ -11,7 +11,7 @@
 ## Design Tokens (applied throughout)
 
 | Token              | Hex       | Usage                          |
-|--------------------|-----------|--------------------------------|
+| ------------------ | --------- | ------------------------------ |
 | surface            | `#0e0e0e` | Page background                |
 | surface-container  | `#141414` | Card / panel backgrounds       |
 | surface-bright     | `#1a1a1a` | Hover states, secondary panels |
@@ -35,6 +35,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 **Concept:** The meta-address input dominates the top of the form. Amount is secondary, tucked below. The visual logic mirrors an email compose view: "who are you sending to?" is the first question.
 
 **Desktop (≥1280px):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -62,6 +63,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px):**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -82,11 +84,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle:** Address input focused, placeholder `st:xlm:...` in `text-outline`. Amount input below.
 - **Loading:** Button text → `CONFIRM IN WALLET...`, opacity 0.5, no spinner (matches existing pattern).
 - **Error:** `text-error` paragraph below the button. Input border does NOT turn red (avoids alarming the user before they've finished typing).
 
 **Tradeoffs:**
+
 - ✅ Mirrors mental model of "send to someone" — address is the intent.
 - ✅ Senders who copy-paste a meta-address first will find this natural.
 - ❌ The meta-address string is long and opaque; leading with it can feel intimidating on first use.
@@ -96,9 +100,10 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 
 ### Send-B — Amount-First (amount as focal point) ★ RECOMMENDED
 
-**Concept:** A large, numpad-style amount field dominates the screen. The meta-address input is below it, treated as "delivery details" — important but secondary. The user decides *how much* before *to whom*.
+**Concept:** A large, numpad-style amount field dominates the screen. The meta-address input is below it, treated as "delivery details" — important but secondary. The user decides _how much_ before _to whom_.
 
 **Desktop (≥1280px):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -124,6 +129,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px):**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -145,11 +151,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle:** Amount field auto-focused. Cursor blinks inside the large field.
 - **Loading:** Button → `CONFIRM IN WALLET...`. Amount field becomes read-only (no visual change, just `disabled`).
 - **Error:** `text-error` below the address input, not the amount — errors are almost always about the address or network, not the number.
 
 **Tradeoffs:**
+
 - ✅ Amount is the decision; address is the plumbing. This ordering matches how people think about payments.
 - ✅ Large amount field is thumb-friendly on mobile and immediately scannable.
 - ✅ Visually distinctive — no other page in the app has a dominant number field.
@@ -162,6 +170,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 **Concept:** Both fields are equal height, equal weight, stacked tightly with minimal spacing. No labels dominate. The form reads as a single atomic unit. Inspired by terminal / CLI aesthetics.
 
 **Desktop (≥1280px):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -182,6 +191,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px):**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -200,11 +210,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle:** Both rows visible, no field pre-focused.
 - **Loading:** Entire form panel dims to `opacity-50`. Button → `CONFIRM IN WALLET...`.
 - **Error:** Red border on the offending row only. Error text below the panel.
 
 **Tradeoffs:**
+
 - ✅ Minimal vertical space — fits entirely above the fold on any device.
 - ✅ Feels like a developer tool (intentional for this demo).
 - ❌ No visual hierarchy — both fields feel equally important, which is slightly misleading.
@@ -220,6 +232,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 **Concept:** Matches are rendered as a compact table with one row per stealth address. Balance, address (truncated), and a withdraw action are all on one line. Optimised for users with 10+ matches.
 
 **Desktop (≥1280px):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -243,6 +256,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px):**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -267,11 +281,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle (keys derived, not yet scanned):** Table area shows a dashed placeholder: `SCAN TO SEE TRANSFERS`.
 - **Loading (scanning):** Table rows replaced by 3 skeleton rows (pulsing `bg-surface-bright` bars, no spinner).
 - **Error:** `text-error` paragraph above the table. Table remains visible if a previous scan succeeded.
 
 **Tradeoffs:**
+
 - ✅ Maximum information density — ideal for developers testing many sends.
 - ✅ Withdraw action is one click from the list, no expansion needed.
 - ❌ Withdraw destination input doesn't fit on one row — clicking "Withdraw" must expand a sub-row, adding interaction complexity.
@@ -285,6 +301,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 **Concept:** Each match is a full-width card with generous padding. The stealth address, balance, and withdraw form are all visible without expansion. Cards stack vertically. Works well up to ~5 matches; beyond that, scrolling becomes tedious.
 
 **Desktop (≥1280px):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -318,6 +335,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px):**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -346,11 +364,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle (keys derived, not scanned):** No cards. A muted prompt: `Scan to check for incoming transfers.`
 - **Loading:** Two ghost cards with pulsing skeleton content.
 - **Error:** `text-error` above the card list.
 
 **Tradeoffs:**
+
 - ✅ This is essentially the current implementation — low implementation delta.
 - ✅ All withdraw controls are immediately visible; no expand/collapse.
 - ✅ Visually distinctive — each payment feels like a discrete object.
@@ -364,6 +384,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 **Concept:** The page is designed around the most common first-visit state: no keys derived, no matches. Each step (derive → register → scan) is a distinct visual stage that collapses once completed. When matches exist, they render as cards (≤5) or switch to a compact list (>5) automatically.
 
 **Desktop (≥1280px) — Stage 0: No keys yet:**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -390,6 +411,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Desktop — Stage 3: Keys derived, registered, scan complete (2 matches):**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  STELLAR TESTNET / XLM                                          │
@@ -406,6 +428,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Desktop — Stage 3: Scan complete, 0 matches:**
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  ...steps 01 + 02 collapsed...                                  │
@@ -427,6 +450,7 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **Mobile (375px) — Stage 0:**
+
 ```
 ┌───────────────────────────┐
 │ STELLAR TESTNET / XLM     │
@@ -451,11 +475,13 @@ No border-radius anywhere. All contrast ratios verified ≥ 4.5:1 for body text 
 ```
 
 **States:**
+
 - **Idle (step N incomplete):** Steps N+1 and beyond are visually dimmed (`opacity-40`, no interaction). Active step has a full-weight CTA button.
 - **Loading (any step):** The active step's button → `...`, panel dims. Other steps unchanged.
 - **Error:** `text-error` inside the failing step's panel only. Other steps unaffected.
 
 **Tradeoffs:**
+
 - ✅ Solves the blank-page problem — first-time users always see a clear next action.
 - ✅ Progressive disclosure: completed steps collapse, reducing visual noise as the user advances.
 - ✅ The empty-scan state surfaces the meta-address prominently, turning "nothing found" into a useful prompt to share it.

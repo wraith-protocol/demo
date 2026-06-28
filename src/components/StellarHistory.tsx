@@ -24,11 +24,13 @@ export function StellarHistory() {
   }, [entries, address]);
 
   const filteredEntries = useMemo(() => {
-    return walletEntries.filter((e) => {
-      if (filterKind !== 'all' && e.kind !== filterKind) return false;
-      if (filterStatus !== 'all' && e.status !== filterStatus) return false;
-      return true;
-    }).sort((a, b) => b.timestamp - a.timestamp);
+    return walletEntries
+      .filter((e) => {
+        if (filterKind !== 'all' && e.kind !== filterKind) return false;
+        if (filterStatus !== 'all' && e.status !== filterStatus) return false;
+        return true;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
   }, [walletEntries, filterKind, filterStatus]);
 
   if (!isConnected) {
@@ -65,7 +67,9 @@ export function StellarHistory() {
 
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">Type</label>
+          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            Type
+          </label>
           <select
             value={filterKind}
             onChange={(e) => setFilterKind(e.target.value as any)}
@@ -79,7 +83,9 @@ export function StellarHistory() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">Status</label>
+          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            Status
+          </label>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
@@ -98,7 +104,9 @@ export function StellarHistory() {
       )}
 
       {walletEntries.length > 0 && filteredEntries.length === 0 && (
-        <p className="font-body text-sm text-on-surface-variant">No activity matches the filters.</p>
+        <p className="font-body text-sm text-on-surface-variant">
+          No activity matches the filters.
+        </p>
       )}
 
       <div className="flex flex-col gap-4">
@@ -114,8 +122,8 @@ export function StellarHistory() {
                     tx.status === 'confirmed'
                       ? 'bg-secondary'
                       : tx.status === 'pending'
-                      ? 'bg-tertiary animate-pulse'
-                      : 'bg-error'
+                        ? 'bg-tertiary animate-pulse'
+                        : 'bg-error'
                   }`}
                 />
                 <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface">
@@ -136,15 +144,13 @@ export function StellarHistory() {
                   {tx.direction === 'in' ? 'Incoming (Received)' : 'Outgoing (Sent)'}
                 </span>
               </div>
-              
+
               {tx.amount && (
                 <div className="flex items-center justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Amount
                   </span>
-                  <span className="font-mono text-[10px] text-on-surface">
-                    {tx.amount} XLM
-                  </span>
+                  <span className="font-mono text-[10px] text-on-surface">{tx.amount} XLM</span>
                 </div>
               )}
 
@@ -153,8 +159,13 @@ export function StellarHistory() {
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Recipient / Address
                   </span>
-                  <span className="max-w-[200px] truncate font-mono text-[10px] text-on-surface" title={tx.recipient}>
-                    {tx.recipient.length > 30 ? `${tx.recipient.slice(0, 12)}...${tx.recipient.slice(-12)}` : tx.recipient}
+                  <span
+                    className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
+                    title={tx.recipient}
+                  >
+                    {tx.recipient.length > 30
+                      ? `${tx.recipient.slice(0, 12)}...${tx.recipient.slice(-12)}`
+                      : tx.recipient}
                   </span>
                 </div>
               )}

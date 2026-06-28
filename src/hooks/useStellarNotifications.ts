@@ -1,6 +1,6 @@
 /**
  * Hook for managing Stellar payment notifications
- * 
+ *
  * Handles:
  * - Service worker registration
  * - Notification permission requests
@@ -61,10 +61,9 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
 
   // Check browser support
   useEffect(() => {
-    const supported = 'serviceWorker' in navigator && 
-                      'Notification' in window && 
-                      'indexedDB' in window;
-    
+    const supported =
+      'serviceWorker' in navigator && 'Notification' in window && 'indexedDB' in window;
+
     setState((prev: NotificationState) => ({ ...prev, supported, loading: false }));
   }, []);
 
@@ -85,31 +84,33 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
         const registration = await navigator.serviceWorker.register(SW_PATH, {
           type: 'module',
         });
-        
+
         if (cancelled) return;
-        
+
         swRef.current = registration;
-        setState((prev: NotificationState) => ({ 
-          ...prev, 
+        setState((prev: NotificationState) => ({
+          ...prev,
           swRegistered: true,
           permission: Notification.permission,
         }));
 
         // Listen for permission changes
         if ('permissions' in navigator) {
-          const permissionStatus = await (navigator as any).permissions.query({ name: 'notifications' });
+          const permissionStatus = await (navigator as any).permissions.query({
+            name: 'notifications',
+          });
           permissionStatus.onchange = () => {
-            setState((prev: NotificationState) => ({ 
-              ...prev, 
-              permission: Notification.permission 
+            setState((prev: NotificationState) => ({
+              ...prev,
+              permission: Notification.permission,
             }));
           };
         }
       } catch (error) {
         if (cancelled) return;
         console.error('Service worker registration failed:', error);
-        setState((prev: NotificationState) => ({ 
-          ...prev, 
+        setState((prev: NotificationState) => ({
+          ...prev,
           error: error instanceof Error ? error.message : 'SW registration failed',
           swRegistered: false,
         }));
@@ -131,11 +132,11 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
       key,
       data.buffer as ArrayBuffer,
     );
-    
+
     const combined = new Uint8Array(iv.length + encrypted.byteLength);
     combined.set(iv, 0);
     combined.set(new Uint8Array(encrypted), iv.length);
-    
+
     return Array.from(combined)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
@@ -151,7 +152,7 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
       false,
       ['deriveKey'],
     );
-    
+
     return crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
@@ -176,8 +177,8 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
       return permission === 'granted';
     } catch (error) {
       console.error('Permission request failed:', error);
-      setState((prev: NotificationState) => ({ 
-        ...prev, 
+      setState((prev: NotificationState) => ({
+        ...prev,
         error: error instanceof Error ? error.message : 'Permission request failed',
       }));
       return false;
@@ -208,71 +209,71 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
   }, []);
 
   // Register viewing key with service worker
-  const registerViewingKey = useCallback(async (
-    publicKey: string,
-    stealthKeys: StealthKeys,
-  ) => {
-    if (!swRef.current || !state.enabled) {
-      throw new Error('Service worker not registered or notifications disabled');
-    }
+  const registerViewingKey = useCallback(
+    async (publicKey: string, stealthKeys: StealthKeys) => {
+      if (!swRef.current || !state.enabled) {
+        throw new Error('Service worker not registered or notifications disabled');
+      }
 
-    try {
-      // Derive encryption key from spending scalar (this is wallet-derived)
-      const scalarHex = stealthKeys.spendingScalar.toString(16).padStart(64, '0');
-      const encryptionKey = await deriveEncryptionKey(scalarHex);
+      try {
+        // Derive encryption key from spending scalar (this is wallet-derived)
+        const scalarHex = stealthKeys.spendingScalar.toString(16).padStart(64, '0');
+        const encryptionKey = await deriveEncryptionKey(scalarHex);
 
-      // Encrypt the viewing key components
-      const viewingKeyBytes = new TextEncoder().encode(stealthKeys.viewingKey);
-      const spendingPubKeyBytes = stealthKeys.spendingPubKey;
-      const spendingScalarBytes = hexToBytes(scalarHex);
+        // Encrypt the viewing key components
+        const viewingKeyBytes = new TextEncoder().encode(stealthKeys.viewingKey);
+        const spendingPubKeyBytes = stealthKeys.spendingPubKey;
+        const spendingScalarBytes = hexToBytes(scalarHex);
 
-      const encryptedViewingKey = await encryptData(viewingKeyBytes, encryptionKey);
-      const encryptedSpendingPubKey = await encryptData(spendingPubKeyBytes, encryptionKey);
-      const encryptedSpendingScalar = await encryptData(spendingScalarBytes, encryptionKey);
+        const encryptedViewingKey = await encryptData(viewingKeyBytes, encryptionKey);
+        const encryptedSpendingPubKey = await encryptData(spendingPubKeyBytes, encryptionKey);
+        const encryptedSpendingScalar = await encryptData(spendingScalarBytes, encryptionKey);
 
-      // Send to service worker
-      swRef.current.active?.postMessage({
-        type: 'REGISTER_VIEWING_KEY',
-        publicKey,
-        encryptedViewingKey,
-        encryptedSpendingPubKey,
-        encryptedSpendingScalar,
-      });
+        // Send to service worker
+        swRef.current.active?.postMessage({
+          type: 'REGISTER_VIEWING_KEY',
+          publicKey,
+          encryptedViewingKey,
+          encryptedSpendingPubKey,
+          encryptedSpendingScalar,
+        });
 
-      // Also store in IndexedDB for backup
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-        request.onupgradeneeded = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME, { keyPath: 'publicKey' });
-          }
-        };
-      });
+        // Also store in IndexedDB for backup
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(DB_NAME, DB_VERSION);
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve(request.result);
+          request.onupgradeneeded = (event) => {
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME, { keyPath: 'publicKey' });
+            }
+          };
+        });
 
-      const transaction = db.transaction([STORE_NAME], 'readwrite');
-      const store = transaction.objectStore(STORE_NAME);
-      store.put({
-        publicKey,
-        encryptedViewingKey,
-        encryptedSpendingPubKey,
-        encryptedSpendingScalar,
-        timestamp: Date.now(),
-      });
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        store.put({
+          publicKey,
+          encryptedViewingKey,
+          encryptedSpendingPubKey,
+          encryptedSpendingScalar,
+          timestamp: Date.now(),
+        });
 
-      await new Promise<void>((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-      });
+        await new Promise<void>((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+        });
 
-      db.close();
-    } catch (error) {
-      console.error('Failed to register viewing key:', error);
-      throw error;
-    }
-  }, [state.enabled, deriveEncryptionKey, encryptData]);
+        db.close();
+      } catch (error) {
+        console.error('Failed to register viewing key:', error);
+        throw error;
+      }
+    },
+    [state.enabled, deriveEncryptionKey, encryptData],
+  );
 
   // Unregister viewing key
   const unregisterViewingKey = useCallback(async (publicKey: string) => {

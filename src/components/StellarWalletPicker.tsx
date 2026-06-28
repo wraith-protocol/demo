@@ -24,7 +24,16 @@ interface Props {
 }
 
 export function StellarWalletPicker({ state }: Props) {
-  const { pickerOpen, closePicker, connect, status, error, detecting, available, setPreconnectedWallet } = state;
+  const {
+    pickerOpen,
+    closePicker,
+    connect,
+    status,
+    error,
+    detecting,
+    available,
+    setPreconnectedWallet,
+  } = state;
 
   const [pending, setPending] = useState<WalletId | null>(null);
   const [wcUri, setWcUri] = useState<string | null>(null);
@@ -55,11 +64,14 @@ export function StellarWalletPicker({ state }: Props) {
     }, 1000);
 
     // Timeout after 5 minutes
-    const timeout = setTimeout(() => {
-      clearInterval(pollInterval);
-      setWcConnecting(false);
-      setPending(null);
-    }, 5 * 60 * 1000);
+    const timeout = setTimeout(
+      () => {
+        clearInterval(pollInterval);
+        setWcConnecting(false);
+        setPending(null);
+      },
+      5 * 60 * 1000,
+    );
 
     return () => {
       clearInterval(pollInterval);
@@ -72,14 +84,14 @@ export function StellarWalletPicker({ state }: Props) {
   async function handleSelect(id: WalletId) {
     if (pending) return;
     setPending(id);
-    
+
     // Special handling for WalletConnect to capture URI
     if (id === 'walletconnect') {
       try {
         // Get a fresh adapter instance
         const { getAdapter } = await import('@/wallets/stellar');
         const adapter = getAdapter('walletconnect');
-        
+
         // Start connection to get URI
         if (typeof (adapter as any).startConnection === 'function') {
           const uri = await (adapter as any).startConnection();
@@ -125,7 +137,6 @@ export function StellarWalletPicker({ state }: Props) {
       aria-label="Connect Stellar wallet"
     >
       <div className="bg-[#141414] border border-[#2a2a2a] w-full max-w-sm p-5 space-y-4">
-
         {/* Header */}
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[#e6e1e5]">Connect Stellar wallet</h2>
@@ -134,10 +145,17 @@ export function StellarWalletPicker({ state }: Props) {
             className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
             aria-label="Close"
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
-              stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <line x1="1" y1="1" x2="13" y2="13"/>
-              <line x1="13" y1="1" x2="1" y2="13"/>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <line x1="1" y1="1" x2="13" y2="13" />
+              <line x1="13" y1="1" x2="1" y2="13" />
             </svg>
           </button>
         </div>
@@ -145,8 +163,8 @@ export function StellarWalletPicker({ state }: Props) {
         {/* Wallet list */}
         <div className="space-y-2">
           {WALLET_IDS.map((id) => {
-            const meta      = WALLET_META[id];
-            const isAvail   = available[id] ?? (id === 'albedo' || id === 'walletconnect'); // albedo & walletconnect always available
+            const meta = WALLET_META[id];
+            const isAvail = available[id] ?? (id === 'albedo' || id === 'walletconnect'); // albedo & walletconnect always available
             const isLoading = pending === id;
             const isDisabled = !!pending && pending !== id;
 
@@ -161,8 +179,8 @@ export function StellarWalletPicker({ state }: Props) {
                   isLoading
                     ? 'border-[#c6c6c7] bg-[#1e1e1e] opacity-100'
                     : isDisabled
-                    ? 'border-[#1e1e1e] opacity-40 cursor-not-allowed'
-                    : 'border-[#2a2a2a] hover:border-[#444444] hover:bg-[#1a1a1a] cursor-pointer',
+                      ? 'border-[#1e1e1e] opacity-40 cursor-not-allowed'
+                      : 'border-[#2a2a2a] hover:border-[#444444] hover:bg-[#1a1a1a] cursor-pointer',
                 ].join(' ')}
               >
                 {/* Icon */}
@@ -202,18 +220,34 @@ export function StellarWalletPicker({ state }: Props) {
                   {isLoading ? (
                     <svg
                       className="animate-spin text-[#c6c6c7]"
-                      width="14" height="14" viewBox="0 0 14 14" fill="none"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 14 14"
+                      fill="none"
                     >
-                      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5"
-                        strokeDasharray="25" strokeDashoffset="10" strokeLinecap="round"/>
+                      <circle
+                        cx="7"
+                        cy="7"
+                        r="5.5"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeDasharray="25"
+                        strokeDashoffset="10"
+                        strokeLinecap="round"
+                      />
                     </svg>
                   ) : (
                     <svg
                       className="text-[#333333]"
-                      width="12" height="12" viewBox="0 0 12 12" fill="none"
-                      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                      width="12"
+                      height="12"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
                     >
-                      <polyline points="4,2 8,6 4,10"/>
+                      <polyline points="4,2 8,6 4,10" />
                     </svg>
                   )}
                 </div>
@@ -250,10 +284,17 @@ export function StellarWalletPicker({ state }: Props) {
                 className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
                 aria-label="Close"
               >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
-                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <line x1="1" y1="1" x2="13" y2="13"/>
-                  <line x1="13" y1="1" x2="1" y2="13"/>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <line x1="1" y1="1" x2="13" y2="13" />
+                  <line x1="13" y1="1" x2="1" y2="13" />
                 </svg>
               </button>
             </div>

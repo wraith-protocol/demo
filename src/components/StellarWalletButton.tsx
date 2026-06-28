@@ -30,8 +30,16 @@ export function StellarWalletButton({ state }: Props) {
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 border border-[#2a2a2a] text-xs text-[#767575]">
         <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5"
-            strokeDasharray="20" strokeDashoffset="8" strokeLinecap="round"/>
+          <circle
+            cx="6"
+            cy="6"
+            r="4.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeDasharray="20"
+            strokeDashoffset="8"
+            strokeLinecap="round"
+          />
         </svg>
         Connecting…
       </div>
@@ -53,9 +61,16 @@ export function StellarWalletButton({ state }: Props) {
         >
           <img src={meta.icon} alt={meta.name} width={14} height={14} className="rounded-sm" />
           <span className="font-mono">{truncate(publicKey)}</span>
-          <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
-            stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <polyline points="1,2 4,5 7,2"/>
+          <svg
+            width="8"
+            height="8"
+            viewBox="0 0 8 8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          >
+            <polyline points="1,2 4,5 7,2" />
           </svg>
         </button>
 

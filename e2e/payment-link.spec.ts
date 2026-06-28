@@ -13,20 +13,25 @@ test.describe('Stellar Payment Link', () => {
     });
   });
 
-  test('should generate a link, pre-fill the send form, and disable inputs', async ({ page, context }) => {
+  test('should generate a link, pre-fill the send form, and disable inputs', async ({
+    page,
+    context,
+  }) => {
     // 1. Go to Receive page
     await page.goto('/receive');
     await page.locator('select').selectOption('stellar');
 
     // 2. Open generated link in a new context
-    const testUrl = '/pay?to=st:xlm:test_meta_address&amount=15.5&memo=TestMemo&exp=' + (Math.floor(Date.now() / 1000) + 3600);
-    
+    const testUrl =
+      '/pay?to=st:xlm:test_meta_address&amount=15.5&memo=TestMemo&exp=' +
+      (Math.floor(Date.now() / 1000) + 3600);
+
     const newPage = await context.newPage();
     await newPage.goto(testUrl);
 
     // Switch to Stellar network
     await newPage.locator('select').selectOption('stellar');
-    
+
     // Click Connect Freighter
     await newPage.click('text=Connect Freighter');
 
@@ -47,7 +52,7 @@ test.describe('Stellar Payment Link', () => {
   test('should show expiration error and disable submit for expired link', async ({ page }) => {
     const expiredExp = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
     const testUrl = `/pay?to=st:xlm:test_meta_address&amount=10&exp=${expiredExp}`;
-    
+
     await page.goto(testUrl);
 
     // Switch to Stellar network

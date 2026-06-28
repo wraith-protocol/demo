@@ -64,10 +64,10 @@ export class AlbedoAdapter implements StellarWallet {
       const result = await albedo.default.tx({
         xdr,
         network: opts.networkPassphrase
-          ? undefined            // albedo.tx accepts passphrase via `network`
+          ? undefined // albedo.tx accepts passphrase via `network`
           : 'TESTNET',
         pubkey: opts.publicKey,
-        submit: false,          // we handle submission ourselves
+        submit: false, // we handle submission ourselves
       });
 
       return { signedXdr: result.signed_envelope_xdr };
