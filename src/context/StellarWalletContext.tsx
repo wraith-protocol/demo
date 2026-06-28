@@ -24,6 +24,13 @@ interface StellarWalletContextValue {
 
 export const StellarWalletContext = createContext<StellarWalletContextValue | null>(null);
 
+async function getFreighter() {
+  if (typeof window !== 'undefined' && (window as any).freighterMock) {
+    return (window as any).freighterMock;
+  }
+  return await import('@stellar/freighter-api');
+}
+
 export function StellarWalletProvider({ children }: { children: React.ReactNode }) {
   const stellarWallet = useStellarWalletHook();
 
@@ -110,7 +117,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     const tryInit = async () => {
       if (stopped) return;
       try {
-        const freighter = await import('@stellar/freighter-api');
+        const freighter = await getFreighter();
         const { isConnected: connected } = await freighter.isConnected();
 
         if (!connected) {
@@ -207,7 +214,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const connect = useCallback(async () => {
-    const freighter = await import('@stellar/freighter-api');
+    const freighter = await getFreighter();
     const { isConnected: connected } = await freighter.isConnected();
     if (!connected) {
       throw new Error(
@@ -255,7 +262,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     async (message: string): Promise<Uint8Array> => {
       if (!address) throw new Error('Wallet not connected');
 
-      const freighter = await import('@stellar/freighter-api');
+      const freighter = await getFreighter();
       const { signedMessage } = await freighter.signMessage(message, {
         address,
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
@@ -298,7 +305,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     async (xdr: string): Promise<string> => {
       if (!address) throw new Error('Wallet not connected');
 
-      const freighter = await import('@stellar/freighter-api');
+      const freighter = await getFreighter();
       const { signedTxXdr } = await freighter.signTransaction(xdr, {
         address,
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
