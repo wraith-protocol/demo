@@ -45,8 +45,9 @@ export function makeMatch(
   return {
     stealthAddress: addressForIndex(i),
     scalarHex: SAMPLE_SCALAR_HEX,
-    balance: (10 + i).toFixed(7),
+    balances: { XLM: (10 + i).toFixed(7) },
     balanceState: 'loaded',
+    withdrawAssetKey: 'XLM',
     dest: '',
     withdrawing: false,
     withdrawHash: null,
@@ -55,6 +56,7 @@ export function makeMatch(
     showKey: false,
     showSponsorPrompt: false,
     onDestChange: () => {},
+    onWithdrawAssetKeyChange: () => {},
     onWithdraw: () => {},
     onSponsoredWithdraw: () => {},
     onCancelSponsor: () => {},

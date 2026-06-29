@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import type { StellarAssetKey } from '@/lib/stellar/assets';
+import { STELLAR_ASSETS } from '@/lib/stellar/assets';
 
 export interface StellarSendViewProps {
   isConnected: boolean;
   recipient: string;
   amount: string;
+  assetKey: StellarAssetKey;
   recipientError: string;
   showRecipientError: boolean;
   amountError: string;
@@ -13,6 +16,7 @@ export interface StellarSendViewProps {
   amountInvalid: boolean;
   balanceText: string;
   balanceIsError: boolean;
+  trustlineError: string;
   simulationStatus: 'idle' | 'loading' | 'success' | 'error';
   simulationError: string;
   simulationFee: string | null;
@@ -27,6 +31,7 @@ export interface StellarSendViewProps {
   isSuccess: boolean;
   onRecipientChange: (value: string) => void;
   onRecipientBlur: () => void;
+  onAssetChange: (value: StellarAssetKey) => void;
   onAmountChange: (value: string) => void;
   onAmountBlur: () => void;
   onPaste: () => void;
@@ -48,6 +53,8 @@ export function StellarSendView({
   isConnected,
   recipient,
   amount,
+  assetKey,
+  trustlineError,
   recipientError,
   showRecipientError,
   amountError,
@@ -69,6 +76,7 @@ export function StellarSendView({
   isSuccess,
   onRecipientChange,
   onRecipientBlur,
+  onAssetChange,
   onAmountChange,
   onAmountBlur,
   onPaste,
@@ -89,7 +97,7 @@ export function StellarSendView({
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
@@ -105,13 +113,13 @@ export function StellarSendView({
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
+          Send {assetKey} privately using stealth addresses. The recipient gets funds at a fresh address
           only they can control.
         </p>
       </div>
@@ -179,6 +187,27 @@ export function StellarSendView({
           </div>
 
           <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="stellar-asset"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
+              Asset
+            </label>
+            <select
+              id="stellar-asset"
+              value={assetKey}
+              onChange={(e) => onAssetChange(e.target.value as StellarAssetKey)}
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+            >
+              {STELLAR_ASSETS.map((a) => (
+                <option key={a.key} value={a.key}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Amount
             </label>
@@ -196,7 +225,7 @@ export function StellarSendView({
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
+                {assetKey}
               </span>
             </div>
             <p id="stellar-amount-error" className="min-h-5 text-xs text-error" aria-live="polite">
@@ -317,12 +346,30 @@ export function StellarSendView({
           {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
+          {trustlineError && (
+            <div className="border border-error/20 bg-error/5 p-3">
+              <p className="font-mono text-xs text-error">{trustlineError}</p>
+              <p className="mt-1 font-body text-xs text-on-surface-variant">
+                To add a{' '}
+                <a
+                  href="https://stellar.org/learn/how-to-add-trustline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline"
+                >
+                  trustline
+                </a>
+                , the recipient needs to set a trustline for {assetKey} on their Stellar account.
+              </p>
+            </div>
+          )}
+
           <button
             onClick={onSend}
             disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? 'Confirm in wallet...' : `Send ${assetKey}`}
           </button>
         </div>
       )}
@@ -338,6 +385,7 @@ export function StellarSendView({
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
               {isSuccess ? 'Final Transfer' : 'Pending Transfer'}
             </span>
+            <span className="font-mono text-[10px] text-outline">{assetKey}</span>
           </div>
 
           <div className="flex flex-col gap-3">

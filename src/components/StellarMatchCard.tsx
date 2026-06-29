@@ -2,12 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import { PrivacyTooltip } from '@/components/PrivacyTooltip';
+import type { StellarAssetKey } from '@/lib/stellar/assets';
+import { STELLAR_ASSETS, getAssetByKey, formatStellarAssetAmount } from '@/lib/stellar/assets';
 
 export interface StellarMatchCardProps {
   stealthAddress: string;
   scalarHex: string;
-  balance: string | null;
+  balances: Record<string, string>;
   balanceState: 'loading' | 'loaded' | 'error';
+  withdrawAssetKey: StellarAssetKey;
   dest: string;
   withdrawing: boolean;
   withdrawHash: string | null;
@@ -17,6 +20,7 @@ export interface StellarMatchCardProps {
   showKey: boolean;
   showSponsorPrompt: boolean;
   onDestChange: (value: string) => void;
+  onWithdrawAssetKeyChange: (value: StellarAssetKey) => void;
   onWithdraw: () => void;
   onSponsoredWithdraw: () => void;
   onCancelSponsor: () => void;
@@ -33,8 +37,9 @@ export interface StellarMatchCardProps {
 export function StellarMatchCard({
   stealthAddress,
   scalarHex,
-  balance,
+  balances,
   balanceState,
+  withdrawAssetKey,
   dest,
   withdrawing,
   withdrawHash,
@@ -44,6 +49,7 @@ export function StellarMatchCard({
   showKey,
   showSponsorPrompt,
   onDestChange,
+  onWithdrawAssetKeyChange,
   onWithdraw,
   onSponsoredWithdraw,
   onCancelSponsor,
@@ -56,7 +62,17 @@ export function StellarMatchCard({
   showPrivacyWarning,
   onDismissPrivacyWarning,
 }: StellarMatchCardProps) {
-  const hasBalance = balanceState === 'loaded' && balance != null && parseFloat(balance) > 0;
+  const hasAnyBalance = balanceState === 'loaded' && Object.values(balances).some((b) => parseFloat(b) > 0);
+  const assetBalances = STELLAR_ASSETS.map((asset) => {
+    let balanceKey: string;
+    if (asset.isNative) {
+      balanceKey = 'XLM';
+    } else {
+      balanceKey = `${asset.key}:${(asset.toAsset() as any).getIssuer()}`;
+    }
+    const bal = balances[balanceKey] || '0';
+    return { key: asset.key, label: asset.label, balance: bal, formattedBalance: formatStellarAssetAmount(bal, asset.decimals) };
+  });
   const isHidden = !!labelData?.hiddenAt;
   const currentLabel = labelData?.label ?? '';
   const currentTags = labelData?.tags ?? [];
@@ -332,28 +348,47 @@ export function StellarMatchCard({
             <CopyButton text={stealthAddress} />
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
           {balanceState === 'loading' ? (
             <span className="font-mono text-xs text-outline">...</span>
           ) : balanceState === 'error' ? (
             <span className="font-mono text-xs text-error">Balance error</span>
-          ) : hasBalance ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
-            </>
+          ) : hasAnyBalance ? (
+            assetBalances.map((ab) =>
+              parseFloat(ab.balance) > 0 ? (
+                <span key={ab.key} className="flex items-center gap-1">
+                  <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+                  <span className="font-heading text-sm font-bold text-on-surface">
+                    {ab.formattedBalance} {ab.key}
+                  </span>
+                </span>
+              ) : null,
+            )
           ) : (
             <span className="font-mono text-xs text-outline">Empty</span>
           )}
         </div>
       </div>
 
-      {!withdrawHash && hasBalance && (
+      {!withdrawHash && hasAnyBalance && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Withdraw to
           </label>
           <div className="flex gap-2">
+            <select
+              value={withdrawAssetKey}
+              onChange={(e) => onWithdrawAssetKeyChange(e.target.value as StellarAssetKey)}
+              className="h-10 border border-outline-variant bg-surface px-2 font-mono text-xs text-primary focus:border-primary"
+            >
+              {assetBalances
+                .filter((ab) => parseFloat(ab.balance) > 0)
+                .map((ab) => (
+                  <option key={ab.key} value={ab.key}>
+                    {ab.key} ({ab.formattedBalance})
+                  </option>
+                ))}
+            </select>
             <input
               type="text"
               value={dest}
