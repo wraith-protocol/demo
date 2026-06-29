@@ -1,7 +1,8 @@
 {
   "nav": {
     "send": "Enviar",
-    "receive": "Recibir"
+    "receive": "Recibir",
+    "schedule": "Programar"
   },
   "header": {
     "menuLabel": "Menú"

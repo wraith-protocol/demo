@@ -1,7 +1,8 @@
 {
   "nav": {
     "send": "Send",
-    "receive": "Receive"
+    "receive": "Receive",
+    "schedule": "Schedule"
   },
   "header": {
     "menuLabel": "Menu"

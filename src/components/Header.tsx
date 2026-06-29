@@ -21,6 +21,7 @@ export function Header() {
   const navLinks = [
     { to: '/send', label: t('nav.send') },
     { to: '/receive', label: t('nav.receive') },
+    { to: '/schedule', label: t('nav.schedule') },
   ];
 
   return (
