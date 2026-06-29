@@ -16,12 +16,12 @@ body {
 }
 
 input::placeholder {
-  color: #767575;
+  color: #888888;
 }
 
 input:focus {
-  outline: none;
-  box-shadow: none;
+  outline: 2px solid #c6c6c7;
+  outline-offset: 2px;
 }
 
 ::-webkit-scrollbar {

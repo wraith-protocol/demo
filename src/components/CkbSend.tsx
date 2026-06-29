@@ -132,11 +132,12 @@ export function CkbSend() {
       {!txHash && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label htmlFor="recipient-meta" className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Recipient Meta-Address
             </label>
             <div className="relative">
               <input
+                id="recipient-meta"
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
@@ -153,11 +154,12 @@ export function CkbSend() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label htmlFor="amount" className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Amount (min 95)
             </label>
             <div className="relative">
               <input
+                id="amount"
                 type="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

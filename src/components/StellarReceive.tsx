@@ -236,61 +236,63 @@ function StellarStealthRow({
   };
 
   return (
-    <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
-          </span>
-          <div className="mt-0.5 flex items-center gap-2">
-            <a
-              href={stellarAddrUrl(match.stealthAddress)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block truncate font-mono text-xs text-primary underline"
-            >
-              {match.stealthAddress}
-            </a>
-            <CopyButton text={match.stealthAddress} />
+        <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Stealth Address
+              </span>
+              <div className="mt-0.5 flex items-center gap-2">
+                <a
+                  href={stellarAddrUrl(match.stealthAddress)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate font-mono text-xs text-primary underline"
+                >
+                  {match.stealthAddress}
+                </a>
+                <CopyButton text={match.stealthAddress} />
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {loadingBal ? (
+                <span className="font-mono text-xs text-outline">...</span>
+              ) : balance && parseFloat(balance) > 0 ? (
+                <>
+                  <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+                  <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
+                </>
+              ) : (
+                <span className="font-mono text-xs text-outline">Empty</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {loadingBal ? (
-            <span className="font-mono text-xs text-outline">...</span>
-          ) : balance && parseFloat(balance) > 0 ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
-            </>
-          ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
-          )}
-        </div>
-      </div>
 
-      {!withdrawHash && balance && parseFloat(balance) > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={dest}
-              onChange={(e) => setDest(e.target.value)}
-              placeholder="Destination address (G...)"
-              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
-            />
-            <button
-              onClick={handleWithdraw}
-              disabled={!dest || withdrawing}
-              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-            >
-              {withdrawing ? '...' : 'Withdraw'}
-            </button>
-          </div>
-        </div>
-      )}
+          {!withdrawHash && balance && parseFloat(balance) > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="withdraw-dest" className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Withdraw to
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="withdraw-dest"
+                  type="text"
+                  value={dest}
+                  onChange={(e) => setDest(e.target.value)}
+                  placeholder="Destination address (G...)"
+                  className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
+                />
+                <button
+                  onClick={handleWithdraw}
+                  disabled={!dest || withdrawing}
+                  className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {withdrawing ? '...' : 'Withdraw'}
+                </button>
+              </div>
+            </div>
+          )}
+
 
       {error && <p className="text-xs text-error">{error}</p>}
 

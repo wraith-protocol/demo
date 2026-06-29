@@ -135,11 +135,12 @@ function SolanaStealthRow({
 
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
         <div className="flex flex-col gap-1.5">
-          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          <label htmlFor="withdraw-dest" className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Withdraw to
           </label>
           <div className="flex gap-2">
             <input
+              id="withdraw-dest"
               type="text"
               value={dest}
               onChange={(e) => setDest(e.target.value)}
