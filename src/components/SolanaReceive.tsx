@@ -13,6 +13,7 @@ import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
 import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 
@@ -94,6 +95,7 @@ function SolanaStealthRow({
       await connection.confirmTransaction(txId, 'confirmed');
 
       setWithdrawHash(txId);
+      trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
@@ -248,6 +250,7 @@ export function SolanaReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {

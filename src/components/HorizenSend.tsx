@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 export function HorizenSend() {
   const { t } = useTranslation();
@@ -63,6 +64,7 @@ export function HorizenSend() {
       });
 
       setStealthResult(result);
+      trackEvent('send_submitted');
 
       sendTransaction({
         to: result.transaction.to as `0x${string}`,

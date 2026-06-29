@@ -12,6 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
   const { t } = useTranslation();
@@ -134,6 +135,7 @@ export function CkbReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {

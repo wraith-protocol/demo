@@ -27,11 +27,9 @@ import type {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { StellarMatchCard } from '@/components/StellarMatchCard';
-import { StellarReceiveView } from '@/components/StellarReceiveView';
-import { QRCodeModal } from '@/components/QRCodeModal';
-import { useStealthLabels } from '@/hooks/useStealthLabels';
-import { useStellarNotifications } from '@/hooks/useStellarNotifications';
+import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { useActivityStore } from '@/stores/activityStore';
@@ -324,7 +322,7 @@ function StellarMatchCardContainer({
       }
 
       setWithdrawHash(submitData.hash);
-      updateActivity(txHashHex, 'confirmed');
+      trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
@@ -1134,43 +1132,9 @@ export function StellarReceive() {
         new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
         { type: 'module' },
       );
-      workerRef.current.onmessage = (e) => {
-        if (e.data.type === 'SUCCESS') {
-          const results = e.data.results;
-          setMatched(results);
-
-          results.forEach((m: MatchedAnnouncement) => {
-            addActivity({
-              id: m.stealthAddress, // use address as unique id for receives
-              chain: 'stellar',
-              wallet: address || '',
-              kind: 'stealth-receive',
-              direction: 'in',
-              status: 'confirmed', // immediately confirmed since it's discovered
-              timestamp: Date.now(),
-            });
-          });
-
-          setHasScanned(true);
-          setIsScanning(false);
-        } else if (e.data.type === 'ERROR') {
-          setError(e.data.error);
-          setIsScanning(false);
-        }
-      };
-
-      workerRef.current.onerror = () => {
-        setError('Worker crashed');
-        setIsScanning(false);
-      };
-
-      workerRef.current.postMessage({
-        rpcUrl: STELLAR_NETWORK.rpcUrl,
-        announcerContract: ANNOUNCER_CONTRACT,
-        viewingKey: stellarKeys.viewingKey,
-        spendingPubKey: stellarKeys.spendingPubKey,
-        spendingScalar: stellarKeys.spendingScalar,
-      });
+      setMatched(results);
+      setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {

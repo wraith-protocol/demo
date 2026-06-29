@@ -19,15 +19,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { STELLAR_NETWORK } from '@/config';
-import { StellarSendView } from '@/components/StellarSendView';
-import { useActivityStore } from '@/stores/activityStore';
-import { QrReader } from 'react-qr-reader';
-import {
-  emptyStellarSendSimulation,
-  simulateStellarSendAnnouncement,
-  type StellarSendSimulationState,
-} from '@/lib/stellarSimulation';
-import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
+import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -412,6 +405,7 @@ export function StellarSend() {
       const decoded = decodeStealthMetaAddress(metaAddress);
       const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthResult(result);
+      trackEvent('send_submitted');
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
