@@ -18,6 +18,9 @@ import {
   STEALTH_SIGNING_MESSAGE,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
+import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
+import { useTranslation } from 'react-i18next';
+import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import type {
   MatchedAnnouncement,
   StealthKeys as StellarStealthKeys,
@@ -31,6 +34,8 @@ import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
+import { trackEvent } from '@/lib/telemetry';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { useActivityStore } from '@/stores/activityStore';
@@ -171,6 +176,7 @@ function StellarMatchCardContainer({
   showPrivacyWarning: boolean;
   onDismissPrivacyWarning: () => void;
 }) {
+  const { t } = useTranslation();
   const { address, signTransaction } = useStellarWallet();
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
@@ -315,14 +321,19 @@ function StellarMatchCardContainer({
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+          submitData.extras?.result_codes?.transaction ||
+            submitData.title ||
+            t('common.transactionFailed'),
         );
       }
 
       setWithdrawHash(submitData.hash);
-      updateActivity(txHashHex, 'confirmed');
+      trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      // In a real robust implementation we'd check if we submitted and mark failed
       setRetryStatus('');
       setError(
         err instanceof RetryExhaustedError ? err.message : err instanceof Error ? err.message : 'Withdraw failed',
@@ -625,6 +636,102 @@ function StellarMatchCardContainer({
   };
 
   return (
+    <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            {t('common.stealthAddress')}
+          </span>
+          <div className="mt-0.5 flex items-center gap-2">
+            <a
+              href={stellarAddrUrl(match.stealthAddress)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block truncate font-mono text-xs text-primary underline"
+            >
+              {match.stealthAddress}
+            </a>
+            <CopyButton text={match.stealthAddress} />
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {loadingBal ? (
+            <span className="font-mono text-xs text-outline">...</span>
+          ) : balance && parseFloat(balance) > 0 ? (
+            <>
+              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+              <span className="font-heading text-lg font-bold text-on-surface">{balance} XLM</span>
+            </>
+          ) : (
+            <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
+          )}
+        </div>
+      </div>
+
+      {!withdrawHash && balance && parseFloat(balance) > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            {t('common.withdrawTo')}
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={dest}
+              onChange={(e) => setDest(e.target.value)}
+              placeholder="Destination address (G...)"
+              className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
+            />
+            <button
+              onClick={handleWithdraw}
+              disabled={!dest || withdrawing}
+              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {withdrawing ? '...' : t('common.withdraw')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-xs text-error">{error}</p>}
+
+      {withdrawHash && (
+        <div className="flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+          <span className="font-mono text-[10px] text-on-surface-variant">
+            {t('common.withdrawn')} —{' '}
+            <a
+              href={stellarTxUrl(withdrawHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline"
+            >
+              {withdrawHash.slice(0, 14)}...
+            </a>
+          </span>
+        </div>
+      )}
+
+      <div className="border-t border-outline-variant/30 pt-3">
+        {!showKey ? (
+          <button
+            onClick={() => setShowKey(true)}
+            className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+          >
+            {t('common.revealSecretKey')}
+          </button>
+        ) : (
+          <div className="border border-error/20 bg-error/5 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
+                {t('common.stealthKey')}
+              </span>
+              <CopyButton text={scalarHex} />
+            </div>
+            <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
+          </div>
+        )}
+      </div>
+    </div>
     <StellarMatchCard
       stealthAddress={match.stealthAddress}
       scalarHex={scalarHex}
@@ -655,6 +762,7 @@ function StellarMatchCardContainer({
 }
 
 export function StellarReceive() {
+  const { t } = useTranslation();
   const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
@@ -833,10 +941,12 @@ export function StellarReceive() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Key derivation failed');
+      setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
       setIsDerivingKeys(false);
     }
+  }, [signMessage, setStellarKeys, setStellarMetaAddress, t]);
+  }, [signMessage, setStellarKeys, setStellarMetaAddress, notifications.state.enabled, address, notifications]);
   }, [
     signMessage,
     setStellarKeys,
@@ -1141,49 +1251,132 @@ export function StellarReceive() {
         new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
         { type: 'module' },
       );
-      workerRef.current.onmessage = (e) => {
-        if (e.data.type === 'SUCCESS') {
-          const results = e.data.results;
-          setMatched(results);
-
-          results.forEach((m: MatchedAnnouncement) => {
-            addActivity({
-              id: m.stealthAddress, // use address as unique id for receives
-              chain: 'stellar',
-              wallet: address || '',
-              kind: 'stealth-receive',
-              direction: 'in',
-              status: 'confirmed', // immediately confirmed since it's discovered
-              timestamp: Date.now(),
-            });
-          });
-
-          setHasScanned(true);
-          setIsScanning(false);
-        } else if (e.data.type === 'ERROR') {
-          setError(e.data.error);
-          setIsScanning(false);
-        }
-      };
-
-      workerRef.current.onerror = () => {
-        setError('Worker crashed');
-        setIsScanning(false);
-      };
-
-      workerRef.current.postMessage({
-        rpcUrl: STELLAR_NETWORK.rpcUrl,
-        announcerContract: ANNOUNCER_CONTRACT,
-        viewingKey: stellarKeys.viewingKey,
-        spendingPubKey: stellarKeys.spendingPubKey,
-        spendingScalar: stellarKeys.spendingScalar,
-      });
+      setMatched(results);
+      setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.scanFailed'));
+    } finally {
       setError(err instanceof Error ? err.message : 'Failed to start worker');
       setIsScanning(false);
     }
-  }, [stellarKeys]);
+  }, [stellarKeys, t]);
 
+  if (!isConnected) {
+    return (
+      <section className="flex flex-col gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          {t('stellar.network')}
+        </span>
+        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
+          {t('stellar.receiveTitle')}
+        </h1>
+        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
+          {t('stellar.receiveConnectPrompt')}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+          {t('stellar.network')}
+        </span>
+        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
+          {t('stellar.receiveTitle')}
+        </h1>
+        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
+          {t('stellar.receiveDescription')}
+        </p>
+      </div>
+
+      {!stellarKeys && (
+        <div className="flex flex-col gap-4">
+          <button
+            onClick={deriveKeysFromWallet}
+            disabled={isDerivingKeys}
+            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+          >
+            {isDerivingKeys ? t('common.signingInWallet') : t('common.deriveKeys')}
+          </button>
+          {error && <p className="text-sm text-error">{error}</p>}
+        </div>
+      )}
+
+      {stellarKeys && stellarMetaAddress && (
+        <>
+          <div className="border border-outline-variant bg-surface-container p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                {t('common.yourStealthMetaAddress')}
+              </span>
+              <CopyButton text={stellarMetaAddress} />
+            </div>
+            <code className="block break-all font-mono text-xs leading-relaxed text-primary">
+              {stellarMetaAddress}
+            </code>
+          </div>
+
+          <div className="border border-outline-variant bg-surface-container p-5">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              {t('common.onChainRegistration')}
+            </span>
+            {registered ? (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+                <span className="font-mono text-xs text-on-surface-variant">
+                  {t('common.metaAddressRegistered')}
+                  {regHash && (
+                    <>
+                      {' — '}
+                      <a
+                        href={stellarTxUrl(regHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline"
+                      >
+                        {regHash.slice(0, 14)}...
+                      </a>
+                    </>
+                  )}
+                </span>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
+                  {t('common.registerMetaAddressHint')}
+                </p>
+                <button
+                  onClick={registerOnChain}
+                  disabled={isRegistering}
+                  className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  {isRegistering ? t('common.registering') : t('common.registerOnChain')}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <button
+              onClick={scanPayments}
+              disabled={isScanning}
+              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {isScanning ? t('common.scanning') : t('common.scanForPayments')}
+            </button>
+            {hasScanned && (
+              <span className="font-mono text-xs text-on-surface-variant">
+                {t('common.transfersFound', { count: matched.length })}
+              </span>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-error">{error}</p>}
+
+          {matched.length > 0 && (
   const handleExport = () => {
     const json = exportLabels();
     const blob = new Blob([json], { type: 'application/json' });
@@ -1407,6 +1600,21 @@ export function StellarReceive() {
                 </button>
               )}
             </div>
+          )}
+
+          {hasScanned && matched.length === 0 && (
+            <div className="py-12 text-center">
+              <p className="font-heading text-sm uppercase tracking-widest text-outline">
+                {t('common.noTransfersFound')}
+              </p>
+              <p className="mt-2 font-body text-xs text-on-surface-variant">
+                {t('common.noTransfersMatchedKeys')}
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
           ) : null
         }
       />

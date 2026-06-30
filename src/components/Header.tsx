@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
+import { LocaleSwitcher } from './LocaleSwitcher';
 import { useTheme } from '@/context/ThemeContext';
 
 const navLinks = [
@@ -12,8 +14,15 @@ const navLinks = [
 
 export function Header() {
   const location = useLocation();
+  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+
+  const navLinks = [
+    { to: '/send', label: t('nav.send') },
+    { to: '/receive', label: t('nav.receive') },
+    { to: '/schedule', label: t('nav.schedule') },
+  ];
 
   return (
     <header className="border-b border-outline-variant bg-surface">
@@ -47,6 +56,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          <LocaleSwitcher />
           <button
             onClick={toggleTheme}
             className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant"
@@ -80,7 +90,7 @@ export function Header() {
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
-            aria-label="Menu"
+            aria-label={t('header.menuLabel')}
           >
             <svg
               className="h-4 w-4"
@@ -108,7 +118,7 @@ export function Header() {
 
       {mobileMenuOpen && (
         <div className="border-t border-outline-variant/30 px-4 pb-3 sm:hidden">
-          <nav className="flex gap-0">
+          <nav className="flex flex-col gap-0">
             {navLinks.map((link) => (
               <Link
                 key={link.to}

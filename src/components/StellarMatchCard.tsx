@@ -173,55 +173,53 @@ export function StellarMatchCard({
               </div>
             )}
 
-            {isHidden ? (
-              onUnhide && (
-                <button
-                  onClick={onUnhide}
-                  className="shrink-0 text-outline transition-colors hover:text-primary"
-                  title="Unhide"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+            {isHidden
+              ? onUnhide && (
+                  <button
+                    onClick={onUnhide}
+                    className="shrink-0 text-outline transition-colors hover:text-primary"
+                    title="Unhide"
                   >
-                    <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </button>
-              )
-            ) : (
-              onHide && (
-                <button
-                  onClick={onHide}
-                  className="shrink-0 text-outline transition-colors hover:text-primary"
-                  title="Hide"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                )
+              : onHide && (
+                  <button
+                    onClick={onHide}
+                    className="shrink-0 text-outline transition-colors hover:text-primary"
+                    title="Hide"
                   >
-                    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
-                    <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
-                    <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
-                    <path d="m2 2 20 20" />
-                  </svg>
-                </button>
-              )
-            )}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+                      <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+                      <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+                      <path d="m2 2 20 20" />
+                    </svg>
+                  </button>
+                )}
           </div>
 
           {/* Tags */}
@@ -364,7 +362,7 @@ export function StellarMatchCard({
             <button
               onClick={onWithdraw}
               disabled={!dest || withdrawing}
-              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-10 min-h-[44px] bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
               {withdrawing ? '...' : 'Withdraw'}
             </button>
@@ -387,7 +385,7 @@ export function StellarMatchCard({
           <p className="mb-4 font-body text-xs leading-relaxed text-on-surface-variant">
             The entire balance (including base reserve) will be merged into the destination address.
           </p>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
               onClick={onSponsoredWithdraw}
               disabled={withdrawing}
