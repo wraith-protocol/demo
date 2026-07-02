@@ -3,6 +3,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { ccc } from '@ckb-ccc/connector-react';
+import { useTranslation } from 'react-i18next';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { trackEvent } from '@/lib/telemetry';
@@ -21,6 +22,7 @@ import {
 } from '@/components/FreighterConnectButton';
 
 function HorizenButton() {
+  const { t } = useTranslation();
   return (
     <ConnectButton.Custom>
       {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
@@ -33,6 +35,8 @@ function HorizenButton() {
             })}
           >
             {!connected ? (
+              <button onClick={openConnectModal} className={btnBase}>
+                {t('walletConnect.connectWallet')}
               <button onClick={() => { openConnectModal(); trackEvent('connect_wallet'); }} className={btnBase}>
                 Connect Wallet
               </button>
@@ -52,6 +56,8 @@ function StellarButton() {
   const stellarWallet = useStellarWalletHook();
   const { address, isConnected, connect } = useStellarWalletContext();
 function FreighterButton() {
+  const { t } = useTranslation();
+  const { address, isConnected, connect, disconnect } = useStellarWallet();
   const { address, isConnected, connect, disconnect } = useStellarWallet();
   const [error, setError] = useState<string | null>(null);
   const { address, isConnected, isInstalled, isNetworkMismatch, connect, disconnect } =
@@ -81,6 +87,16 @@ function FreighterButton() {
               : 'disconnected';
 
   return (
+    <button onClick={connect} className={btnBase}>
+      {t('walletConnect.connectFreighter')}
+    </button>
+    <FreighterConnectButton
+      status={status}
+      address={address}
+      onConnect={handleConnect}
+      onDisconnect={disconnect}
+    />
+    <>
     <button onClick={() => { connect(); trackEvent('connect_wallet'); }} className={btnBase}>
       Connect Freighter
     </button>
@@ -125,6 +141,7 @@ return <WalletMultiButton className={btnBase} onClick={() => trackEvent('connect
 }
 
 function CkbButton() {
+  const { t } = useTranslation();
   const { open, wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const [address, setAddress] = useState<string>('');
@@ -146,6 +163,8 @@ function CkbButton() {
   }
 
   return (
+    <button onClick={open} className={btnBase}>
+      {t('walletConnect.connectWallet')}
     <button onClick={() => { open(); trackEvent('connect_wallet'); }} className={btnBase}>
       Connect Wallet
     </button>

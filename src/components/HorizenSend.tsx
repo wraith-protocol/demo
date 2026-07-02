@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
+import { useTranslation } from 'react-i18next';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 
 export function HorizenSend() {
+  const { t } = useTranslation();
   const { isConnected, address } = useAccount();
   const { data: balanceData } = useBalance({ address });
 
@@ -43,7 +45,7 @@ export function HorizenSend() {
         });
         const json = await response.json();
         if (!json.result || json.result === '0x' || json.result.length <= 66) {
-          setError('Name not found');
+          setError(t('common.nameNotFound'));
           return;
         }
         const metaBytes = ('0x' + json.result.slice(130).replace(/0+$/, '')) as HexString;
@@ -70,7 +72,7 @@ export function HorizenSend() {
         value: result.transaction.value,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     }
   };
 
@@ -102,13 +104,13 @@ export function HorizenSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Horizen Testnet / ETH
+          {t('horizen.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('horizen.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your wallet to send stealth payments on Horizen.
+          {t('horizen.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -118,14 +120,13 @@ export function HorizenSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Horizen Testnet / ETH
+          {t('horizen.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('horizen.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send ETH privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          {t('horizen.sendDescription')}
         </p>
       </div>
 
@@ -133,21 +134,21 @@ export function HorizenSend() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:eth:0x... or name.wraith"
+                placeholder={t('horizen.recipientPlaceholder')}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
                 onClick={handlePaste}
                 className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
               >
-                Paste
+                {t('common.paste')}
               </button>
             </div>
             {isWraithName && (
@@ -159,7 +160,7 @@ export function HorizenSend() {
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
             <div className="relative">
               <input
@@ -174,14 +175,14 @@ export function HorizenSend() {
                   onClick={handleMax}
                   className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
                 >
-                  Max
+                  {t('common.max')}
                 </button>
                 <span className="font-mono text-xs text-outline">ETH</span>
               </div>
             </div>
             {balanceData && (
               <span className="font-mono text-[10px] text-outline">
-                Balance: {parseFloat(balanceData.formatted).toFixed(6)} ETH
+                {t('common.balance')}: {parseFloat(balanceData.formatted).toFixed(6)} ETH
               </span>
             )}
           </div>
@@ -189,21 +190,27 @@ export function HorizenSend() {
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Paid by sender</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('common.paidBySender')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Announcer contract
+                {t('common.announcerContract')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">WraithSender</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('horizen.announcerContractName')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Expected confirmation
+                {t('common.expectedConfirmation')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">~5 seconds</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('common.seconds_approx')}
+              </span>
             </div>
           </div>
 
@@ -214,7 +221,7 @@ export function HorizenSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -228,14 +235,18 @@ export function HorizenSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isConfirming ? 'Confirming...' : isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isConfirming
+                ? t('common.confirming')
+                : isSuccess
+                  ? t('common.transferComplete')
+                  : t('common.pending')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
+                {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <a
@@ -253,7 +264,7 @@ export function HorizenSend() {
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
@@ -271,7 +282,7 @@ export function HorizenSend() {
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Ephemeral Public Key
+                {t('common.ephemeralPublicKey')}
               </span>
               <p className="mt-0.5 truncate font-mono text-xs text-on-surface-variant">
                 {stealthResult.ephemeralPubKey}
@@ -284,7 +295,7 @@ export function HorizenSend() {
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
-              New Transfer
+              {t('common.newTransfer')}
             </button>
           )}
         </div>

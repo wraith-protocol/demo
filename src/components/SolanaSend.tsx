@@ -8,12 +8,14 @@ import {
 } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
+import { useTranslation } from 'react-i18next';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 
 export function SolanaSend() {
+  const { t } = useTranslation();
   const { publicKey, connected, sendTransaction } = useWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -29,7 +31,7 @@ export function SolanaSend() {
 
   const handleSend = useCallback(async () => {
     if (!connected || !publicKey) {
-      setError('Wallet not connected');
+      setError(t('common.walletNotConnected'));
       return;
     }
 
@@ -38,7 +40,7 @@ export function SolanaSend() {
 
     try {
       if (!recipient.startsWith('st:sol:')) {
-        setError('Enter a valid Solana meta-address (st:sol:...)');
+        setError(t('solana.validMetaAddressError'));
         setIsPending(false);
         return;
       }
@@ -76,11 +78,11 @@ export function SolanaSend() {
       await connection.confirmTransaction(signature, 'confirmed');
       setIsSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setIsPending(false);
     }
-  }, [connected, publicKey, sendTransaction, recipient, amount]);
+  }, [connected, publicKey, sendTransaction, recipient, amount, t]);
 
   const reset = () => {
     setRecipient('');
@@ -104,13 +106,13 @@ export function SolanaSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Solana Devnet / SOL
+          {t('solana.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('solana.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Solana wallet to send stealth payments.
+          {t('solana.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -120,14 +122,13 @@ export function SolanaSend() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Solana Devnet / SOL
+          {t('solana.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('solana.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send SOL privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          {t('solana.sendDescription')}
         </p>
       </div>
 
@@ -135,28 +136,28 @@ export function SolanaSend() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:sol:..."
+                placeholder={t('solana.recipientPlaceholder')}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
               <button
                 onClick={handlePaste}
                 className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
               >
-                Paste
+                {t('common.paste')}
               </button>
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
             <div className="relative">
               <input
@@ -175,9 +176,11 @@ export function SolanaSend() {
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">~5000 lamports</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('solana.networkFeeAmount')}
+              </span>
             </div>
           </div>
 
@@ -188,7 +191,7 @@ export function SolanaSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -202,14 +205,14 @@ export function SolanaSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isSuccess ? t('common.transferComplete') : t('common.pending')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
+                {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <a
@@ -226,7 +229,7 @@ export function SolanaSend() {
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Ephemeral Public Key
+                {t('common.ephemeralPublicKey')}
               </span>
               <p className="mt-0.5 truncate font-mono text-xs text-on-surface-variant">
                 {bytesToHex(stealthResult.ephemeralPubKey)}
@@ -236,7 +239,7 @@ export function SolanaSend() {
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <a
@@ -258,7 +261,7 @@ export function SolanaSend() {
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
-              New Transfer
+              {t('common.newTransfer')}
             </button>
           )}
         </div>

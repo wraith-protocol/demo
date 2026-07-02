@@ -276,7 +276,7 @@ export function StellarReceiveView({
             <button
               onClick={onScan}
               disabled={isScanning}
-              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}
             </button>
@@ -294,7 +294,7 @@ export function StellarReceiveView({
           {hasScanned && matchCount > 0 && (
             <div className="flex flex-col gap-3">
               {onSearchChange && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="relative flex-1">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
