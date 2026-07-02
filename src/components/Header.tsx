@@ -1,17 +1,28 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
+import { LocaleSwitcher } from './LocaleSwitcher';
+import { useTheme } from '@/context/ThemeContext';
 
 const navLinks = [
   { to: '/send', label: 'Send' },
   { to: '/receive', label: 'Receive' },
-  { to: '/history', label: 'History' },
+  { to: '/vault', label: 'Vault' },
 ];
 
 export function Header() {
   const location = useLocation();
+  const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+
+  const navLinks = [
+    { to: '/send', label: t('nav.send') },
+    { to: '/receive', label: t('nav.receive') },
+    { to: '/schedule', label: t('nav.schedule') },
+  ];
 
   return (
     <header className="border-b border-outline-variant bg-surface">
@@ -45,12 +56,41 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          <LocaleSwitcher />
+          <button
+            onClick={toggleTheme}
+            className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant"
+            aria-label="Toggle theme"
+          >
+            {theme === 'light' ? (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M8 1v2M8 13v2M3 8h2M11 8h2M4.5 4.5l1.4 1.4M10.1 10.1l1.4 1.4M4.5 11.5l1.4-1.4M10.1 5.9l1.4-1.4M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+              </svg>
+            ) : (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M12 9a4 4 0 1 1-8 0 4 4 0 0 1 8 0z" />
+                <path d="M10 2a6 6 0 0 0-6 6" />
+              </svg>
+            )}
+          </button>
           <ChainSwitcher />
           <WalletConnect />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
-            aria-label="Menu"
+            aria-label={t('header.menuLabel')}
           >
             <svg
               className="h-4 w-4"
@@ -78,7 +118,7 @@ export function Header() {
 
       {mobileMenuOpen && (
         <div className="border-t border-outline-variant/30 px-4 pb-3 sm:hidden">
-          <nav className="flex gap-0">
+          <nav className="flex flex-col gap-0">
             {navLinks.map((link) => (
               <Link
                 key={link.to}
