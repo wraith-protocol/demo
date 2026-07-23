@@ -108,6 +108,21 @@
     "cellsFound_one": "{{count}} cell found",
     "cellsFound_other": "{{count}} cells found"
   },
+  "stellarSplit": {
+    "title": "Batch Send",
+    "description": "Paste a CSV of stealth meta-addresses and amounts to send in a single Stellar transaction. All rows are processed atomically — if any operation fails, the entire batch is rolled back.",
+    "connectPrompt": "Connect your Freighter wallet to send a stealth batch on Stellar.",
+    "csvLabel": "CSV (meta_address, amount, memo?)",
+    "csvHint": "One row per recipient. Max {{max}} rows. Lines starting with # are ignored.",
+    "validate": "Validate CSV",
+    "sendBatch": "Send Batch ({{count}} recipients)",
+    "reset": "Reset",
+    "fixErrors": "Fix {{count}} invalid row(s) before sending.",
+    "allOrNothing": "Stellar transactions are atomic. All operations must succeed or the entire batch is reverted.",
+    "successCount": "Recipients paid",
+    "recipients": "recipients",
+    "newBatch": "New Batch"
+  },
   "ckb": {
     "network": "CKB Testnet / CKB",
     "sendTitle": "Send",

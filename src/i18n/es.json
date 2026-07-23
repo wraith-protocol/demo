@@ -108,6 +108,21 @@
     "cellsFound_one": "{{count}} celda encontrada",
     "cellsFound_other": "{{count}} celdas encontradas"
   },
+  "stellarSplit": {
+    "title": "Envío por lotes",
+    "description": "Pega un CSV de meta-direcciones sigilosas y montos para enviar en una sola transacción Stellar. Todas las filas se procesan atómicamente — si alguna operación falla, el lote completo se revierte.",
+    "connectPrompt": "Conecta tu billetera Freighter para enviar un lote sigiloso en Stellar.",
+    "csvLabel": "CSV (meta_dirección, monto, memo?)",
+    "csvHint": "Una fila por destinatario. Máximo {{max}} filas. Las líneas que comienzan con # se ignoran.",
+    "validate": "Validar CSV",
+    "sendBatch": "Enviar lote ({{count}} destinatarios)",
+    "reset": "Restablecer",
+    "fixErrors": "Corrige {{count}} fila(s) inválida(s) antes de enviar.",
+    "allOrNothing": "Las transacciones Stellar son atómicas. Todas las operaciones deben completarse o el lote completo se revierte.",
+    "successCount": "Destinatarios pagados",
+    "recipients": "destinatarios",
+    "newBatch": "Nuevo lote"
+  },
   "ckb": {
     "network": "CKB Testnet / CKB",
     "sendTitle": "Enviar",
