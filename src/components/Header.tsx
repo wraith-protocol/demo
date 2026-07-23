@@ -22,6 +22,7 @@ export function Header() {
     { to: '/send', label: t('nav.send') },
     { to: '/receive', label: t('nav.receive') },
     { to: '/schedule', label: t('nav.schedule') },
+    { to: '/stellar/recurring', label: t('nav.recurring') },
   ];
 
   return (
