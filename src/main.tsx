@@ -33,6 +33,8 @@ import { ChainProvider } from '@/context/ChainContext';
 import { StealthKeysProvider } from '@/context/StealthKeysContext';
 import { StellarWalletProvider } from '@/context/StellarWalletContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { ContactsProvider } from '@/store/contactsStore';
+import { NameHistoryProvider } from '@/store/nameHistoryStore';
 import { wagmiConfig } from '@/config';
 import { App } from './App';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -81,7 +83,11 @@ function Providers({ children }: { children: React.ReactNode }) {
                   >
                     <ChainProvider>
                       <StellarWalletProvider>
-                        <StealthKeysProvider>{children}</StealthKeysProvider>
+                        <ContactsProvider>
+                          <NameHistoryProvider>
+                            <StealthKeysProvider>{children}</StealthKeysProvider>
+                          </NameHistoryProvider>
+                        </ContactsProvider>
                       </StellarWalletProvider>
                     </ChainProvider>
                   </ccc.Provider>
@@ -94,7 +100,6 @@ function Providers({ children }: { children: React.ReactNode }) {
     </ThemeProvider>
   );
 }
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
