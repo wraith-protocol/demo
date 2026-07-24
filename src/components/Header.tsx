@@ -17,6 +17,7 @@ export function Header() {
     { to: '/receive', label: t('nav.receive') },
     { to: '/schedule', label: t('nav.schedule') },
     { to: '/names', label: t('nav.names') },
+    { to: '/activity', label: t('nav.activity') },
   ];
 
   return (

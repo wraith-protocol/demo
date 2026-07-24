@@ -3,7 +3,8 @@
     "send": "Send",
     "receive": "Receive",
     "schedule": "Schedule",
-    "names": "Names"
+    "names": "Names",
+    "activity": "Activity"
   },
   "header": {
     "menuLabel": "Menu",
