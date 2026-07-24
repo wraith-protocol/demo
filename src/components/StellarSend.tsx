@@ -35,6 +35,7 @@ import {
   simulateStellarSendAnnouncement,
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
+import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -641,6 +642,8 @@ export function StellarSend() {
 
   return (
     <section className="flex flex-col gap-8">
+      <ExpiringNamesBanner />
+
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
           {t('stellar.network')}
