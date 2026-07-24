@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
@@ -93,17 +94,19 @@ export function StellarSendView({
   isScanningQR = false,
   scannerElement,
 }: StellarSendViewProps) {
+  const { t } = useTranslation();
+
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / {assetKey}
+          {t('stellar.network')} / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to send stealth payments on Stellar.
+          {t('stellar.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -113,14 +116,13 @@ export function StellarSendView({
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / {assetKey}
+          {t('stellar.network')} / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send {assetKey} privately using stealth addresses. The recipient gets funds at a fresh
-          address only they can control.
+          {t('stellar.sendDescription', { asset: assetKey })}
         </p>
       </div>
 
@@ -128,7 +130,7 @@ export function StellarSendView({
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
             <div className="relative">
               <input
@@ -139,7 +141,7 @@ export function StellarSendView({
                 onBlur={onRecipientBlur}
                 aria-invalid={!!recipientError}
                 aria-describedby="stellar-recipient-error"
-                placeholder="st:xlm:..."
+                placeholder={t('stellar.recipientPlaceholder')}
                 disabled={paramTo || isExpired}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-28 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
@@ -148,7 +150,7 @@ export function StellarSendView({
                   {onScanQRClick && (
                     <button
                       onClick={onScanQRClick}
-                      aria-label="Scan QR Code"
+                      aria-label={t('stellar.scanQrAriaLabel')}
                       className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary flex items-center gap-1"
                     >
                       <svg
@@ -165,14 +167,14 @@ export function StellarSendView({
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                         <circle cx="12" cy="13" r="4" />
                       </svg>
-                      Scan
+                      {t('stellar.scan')}
                     </button>
                   )}
                   <button
                     onClick={onPaste}
                     className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
                   >
-                    Paste
+                    {t('common.paste')}
                   </button>
                 </div>
               )}
@@ -191,7 +193,7 @@ export function StellarSendView({
               htmlFor="stellar-asset"
               className="font-mono text-[10px] uppercase tracking-widest text-outline"
             >
-              Asset
+              {t('stellar.asset')}
             </label>
             <select
               id="stellar-asset"
@@ -209,7 +211,7 @@ export function StellarSendView({
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
             <div className="relative">
               <input
@@ -235,7 +237,7 @@ export function StellarSendView({
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Memo (optional)
+              {t('stellar.memo')}
             </label>
             <input
               id="stellar-memo"
@@ -252,19 +254,23 @@ export function StellarSendView({
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.networkFeeAmount')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Announcer contract
+                {t('common.announcerContract')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.announcerContractName')}
+              </span>
             </div>
             <div className="flex min-h-5 items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Source balance
+                {t('stellar.sourceBalance')}
               </span>
               <span
                 id="stellar-balance-error"
@@ -281,10 +287,10 @@ export function StellarSendView({
           {simulationStatus === 'loading' && (
             <div className="border border-outline-variant bg-surface-container p-4">
               <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
-                Predicted transfer
+                {t('stellar.predictedTransfer')}
               </p>
               <p className="mt-2 text-sm text-on-surface-variant">
-                Simulating Soroban pre-flight...
+                {t('stellar.simulatingSoroban')}
               </p>
             </div>
           )}
@@ -293,16 +299,16 @@ export function StellarSendView({
             <div className="border border-outline-variant bg-surface-container p-4">
               <div className="flex items-center justify-between gap-4">
                 <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
-                  Predicted transfer
+                  {t('stellar.predictedTransfer')}
                 </p>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Predicted
+                  {t('stellar.predicted')}
                 </span>
               </div>
               <div className="mt-4 grid gap-3 text-sm">
                 <div className="flex items-start justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Predicted fee
+                    {t('stellar.predictedFee')}
                   </span>
                   <span className="text-right font-mono text-xs text-on-surface-variant">
                     {simulationFee}
@@ -310,7 +316,7 @@ export function StellarSendView({
                 </div>
                 <div className="flex items-start justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Predicted return value
+                    {t('stellar.predictedReturnValue')}
                   </span>
                   <span className="max-w-[65%] min-w-0 break-all text-right font-mono text-xs text-on-surface-variant">
                     {simulationReturnValue}
@@ -318,7 +324,7 @@ export function StellarSendView({
                 </div>
                 <div className="flex flex-col gap-2">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Predicted contract events
+                    {t('stellar.predictedContractEvents')}
                   </span>
                   {simulationEvents.length > 0 ? (
                     <ul className="flex flex-col gap-1">
@@ -332,7 +338,7 @@ export function StellarSendView({
                       ))}
                     </ul>
                   ) : (
-                    <p className="font-mono text-xs text-on-surface-variant">None</p>
+                    <p className="font-mono text-xs text-on-surface-variant">{t('stellar.none')}</p>
                   )}
                 </div>
               </div>
@@ -369,7 +375,7 @@ export function StellarSendView({
             disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : `Send ${assetKey}`}
+            {isPending ? t('common.confirmInWallet') : t('stellar.sendAsset', { asset: assetKey })}
           </button>
         </div>
       )}
@@ -383,7 +389,7 @@ export function StellarSendView({
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Final Transfer' : 'Pending Transfer'}
+              {isSuccess ? t('stellar.finalTransfer') : t('stellar.pendingTransfer')}
             </span>
             <span className="font-mono text-[10px] text-outline">{assetKey}</span>
           </div>
@@ -391,7 +397,7 @@ export function StellarSendView({
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
+                {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex min-w-0  items-center gap-2">
                 <a
@@ -409,7 +415,7 @@ export function StellarSendView({
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Final Transaction Hash
+                  {t('stellar.finalTransactionHash')}
                 </span>
                 <div className="mt-0.5 flex min-w-0 items-center gap-2">
                   <a
@@ -431,7 +437,7 @@ export function StellarSendView({
               onClick={onReset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
-              New Transfer
+              {t('common.newTransfer')}
             </button>
           )}
         </div>

@@ -7,8 +7,31 @@ on:
     branches: [main, develop]
 
 jobs:
-  build:
+  i18n-check:
+    name: i18n – missing key gate
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check i18n keys (EN vs ES, PT, FR)
+        run: pnpm i18n:check
+
+  build:
+    name: Build & type-check
+    runs-on: ubuntu-latest
+    needs: i18n-check
 
     steps:
       - uses: actions/checkout@v4

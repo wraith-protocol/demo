@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarVaultDeposit } from './StellarVaultDeposit';
 import { StellarVaultClaim } from './StellarVaultClaim';
@@ -7,6 +8,7 @@ import { VaultStatusTable } from './VaultStatusTable';
 type VaultTab = 'deposit' | 'claim' | 'status';
 
 export function StellarVault() {
+  const { t } = useTranslation();
   const { isConnected } = useStellarWallet();
   const [activeTab, setActiveTab] = useState<VaultTab>('deposit');
 
@@ -14,13 +16,13 @@ export function StellarVault() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Stealth Vault
+          {t('stellar.vaultTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to use the stealth vault for time-locked deposits.
+          {t('stellar.vaultConnectPrompt')}
         </p>
       </section>
     );
@@ -30,13 +32,13 @@ export function StellarVault() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Stealth Vault
+          {t('stellar.vaultTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Create time-locked deposits, claim after unlock, or refund after the refund window.
+          {t('stellar.vaultDescription')}
         </p>
       </div>
 
@@ -49,7 +51,7 @@ export function StellarVault() {
               : 'border-b-2 border-transparent text-outline hover:text-on-surface-variant'
           }`}
         >
-          Create Deposit
+          {t('stellar.createDeposit')}
         </button>
         <button
           onClick={() => setActiveTab('claim')}
@@ -59,7 +61,7 @@ export function StellarVault() {
               : 'border-b-2 border-transparent text-outline hover:text-on-surface-variant'
           }`}
         >
-          Claim
+          {t('stellar.claim')}
         </button>
         <button
           onClick={() => setActiveTab('status')}
@@ -69,7 +71,7 @@ export function StellarVault() {
               : 'border-b-2 border-transparent text-outline hover:text-on-surface-variant'
           }`}
         >
-          Status
+          {t('stellar.statusTab')}
         </button>
       </div>
 

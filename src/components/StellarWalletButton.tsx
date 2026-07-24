@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { WALLET_META } from '@/wallets/stellar';
 import type { StellarWalletState } from '@/hooks/useStellarWallet';
 
@@ -23,6 +24,7 @@ function truncate(key: string): string {
 }
 
 export function StellarWalletButton({ state }: Props) {
+  const { t } = useTranslation();
   const { status, walletId, publicKey, openPicker, disconnect } = state;
   const [showMenu, setShowMenu] = useState(false);
 
@@ -41,7 +43,7 @@ export function StellarWalletButton({ state }: Props) {
             strokeLinecap="round"
           />
         </svg>
-        Connecting…
+        {t('stellar.walletConnecting')}
       </div>
     );
   }
@@ -77,7 +79,7 @@ export function StellarWalletButton({ state }: Props) {
         {showMenu && (
           <div className="absolute right-0 top-full mt-1 z-20 bg-[#141414] border border-[#2a2a2a] w-44">
             <div className="px-3 py-2 border-b border-[#1e1e1e]">
-              <p className="text-[10px] text-[#555555] uppercase tracking-wide">Connected via</p>
+              <p className="text-[10px] text-[#555555] uppercase tracking-wide">{t('stellar.connectedVia')}</p>
               <p className="text-xs text-[#c4c7c5] mt-0.5">{meta.name}</p>
             </div>
             <button
@@ -88,7 +90,7 @@ export function StellarWalletButton({ state }: Props) {
               className="w-full text-left px-3 py-2 text-xs text-[#ee7d77] hover:bg-[#1a1a1a] transition-colors"
               data-testid="wallet-disconnect-button"
             >
-              Disconnect
+              {t('stellar.disconnect')}
             </button>
           </div>
         )}
@@ -105,7 +107,7 @@ export function StellarWalletButton({ state }: Props) {
       ].join(' ')}
       data-testid="wallet-connect-button"
     >
-      Connect wallet
+      {t('stellar.walletConnect')}
     </button>
   );
 }

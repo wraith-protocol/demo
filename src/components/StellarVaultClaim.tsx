@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
@@ -35,6 +36,7 @@ type VaultDeposit = {
 };
 
 export function StellarVaultClaim() {
+  const { t } = useTranslation();
   const { address, signMessage } = useStellarWallet();
   const [deposits, setDeposits] = useState<VaultDeposit[]>(MOCK_DEPOSITS);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function StellarVaultClaim() {
   const handleClaim = useCallback(
     async (depositId: string) => {
       if (!address) {
-        setError('Wallet not connected');
+        setError(t('common.walletNotConnected'));
         return;
       }
 
@@ -74,13 +76,13 @@ export function StellarVaultClaim() {
           prev.map((d) => (d.id === depositId ? { ...d, state: 'claimed' as const } : d)),
         );
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Claim failed');
+        setError(err instanceof Error ? err.message : t('common.transactionFailed'));
         setClaimState('idle');
       } finally {
         setClaimingId(null);
       }
     },
-    [address, signMessage],
+    [address, signMessage, t],
   );
 
   const reset = () => {
@@ -95,10 +97,10 @@ export function StellarVaultClaim() {
     return (
       <div className="py-12 text-center">
         <p className="font-heading text-sm uppercase tracking-widest text-outline">
-          Connect Wallet
+          {t('stellar.connectWalletTitle')}
         </p>
         <p className="mt-2 font-body text-xs text-on-surface-variant">
-          Connect your Freighter wallet to claim vault deposits.
+          {t('stellar.connectWalletVaultPrompt')}
         </p>
       </div>
     );
@@ -110,14 +112,14 @@ export function StellarVaultClaim() {
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
           <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-            Claim Successful
+            {t('stellar.claimSuccessful')}
           </span>
         </div>
 
         <div className="flex flex-col gap-3">
           <div>
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Transaction Hash
+              {t('common.transactionHash')}
             </span>
             <div className="mt-0.5 flex items-center gap-2">
               <a
@@ -137,7 +139,7 @@ export function StellarVaultClaim() {
           onClick={reset}
           className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
         >
-          Claim Another
+          {t('stellar.claimAnother')}
         </button>
       </div>
     );
@@ -147,10 +149,10 @@ export function StellarVaultClaim() {
     return (
       <div className="py-12 text-center">
         <p className="font-heading text-sm uppercase tracking-widest text-outline">
-          No Claimable Deposits
+          {t('stellar.noClaimableDeposits')}
         </p>
         <p className="mt-2 font-body text-xs text-on-surface-variant">
-          No pending vault deposits found for your address.
+          {t('stellar.noClaimableDepositsDesc')}
         </p>
       </div>
     );
@@ -170,13 +172,13 @@ export function StellarVaultClaim() {
               <div className="mb-2 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 bg-primary"></span>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Pending
+                  {t('stellar.pendingBadge')}
                 </span>
               </div>
 
               <div className="mb-3">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Deposit ID
+                  {t('stellar.depositId')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <span className="font-mono text-xs text-primary">{deposit.id}</span>
@@ -186,7 +188,7 @@ export function StellarVaultClaim() {
 
               <div className="mb-3">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Amount
+                  {t('common.amount')}
                 </span>
                 <div className="mt-0.5 font-heading text-lg font-bold text-on-surface">
                   {deposit.amount} XLM
@@ -195,7 +197,7 @@ export function StellarVaultClaim() {
 
               <div className="mb-3">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Unlock Ledger
+                  {t('stellar.unlockLedger')}
                 </span>
                 <div className="mt-0.5 font-mono text-xs text-on-surface-variant">
                   {deposit.unlockLedger.toLocaleString()}
@@ -204,10 +206,10 @@ export function StellarVaultClaim() {
 
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Refund Window
+                  {t('stellar.refundWindow')}
                 </span>
                 <div className="mt-0.5 font-mono text-xs text-on-surface-variant">
-                  {deposit.refundWindow.toLocaleString()} ledgers
+                  {t('stellar.refundWindowLedgers', { value: deposit.refundWindow.toLocaleString() })}
                 </div>
               </div>
             </div>
@@ -220,9 +222,9 @@ export function StellarVaultClaim() {
           >
             {claimingId === deposit.id
               ? claimState === 'signing'
-                ? 'Signing...'
-                : 'Claiming...'
-              : 'Claim'}
+                ? t('stellar.signing')
+                : t('stellar.claiming')
+              : t('stellar.claimButton')}
           </button>
         </div>
       ))}

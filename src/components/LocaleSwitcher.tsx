@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 const LOCALES: { code: string; label: string }[] = [
   { code: 'en', label: 'EN' },
   { code: 'es', label: 'ES' },
+  { code: 'pt', label: 'PT' },
+  { code: 'fr', label: 'FR' },
 ];
 
 export function LocaleSwitcher() {

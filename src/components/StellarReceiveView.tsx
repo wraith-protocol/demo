@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import { StellarPaymentLink } from '@/components/StellarPaymentLink';
@@ -87,17 +88,19 @@ export function StellarReceiveView({
   onFireTestNotification,
   onShowQR,
 }: StellarReceiveViewProps) {
+  const { t } = useTranslation();
+
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('stellar.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to scan for incoming stealth transfers on Stellar.
+          {t('stellar.receiveConnectPrompt')}
         </p>
       </section>
     );
@@ -107,13 +110,13 @@ export function StellarReceiveView({
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('stellar.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Derive your stealth keys, register on-chain, then scan for payments.
+          {t('stellar.receiveDescription')}
         </p>
       </div>
 
@@ -124,7 +127,7 @@ export function StellarReceiveView({
             disabled={isDerivingKeys}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
+            {isDerivingKeys ? t('common.signingInWallet') : t('common.deriveKeys')}
           </button>
           {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
@@ -137,15 +140,15 @@ export function StellarReceiveView({
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Your Stealth Meta-Address
+                {t('common.yourStealthMetaAddress')}
               </span>
               <div className="flex items-center gap-2">
                 {onShowQR && (
                   <button
                     onClick={onShowQR}
-                    aria-label="Show QR Code for Meta-Address"
+                    aria-label={t('stellar.showQrAriaLabel')}
                     className="text-outline hover:text-primary transition-colors p-1"
-                    title="Show QR Code"
+                    title={t('stellar.showQrAriaLabel')}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -177,13 +180,13 @@ export function StellarReceiveView({
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              On-Chain Registration
+              {t('common.onChainRegistration')}
             </span>
             {registered ? (
               <div className="mt-3 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
                 <span className="font-mono text-xs text-on-surface-variant">
-                  Meta-address registered on-chain
+                  {t('common.metaAddressRegistered')}
                   {regHash && (
                     <>
                       {' — '}
@@ -202,14 +205,14 @@ export function StellarReceiveView({
             ) : (
               <div className="mt-3">
                 <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-                  Register your meta-address so senders can look you up by wallet address.
+                  {t('common.registerMetaAddressHint')}
                 </p>
                 <button
                   onClick={onRegister}
                   disabled={isRegistering}
                   className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
-                  {isRegistering ? 'Registering...' : 'Register On-Chain'}
+                  {isRegistering ? t('common.registering') : t('common.registerOnChain')}
                 </button>
               </div>
             )}
@@ -222,7 +225,7 @@ export function StellarReceiveView({
             <div className="border border-outline-variant bg-surface-container p-5">
               <div className="mb-3 flex items-center justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Background Notifications
+                  {t('stellar.backgroundNotifications')}
                 </span>
                 <button
                   onClick={onToggleNotifications}
@@ -241,17 +244,14 @@ export function StellarReceiveView({
               {notificationsEnabled ? (
                 <div className="space-y-3">
                   <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-                    Receive notifications when new stealth payments are detected, even when the tab
-                    is closed.
+                    {t('stellar.notificationsEnabledDesc')}
                   </p>
                   <div className="rounded bg-surface-container-high p-3">
                     <p className="font-mono text-[9px] uppercase tracking-widest text-outline mb-2">
-                      Privacy Disclosure
+                      {t('stellar.privacyDisclosure')}
                     </p>
                     <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
-                      Your viewing key is stored encrypted in IndexedDB using your wallet-derived
-                      key. The service worker periodically scans for new payments and shows
-                      notifications. You can disable this feature at any time.
+                      {t('stellar.privacyDisclosureText')}
                     </p>
                   </div>
                   {notificationsPermission === 'granted' && onFireTestNotification && (
@@ -259,14 +259,13 @@ export function StellarReceiveView({
                       onClick={onFireTestNotification}
                       className="h-9 w-full border border-outline-variant font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
                     >
-                      Test Notification
+                      {t('stellar.testNotification')}
                     </button>
                   )}
                 </div>
               ) : (
                 <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-                  Enable notifications to receive alerts about incoming stealth payments even when
-                  the tab is closed.
+                  {t('stellar.notificationsDisabledDesc')}
                 </p>
               )}
             </div>
@@ -278,11 +277,11 @@ export function StellarReceiveView({
               disabled={isScanning}
               className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"
             >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
+              {isScanning ? t('common.scanning') : t('common.scanForPayments')}
             </button>
             {hasScanned && (
               <span className="font-mono text-xs text-on-surface-variant">
-                {matchCount} transfer{matchCount !== 1 ? 's' : ''} found
+                {t('common.transfersFound', { count: matchCount })}
               </span>
             )}
           </div>
@@ -315,7 +314,7 @@ export function StellarReceiveView({
                       type="text"
                       value={searchQuery ?? ''}
                       onChange={(e) => onSearchChange(e.target.value)}
-                      placeholder="Search by label, tag, or address..."
+                      placeholder={t('stellar.searchPlaceholder')}
                       className="h-9 w-full border border-outline-variant bg-surface pl-8 pr-3 font-body text-xs text-on-surface placeholder:text-outline focus:border-primary"
                     />
                   </div>
@@ -323,7 +322,7 @@ export function StellarReceiveView({
                     <button
                       onClick={onExport}
                       className="flex h-9 items-center gap-1.5 border border-outline-variant px-3 font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-                      title="Export labels"
+                      title={t('stellar.export')}
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -340,14 +339,14 @@ export function StellarReceiveView({
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                       </svg>
-                      Export
+                      {t('stellar.export')}
                     </button>
                   )}
                   {onImport && (
                     <button
                       onClick={onImport}
                       className="flex h-9 items-center gap-1.5 border border-outline-variant px-3 font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-                      title="Import labels"
+                      title={t('stellar.import')}
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -364,7 +363,7 @@ export function StellarReceiveView({
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
-                      Import
+                      {t('stellar.import')}
                     </button>
                   )}
                 </div>
@@ -375,7 +374,7 @@ export function StellarReceiveView({
               {allTags && allTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="font-mono text-[9px] uppercase tracking-widest text-outline">
-                    Tags:
+                    {t('stellar.tags')}
                   </span>
                   {allTags.map((tag) => (
                     <button
@@ -395,7 +394,7 @@ export function StellarReceiveView({
                       onClick={() => onTagClick?.(null as unknown as string)}
                       className="font-mono text-[10px] text-outline transition-colors hover:text-error"
                     >
-                      Clear
+                      {t('stellar.clear')}
                     </button>
                   )}
                 </div>
@@ -431,7 +430,9 @@ export function StellarReceiveView({
                       </>
                     )}
                   </svg>
-                  {showHidden ? `Hide archived (${hiddenCount})` : `Show hidden (${hiddenCount})`}
+                  {showHidden
+                    ? t('stellar.hideArchived', { count: hiddenCount })
+                    : t('stellar.showHidden', { count: hiddenCount })}
                 </button>
               )}
             </div>
@@ -443,10 +444,10 @@ export function StellarReceiveView({
           {hasScanned && matchCount > 0 && filteredMatchCount === 0 && (
             <div className="py-12 text-center">
               <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No matching transfers
+                {t('stellar.noMatchingTransfers')}
               </p>
               <p className="mt-2 font-body text-xs text-on-surface-variant">
-                Try adjusting your search or filters.
+                {t('stellar.tryAdjustingFilters')}
               </p>
             </div>
           )}
@@ -454,10 +455,10 @@ export function StellarReceiveView({
           {hasScanned && matchCount === 0 && (
             <div className="py-12 text-center">
               <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
+                {t('common.noTransfersFound')}
               </p>
               <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
+                {t('common.noTransfersMatchedKeys')}
               </p>
             </div>
           )}

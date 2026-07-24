@@ -975,38 +975,38 @@ export function StellarReceive() {
     if (!vaultSupported) return null;
 
     const busy = vaultBusy !== 'idle';
-    const title = stellarKeys ? 'Save to Browser Vault' : 'Unlock Browser Vault';
+    const title = stellarKeys ? t('stellar.saveToBrowserVault') : t('stellar.unlockBrowserVault');
     const description = stellarKeys
-      ? 'Store the derived Stellar keys encrypted in this browser for brief reuse.'
-      : 'Restore the last saved Stellar keys from this browser vault using your passphrase.';
+      ? t('stellar.browserVaultSaveDesc')
+      : t('stellar.browserVaultUnlockDesc');
 
     return (
       <div className="border border-outline-variant bg-surface-container p-5">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-4">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Browser Vault
+              {t('stellar.browserVault')}
             </span>
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Opt-in
+              {t('stellar.browserVaultOptIn')}
             </span>
           </div>
           <p className="text-sm leading-relaxed text-on-surface-variant">{description}</p>
           <p className="text-xs leading-relaxed text-on-surface-variant">
-            Not a replacement for a hardware wallet.
+            {t('stellar.browserVaultNotReplacement')}
           </p>
         </div>
 
         <div className="mt-4 flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Passphrase
+              {t('stellar.passphrase')}
             </label>
             <input
               type="password"
               value={vaultPassphrase}
               onChange={(e) => setVaultPassphrase(e.target.value)}
-              placeholder="Unlock the vault"
+              placeholder={t('stellar.passphrasePlaceholder')}
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
           </div>
@@ -1019,14 +1019,14 @@ export function StellarReceive() {
                   disabled={busy || !vaultPassphrase}
                   className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
                 >
-                  {vaultBusy === 'saving' ? 'Saving...' : title}
+                  {vaultBusy === 'saving' ? t('stellar.saving') : title}
                 </button>
                 <button
                   onClick={lockVault}
                   disabled={busy}
                   className="h-11 border border-outline-variant px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
-                  {vaultBusy === 'locking' ? 'Locking...' : 'Lock Vault'}
+                  {vaultBusy === 'locking' ? t('stellar.locking') : t('stellar.lockVault')}
                 </button>
               </>
             ) : (
@@ -1035,7 +1035,7 @@ export function StellarReceive() {
                 disabled={busy || !vaultPassphrase}
                 className="h-11 bg-primary px-4 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
               >
-                {vaultBusy === 'unlocking' ? 'Unlocking...' : title}
+                {vaultBusy === 'unlocking' ? t('stellar.unlocking') : title}
               </button>
             )}
           </div>
@@ -1378,7 +1378,7 @@ export function StellarReceive() {
 
               <input
                 type="text"
-                placeholder="Search by address or amount..."
+                placeholder={t('stellar.transfersSearchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-12 w-full border border-outline-variant bg-surface px-4 font-body text-sm text-on-surface placeholder:text-outline focus:border-primary"
@@ -1386,7 +1386,7 @@ export function StellarReceive() {
 
               {filteredMatches.length === 0 && (
                 <div className="py-4 text-center font-body text-xs text-on-surface-variant">
-                  No matching transfers found for &quot;{searchQuery}&quot;
+                  {t('stellar.noMatchingTransfersFor', { query: searchQuery })}
                 </div>
               )}
 
@@ -1441,7 +1441,7 @@ export function StellarReceive() {
                   onClick={() => setVisibleCount((v) => v + 25)}
                   className="mt-2 h-10 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
                 >
-                  Show 25 more
+                  {t('stellar.showMore')}
                 </button>
               )}
             </div>

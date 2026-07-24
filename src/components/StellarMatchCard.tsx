@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import { PrivacyTooltip } from '@/components/PrivacyTooltip';
@@ -62,6 +63,7 @@ export function StellarMatchCard({
   showPrivacyWarning,
   onDismissPrivacyWarning,
 }: StellarMatchCardProps) {
+  const { t } = useTranslation();
   const hasAnyBalance =
     balanceState === 'loaded' && Object.values(balances).some((b) => parseFloat(b) > 0);
   const assetBalances = STELLAR_ASSETS.map((asset) => {
@@ -338,7 +340,7 @@ export function StellarMatchCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
+            {t('common.stealthAddress')}
           </span>
           <div className="mt-0.5 flex items-center gap-2">
             <a
@@ -356,7 +358,7 @@ export function StellarMatchCard({
           {balanceState === 'loading' ? (
             <span className="font-mono text-xs text-outline">...</span>
           ) : balanceState === 'error' ? (
-            <span className="font-mono text-xs text-error">Balance error</span>
+            <span className="font-mono text-xs text-error">{t('stellar.balanceError')}</span>
           ) : hasAnyBalance ? (
             assetBalances.map((ab) =>
               parseFloat(ab.balance) > 0 ? (
@@ -369,7 +371,7 @@ export function StellarMatchCard({
               ) : null,
             )
           ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
+            <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
           )}
         </div>
       </div>
@@ -377,7 +379,7 @@ export function StellarMatchCard({
       {!withdrawHash && hasAnyBalance && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
+            {t('common.withdrawTo')}
           </label>
           <div className="flex gap-2">
             <select
@@ -397,7 +399,7 @@ export function StellarMatchCard({
               type="text"
               value={dest}
               onChange={(e) => onDestChange(e.target.value)}
-              placeholder="Destination address (G...)"
+              placeholder={t('stellar.destinationPlaceholder')}
               className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
             />
             <button
@@ -405,7 +407,7 @@ export function StellarMatchCard({
               disabled={!dest || withdrawing}
               className="h-10 min-h-[44px] bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? '...' : 'Withdraw'}
+              {withdrawing ? '...' : t('common.withdraw')}
             </button>
           </div>
         </div>
@@ -416,15 +418,14 @@ export function StellarMatchCard({
           <div className="mb-2 flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-tertiary">
-              Sponsored Withdrawal Required
+              {t('stellar.sponsoredWithdrawalTitle')}
             </span>
           </div>
           <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-            This stealth address can't pay its own fees. Your connected wallet will sponsor the
-            transaction and pay the fee. Freighter will prompt you to sign the fee-bump transaction.
+            {t('stellar.sponsoredWithdrawalDesc')}
           </p>
           <p className="mb-4 font-body text-xs leading-relaxed text-on-surface-variant">
-            The entire balance (including base reserve) will be merged into the destination address.
+            {t('stellar.sponsoredWithdrawalMergeDesc')}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
@@ -432,14 +433,14 @@ export function StellarMatchCard({
               disabled={withdrawing}
               className="h-10 flex-1 bg-tertiary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? 'Processing...' : 'Pay with Connected Wallet'}
+              {withdrawing ? t('stellar.processing') : t('stellar.payWithConnectedWallet')}
             </button>
             <button
               onClick={onCancelSponsor}
               disabled={withdrawing}
               className="h-10 border border-outline-variant px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-outline transition-colors hover:bg-surface-bright disabled:opacity-30"
             >
-              Cancel
+              {t('stellar.cancel')}
             </button>
           </div>
         </div>
@@ -453,7 +454,7 @@ export function StellarMatchCard({
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-mono text-[10px] text-on-surface-variant">
-              {feeBumpHash ? 'Sponsored withdrawal complete' : 'Withdrawn'} —{' '}
+              {feeBumpHash ? t('stellar.sponsoredWithdrawComplete') : t('common.withdrawn')} —{' '}
               <a
                 href={stellarTxUrl(withdrawHash)}
                 target="_blank"
@@ -466,8 +467,7 @@ export function StellarMatchCard({
           </div>
           {feeBumpHash && (
             <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
-              Fee-bump transaction sponsored by your connected wallet. All funds including base
-              reserve have been recovered.
+              {t('stellar.feeBumpRecoveryDesc')}
             </p>
           )}
         </div>
@@ -479,13 +479,13 @@ export function StellarMatchCard({
             onClick={onRevealKey}
             className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
           >
-            Reveal secret key
+            {t('common.revealSecretKey')}
           </button>
         ) : (
           <div className="border border-error/20 bg-error/5 p-3">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
+                {t('common.stealthKey')}
               </span>
               <CopyButton text={scalarHex} />
             </div>

@@ -15,6 +15,7 @@
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:unit": "vitest run",
+    "i18n:check": "node scripts/check-i18n.js",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook"

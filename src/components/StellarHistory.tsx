@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl } from '@/lib/explorer';
 import { useActivityStore, ActivityKind, ActivityStatus } from '@/stores/activityStore';
 
 export function StellarHistory() {
+  const { t } = useTranslation();
   const { address, isConnected } = useStellarWallet();
   const { entries, clearHistory, pollPending } = useActivityStore();
 
@@ -37,10 +39,10 @@ export function StellarHistory() {
     return (
       <section className="flex flex-col gap-3">
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          History
+          {t('stellar.historyTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Stellar wallet to view your transaction history.
+          {t('stellar.connectHistoryPrompt')}
         </p>
       </section>
     );
@@ -51,61 +53,61 @@ export function StellarHistory() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stellar Testnet / XLM
+            {t('stellar.network')}
           </span>
           <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-            Activity History
+            {t('stellar.historyTitle')}
           </h1>
         </div>
         <button
           onClick={() => clearHistory('stellar', address ?? '')}
           className="rounded-lg bg-surface-container px-4 py-2 font-mono text-xs uppercase tracking-widest text-on-surface transition-colors hover:bg-error/20 hover:text-error"
         >
-          Clear History
+          {t('stellar.clearHistory')}
         </button>
       </div>
 
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col gap-1">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Type
+            {t('stellar.typeLabel')}
           </label>
           <select
             value={filterKind}
-            onChange={(e) => setFilterKind(e.target.value as any)}
+            onChange={(e) => setFilterKind(e.target.value as ActivityKind | 'all')}
             className="rounded-lg border border-outline bg-surface-container px-3 py-2 font-mono text-sm text-on-surface outline-none focus:border-tertiary"
           >
-            <option value="all">All Types</option>
-            <option value="stealth-send">Stealth Send</option>
-            <option value="stealth-receive">Stealth Receive</option>
-            <option value="withdrawal">Withdrawal</option>
-            <option value="name-registration">Name Registration</option>
+            <option value="all">{t('stellar.allTypes')}</option>
+            <option value="stealth-send">{t('stellar.stealthSend')}</option>
+            <option value="stealth-receive">{t('stellar.stealthReceive')}</option>
+            <option value="withdrawal">{t('stellar.withdrawal')}</option>
+            <option value="name-registration">{t('stellar.nameRegistration')}</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Status
+            {t('stellar.statusLabel')}
           </label>
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as any)}
+            onChange={(e) => setFilterStatus(e.target.value as ActivityStatus | 'all')}
             className="rounded-lg border border-outline bg-surface-container px-3 py-2 font-mono text-sm text-on-surface outline-none focus:border-tertiary"
           >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="failed">Failed</option>
+            <option value="all">{t('stellar.allStatuses')}</option>
+            <option value="pending">{t('stellar.pendingStatus')}</option>
+            <option value="confirmed">{t('stellar.confirmedStatus')}</option>
+            <option value="failed">{t('stellar.failedStatus')}</option>
           </select>
         </div>
       </div>
 
       {walletEntries.length === 0 && (
-        <p className="font-body text-sm text-on-surface-variant">No activity recorded yet.</p>
+        <p className="font-body text-sm text-on-surface-variant">{t('stellar.noActivityYet')}</p>
       )}
 
       {walletEntries.length > 0 && filteredEntries.length === 0 && (
         <p className="font-body text-sm text-on-surface-variant">
-          No activity matches the filters.
+          {t('stellar.noActivityMatchesFilter')}
         </p>
       )}
 
@@ -138,17 +140,17 @@ export function StellarHistory() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-4">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Direction
+                  {t('stellar.direction')}
                 </span>
                 <span className="font-mono text-[10px] text-on-surface">
-                  {tx.direction === 'in' ? 'Incoming (Received)' : 'Outgoing (Sent)'}
+                  {tx.direction === 'in' ? t('stellar.directionIn') : t('stellar.directionOut')}
                 </span>
               </div>
 
               {tx.amount && (
                 <div className="flex items-center justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Amount
+                    {t('common.amount')}
                   </span>
                   <span className="font-mono text-[10px] text-on-surface">{tx.amount} XLM</span>
                 </div>
@@ -157,7 +159,7 @@ export function StellarHistory() {
               {tx.recipient && (
                 <div className="flex items-center justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Recipient / Address
+                    {t('stellar.recipientAddress')}
                   </span>
                   <span
                     className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
@@ -173,7 +175,7 @@ export function StellarHistory() {
               {tx.kind !== 'stealth-receive' && (
                 <div className="flex items-center justify-between gap-4">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Hash
+                    {t('stellar.hash')}
                   </span>
                   <a
                     href={stellarTxUrl(tx.id)}

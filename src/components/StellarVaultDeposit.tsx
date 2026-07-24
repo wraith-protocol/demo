@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
@@ -53,6 +54,7 @@ function validateRefundWindow(value: string) {
 }
 
 export function StellarVaultDeposit() {
+  const { t } = useTranslation();
   const { address } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -101,7 +103,7 @@ export function StellarVaultDeposit() {
     setTouched({ recipient: true, amount: true, unlockLedger: true, refundWindow: true });
 
     if (!address) {
-      setError('Wallet not connected');
+      setError(t('common.walletNotConnected'));
       return;
     }
 
@@ -126,7 +128,7 @@ export function StellarVaultDeposit() {
       setTxHash(simulatedTxHash);
       setDepositState('success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Deposit failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
       setDepositState('idle');
     }
   }, [
@@ -137,6 +139,7 @@ export function StellarVaultDeposit() {
     refundWindowValue,
     canSubmit,
     validationError,
+    t,
   ]);
 
   const reset = () => {
@@ -158,7 +161,7 @@ export function StellarVaultDeposit() {
         <>
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('stellar.recipientMetaAddressLabel')}
             </label>
             <input
               type="text"
@@ -167,7 +170,7 @@ export function StellarVaultDeposit() {
               onBlur={() => setTouched((prev) => ({ ...prev, recipient: true }))}
               aria-invalid={!!recipientError}
               aria-describedby="vault-recipient-error"
-              placeholder="st:xlm:..."
+              placeholder={t('stellar.recipientPlaceholder')}
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
             <p id="vault-recipient-error" className="min-h-5 text-xs text-error" aria-live="polite">
@@ -177,7 +180,7 @@ export function StellarVaultDeposit() {
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
             <div className="relative">
               <input
@@ -201,7 +204,7 @@ export function StellarVaultDeposit() {
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Unlock Ledger
+              {t('stellar.unlockLedgerLabel')}
             </label>
             <input
               type="text"
@@ -222,7 +225,7 @@ export function StellarVaultDeposit() {
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Refund Window (ledgers)
+              {t('stellar.refundWindowLabel')}
             </label>
             <input
               type="text"
@@ -244,10 +247,10 @@ export function StellarVaultDeposit() {
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Contract
+                {t('stellar.vaultContract')}
               </span>
               <span className="font-mono text-[10px] text-on-surface-variant">
-                Stealth Vault (Coming Soon)
+                {t('stellar.vaultContractValue')}
               </span>
             </div>
           </div>
@@ -259,7 +262,7 @@ export function StellarVaultDeposit() {
             disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {'Create Deposit'}
+            {t('stellar.createDepositButton')}
           </button>
         </>
       )}
@@ -269,14 +272,14 @@ export function StellarVaultDeposit() {
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              Deposit Created
+              {t('stellar.depositCreated')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Deposit ID
+                {t('stellar.depositId')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
                 <span className="font-mono text-xs text-primary">{depositId}</span>
@@ -287,7 +290,7 @@ export function StellarVaultDeposit() {
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
                   <span className="font-mono text-xs text-primary">{txHash}</span>
@@ -298,24 +301,24 @@ export function StellarVaultDeposit() {
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Amount
+                {t('common.amount')}
               </span>
               <div className="mt-0.5 font-mono text-xs text-on-surface">{amountValue} XLM</div>
             </div>
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Unlock Ledger
+                {t('stellar.unlockLedger')}
               </span>
               <div className="mt-0.5 font-mono text-xs text-on-surface">{unlockLedgerValue}</div>
             </div>
 
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Refund Window
+                {t('stellar.refundWindow')}
               </span>
               <div className="mt-0.5 font-mono text-xs text-on-surface">
-                {refundWindowValue} ledgers after unlock
+                {t('stellar.refundWindowAfterUnlock', { value: refundWindowValue })}
               </div>
             </div>
           </div>
@@ -324,7 +327,7 @@ export function StellarVaultDeposit() {
             onClick={reset}
             className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
           >
-            New Deposit
+            {t('stellar.newDeposit')}
           </button>
         </div>
       )}

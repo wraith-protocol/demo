@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { WALLET_IDS, WALLET_META, type WalletId } from '@/wallets/stellar';
 import type { StellarWalletState } from '@/hooks/useStellarWallet';
@@ -81,6 +82,8 @@ export function StellarWalletPicker({ state }: Props) {
 
   if (!pickerOpen) return null;
 
+  const { t } = useTranslation();
+
   async function handleSelect(id: WalletId) {
     if (pending) return;
     setPending(id);
@@ -134,16 +137,16 @@ export function StellarWalletPicker({ state }: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       role="dialog"
       aria-modal="true"
-      aria-label="Connect Stellar wallet"
+      aria-label={t('stellar.walletPickerTitle')}
     >
       <div className="bg-[#141414] border border-[#2a2a2a] w-full max-w-sm p-5 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#e6e1e5]">Connect Stellar wallet</h2>
+          <h2 className="text-sm font-semibold text-[#e6e1e5]">{t('stellar.walletPickerTitle')}</h2>
           <button
             onClick={closePicker}
             className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
-            aria-label="Close"
+            aria-label={t('stellar.walletPickerClose')}
           >
             <svg
               width="14"
@@ -199,9 +202,9 @@ export function StellarWalletPicker({ state }: Props) {
                 <div className="flex-1 text-left min-w-0">
                   <p className="text-sm text-[#e6e1e5] font-medium">{meta.name}</p>
                   {detecting ? (
-                    <p className="text-[11px] text-[#444444]">Detecting…</p>
+                    <p className="text-[11px] text-[#444444]">{t('stellar.detecting')}</p>
                   ) : isAvail ? (
-                    <p className="text-[11px] text-[#22c55e]">Installed</p>
+                    <p className="text-[11px] text-[#22c55e]">{t('stellar.installed')}</p>
                   ) : (
                     <a
                       href={meta.installUrl}
@@ -210,7 +213,7 @@ export function StellarWalletPicker({ state }: Props) {
                       className="text-[11px] text-[#555555] hover:text-[#767575] transition-colors"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      Not detected — install ↗
+                      {t('stellar.notDetected')}
                     </a>
                   )}
                 </div>
@@ -263,8 +266,7 @@ export function StellarWalletPicker({ state }: Props) {
 
         {/* Footer note */}
         <p className="text-[10px] text-[#333333] leading-relaxed pt-1">
-          Albedo and WalletConnect work in any browser — no extension needed. Other wallets require
-          their browser extension to be installed.
+          {t('stellar.walletPickerFooter')}
         </p>
       </div>
 
@@ -274,15 +276,15 @@ export function StellarWalletPicker({ state }: Props) {
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80"
           role="dialog"
           aria-modal="true"
-          aria-label="Scan WalletConnect QR code"
+          aria-label={t('stellar.scanWithWalletConnect')}
         >
           <div className="bg-[#141414] border border-[#2a2a2a] w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#e6e1e5]">Scan with WalletConnect</h2>
+              <h2 className="text-sm font-semibold text-[#e6e1e5]">{t('stellar.scanWithWalletConnect')}</h2>
               <button
                 onClick={closeWcModal}
                 className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
-                aria-label="Close"
+                aria-label={t('stellar.walletPickerClose')}
               >
                 <svg
                   width="14"
@@ -304,7 +306,7 @@ export function StellarWalletPicker({ state }: Props) {
                 <QRCode value={wcUri} size={200} level="M" />
               </div>
               <p className="text-xs text-[#888888] text-center">
-                Scan this QR code with your mobile wallet app
+                {t('stellar.scanQrInstruction')}
               </p>
               <a
                 href={`wc:${wcUri}`}
@@ -312,13 +314,13 @@ export function StellarWalletPicker({ state }: Props) {
                 rel="noopener noreferrer"
                 className="text-xs text-[#555555] hover:text-[#767575] transition-colors underline"
               >
-                Or open in wallet app directly
+                {t('stellar.openInWalletApp')}
               </a>
             </div>
 
             {status === 'connected' && (
               <div className="text-center">
-                <p className="text-xs text-[#22c55e]">Wallet connected successfully!</p>
+                <p className="text-xs text-[#22c55e]">{t('stellar.walletConnectedSuccess')}</p>
                 <button
                   onClick={() => {
                     closeWcModal();
@@ -326,7 +328,7 @@ export function StellarWalletPicker({ state }: Props) {
                   }}
                   className="mt-2 text-xs text-[#e6e1e5] hover:text-[#c4c7c5] transition-colors"
                 >
-                  Continue
+                  {t('stellar.continueButton')}
                 </button>
               </div>
             )}
