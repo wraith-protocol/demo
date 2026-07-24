@@ -66,7 +66,17 @@
     "scanFailed": "Error al escanear",
     "expectedConfirmation": "Confirmación esperada",
     "seconds_approx": "~5 segundos",
-    "balance": "Saldo"
+    "balance": "Saldo",
+    "fiatCurrency": "Divisa Fiat",
+    "fiatConversionFailed": "Conversión a moneda extranjera no disponible",
+    "settings": {
+      "title": "Ajustes",
+      "description": "Configura la moneda fiat para mostrar precios y preferencias de la aplicación.",
+      "fiatCurrency": "Divisa Fiat",
+      "currencyNotSupported": "Esta moneda no es compatible con la conversión a moneda extranjera.",
+      "about": "Acerca de",
+      "aboutDescription": "Los precios se actualizan máximo cada 60 segundos desde el oráculo Reflector. Las monedas no compatibles pueden no mostrar precios en divisas."
+    }
   },
   "horizen": {
     "network": "Horizen Testnet / ETH",
