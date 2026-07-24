@@ -5,7 +5,9 @@
     "schedule": "Schedule"
   },
   "header": {
-    "menuLabel": "Menu"
+    "menuLabel": "Menu",
+    "chain": "Chain",
+    "wallet": "Wallet"
   },
   "walletConnect": {
     "connectWallet": "Connect Wallet",

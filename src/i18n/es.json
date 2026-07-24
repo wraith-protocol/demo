@@ -5,7 +5,9 @@
     "schedule": "Programar"
   },
   "header": {
-    "menuLabel": "Menú"
+    "menuLabel": "Menú",
+    "chain": "Cadena",
+    "wallet": "Billetera"
   },
   "walletConnect": {
     "connectWallet": "Conectar billetera",
