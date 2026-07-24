@@ -34,14 +34,24 @@ export function ActivityRow({ entry }: ActivityRowProps) {
         return (
           <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
             <circle cx="8" cy="8" r="7" fill="currentColor" opacity="0.2" />
-            <path d="M8 3V13M5 6L8 3L11 6M5 10L8 13L11 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M8 3V13M5 6L8 3L11 6M5 10L8 13L11 10"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         );
       case 'solana':
         return (
           <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
             <circle cx="8" cy="8" r="7" fill="currentColor" opacity="0.2" />
-            <path d="M3 8H13M8 3V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <path
+              d="M3 8H13M8 3V13"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
           </svg>
         );
       case 'ckb':

@@ -1,13 +1,20 @@
 import { useState, useMemo } from 'react';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { useActivityStore, ActivityKind, ActivityStatus, ActivityEntry } from '@/stores/activityStore';
+import {
+  useActivityStore,
+  ActivityKind,
+  ActivityStatus,
+  ActivityEntry,
+} from '@/stores/activityStore';
 import { ActivityRow } from '@/components/ActivityRow';
 
 export default function Activity() {
   const { address } = useStellarWallet();
   const { entries, clearHistory } = useActivityStore();
 
-  const [filterChain, setFilterChain] = useState<'all' | 'horizen' | 'stellar' | 'solana' | 'ckb'>('all');
+  const [filterChain, setFilterChain] = useState<'all' | 'horizen' | 'stellar' | 'solana' | 'ckb'>(
+    'all',
+  );
   const [filterKind, setFilterKind] = useState<ActivityKind | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<ActivityStatus | 'all'>('all');
 
