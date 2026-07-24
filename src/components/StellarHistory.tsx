@@ -122,7 +122,7 @@ export function StellarHistory() {
                     tx.status === 'confirmed'
                       ? 'bg-secondary'
                       : tx.status === 'pending'
-                        ? 'bg-tertiary animate-pulse'
+                        ? 'bg-warning animate-pulse'
                         : 'bg-error'
                   }`}
                 />

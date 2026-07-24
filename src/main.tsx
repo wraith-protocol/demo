@@ -103,9 +103,11 @@ function Providers({ children }: { children: React.ReactNode }) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <Providers>
-        <App />
-      </Providers>
+      <ThemeProvider>
+        <Providers>
+          <App />
+        </Providers>
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 );
