@@ -66,7 +66,17 @@
     "scanFailed": "Scan failed",
     "expectedConfirmation": "Expected confirmation",
     "seconds_approx": "~5 seconds",
-    "balance": "Balance"
+    "balance": "Balance",
+    "fiatCurrency": "Fiat Currency",
+    "fiatConversionFailed": "Fiat conversion unavailable",
+    "settings": {
+      "title": "Settings",
+      "description": "Configure fiat currency for price display and app preferences.",
+      "fiatCurrency": "Fiat Currency",
+      "currencyNotSupported": "This currency is not supported for fiat conversion.",
+      "about": "About",
+      "aboutDescription": "Prices are cached every 60 seconds maximum from the Reflector oracle. Unsupported currencies may display fiat amounts as unavailable."
+    }
   },
   "horizen": {
     "network": "Horizen Testnet / ETH",
@@ -91,6 +101,14 @@
     "networkFeeAmount": "100 stroops",
     "recipientPlaceholder": "st:xlm:...",
     "validMetaAddressError": "Enter a valid Stellar meta-address (st:xlm:...)"
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Configure fiat currency for price display and app preferences.",
+    "fiatCurrency": "Fiat Currency",
+    "currencyNotSupported": "This currency is not supported for fiat conversion.",
+    "about": "About",
+    "aboutDescription": "Prices are cached every 60 seconds maximum from the Reflector oracle. Unsupported currencies may display fiat amounts as unavailable."
   },
   "solana": {
     "network": "Solana Devnet / SOL",

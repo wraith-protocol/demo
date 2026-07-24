@@ -1,5 +1,6 @@
 // @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AmountDisplay } from '@/components/AmountDisplay';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   TransactionBuilder,
@@ -175,6 +176,7 @@ function StellarMatchCardContainer({
 }) {
   const { t } = useTranslation();
   const { address, signTransaction } = useStellarWallet();
+  const { currency } = useSettings();
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [withdrawAssetKey, setWithdrawAssetKey] = useState<StellarAssetKey>('XLM');
@@ -188,6 +190,7 @@ function StellarMatchCardContainer({
   const [retryStatus, setRetryStatus] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
+  const [prices, setPrices] = useState<Record<string, { price: number; timestamp: number } | null>>(null);
 
   const { upsert } = useActivity();
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
@@ -203,14 +206,19 @@ function StellarMatchCardContainer({
         setRetryStatus('');
         if (!res.ok) {
           setBalances({ XLM: '0' });
+          setPrices(null);
           return;
         }
         const data = await res.json();
         const parsed = parseAssetBalances(data.balances || []);
         setBalances(parsed);
+
+        const pricesResult = await reflectorOracle.fetchPrices();
+        setPrices(pricesResult);
       } catch {
         setRetryStatus('');
         setBalances({ XLM: '0' });
+        setPrices(null);
       } finally {
         setBalanceState('loaded');
       }
@@ -226,6 +234,7 @@ function StellarMatchCardContainer({
   const hasAnyBalance = Object.values(balances).some((b) => parseFloat(b) > 0);
   const withdrawAssetInfo = getAssetByKey(withdrawAssetKey);
   const withdrawBalance = parseFloat(balances[withdrawAssetKey] || '0');
+  const withdrawFiatAmount = withdrawBalance > 0 ? (withdrawBalance * (prices[withdrawAssetKey === 'XLM' ? 'XLM' : 'USDC']?.price || 0)).toFixed(2) : null;
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -530,26 +539,26 @@ function StellarMatchCardContainer({
               <CopyButton text={match.stealthAddress} />
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {loadingBal ? (
-              <span className="font-mono text-xs text-outline">...</span>
-            ) : balance && parseFloat(balance) > 0 ? (
-              <>
-                <PrivacyBadge
-                  score={computePrivacyScore({
-                    reuseCount: 1,
-                    balance: balance ?? '0',
-                    transferTimestamps: [],
-                  })}
-                />
-                <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-                <span className="font-heading text-lg font-bold text-on-surface">
-                  {balance} XLM
-                </span>
-              </>
-            ) : (
-              <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
-            )}
+    <div className="flex shrink-0 items-center gap-2">
+      {loadingBal ? (
+        <span className="font-mono text-xs text-outline">...</span>
+      ) : balance && parseFloat(balance) > 0 ? (
+        <>
+          <PrivacyBadge
+            score={computePrivacyScore({
+              reuseCount: 1,
+              balance: balance ?? '0',
+              transferTimestamps: [],
+            })}
+          />
+          <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
+          <span className="font-heading text-lg font-bold text-on-surface">
+            <AmountDisplay amount={balance} asset="XLM" className="font-heading text-lg font-bold" />
+          </span>
+        </>
+      ) : (
+        <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
+      )}
           </div>
         </div>
 
