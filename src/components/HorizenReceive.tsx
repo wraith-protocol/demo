@@ -442,7 +442,16 @@ export function HorizenReceive() {
           {hasScanned && matched.length === 0 && (
             <EmptyState
               illustration={
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <circle cx="16" cy="16" r="6" />
                   <circle cx="32" cy="16" r="6" />
                   <path d="M6 38c0-5.523 4.477-10 10-10" />

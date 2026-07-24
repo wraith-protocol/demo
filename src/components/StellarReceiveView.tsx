@@ -270,7 +270,16 @@ export function StellarReceiveView({
               ) : (
                 <EmptyState
                   illustration={
-                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="48"
+                      height="48"
+                      viewBox="0 0 48 48"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <path d="M14 22a10 10 0 0 1 20 0v6c0 3 1 5 2 7H12c1-2 2-4 2-7v-6z" />
                       <path d="M22 8V6a2 2 0 0 1 4 0v2" />
                       <path d="M20 37c2 2 6 2 8 0" />
@@ -462,7 +471,16 @@ export function StellarReceiveView({
           {hasScanned && matchCount === 0 && (
             <EmptyState
               illustration={
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <circle cx="16" cy="16" r="6" />
                   <circle cx="32" cy="16" r="6" />
                   <path d="M6 38c0-5.523 4.477-10 10-10" />

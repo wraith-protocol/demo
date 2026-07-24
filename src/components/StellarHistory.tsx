@@ -105,7 +105,16 @@ export function StellarHistory() {
       {walletEntries.length === 0 && (
         <EmptyState
           illustration={
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 48 48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <rect x="6" y="6" width="36" height="36" rx="0" />
               <line x1="14" y1="18" x2="34" y2="18" />
               <line x1="14" y1="24" x2="30" y2="24" />
