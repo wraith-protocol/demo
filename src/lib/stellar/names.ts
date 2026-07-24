@@ -187,26 +187,26 @@ export async function buildSetMetadataTransaction(
   const contract = new Contract(NAMES_CONTRACT_ID);
 
   // Build metadata map
-  const metadataMap = new xdr.ScMap([
-    new xdr.ScMapEntry({
-      key: nativeToScVal('avatar_url'),
-      val: params.metadata.avatar_url
-        ? nativeToScVal(params.metadata.avatar_url)
-        : xdr.ScVal.scvVoid(),
-    }),
-    new xdr.ScMapEntry({
-      key: nativeToScVal('twitter_handle'),
-      val: params.metadata.twitter_handle
-        ? nativeToScVal(params.metadata.twitter_handle)
-        : xdr.ScVal.scvVoid(),
-    }),
-    new xdr.ScMapEntry({
-      key: nativeToScVal('description'),
-      val: params.metadata.description
-        ? nativeToScVal(params.metadata.description)
-        : xdr.ScVal.scvVoid(),
-    }),
-  ]);
+const metadataMap: xdr.ScMapEntry[] = [
+  new xdr.ScMapEntry({
+    key: nativeToScVal('avatar_url'),
+    val: params.metadata.avatar_url
+      ? nativeToScVal(params.metadata.avatar_url)
+      : xdr.ScVal.scvVoid(),
+  }),
+  new xdr.ScMapEntry({
+    key: nativeToScVal('twitter_handle'),
+    val: params.metadata.twitter_handle
+      ? nativeToScVal(params.metadata.twitter_handle)
+      : xdr.ScVal.scvVoid(),
+  }),
+  new xdr.ScMapEntry({
+    key: nativeToScVal('description'),
+    val: params.metadata.description
+      ? nativeToScVal(params.metadata.description)
+      : xdr.ScVal.scvVoid(),
+  }),
+];
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
