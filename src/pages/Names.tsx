@@ -36,7 +36,9 @@ export default function Names() {
   // Register form
   const [registerName, setRegisterName] = useState('');
   const [registerDuration, setRegisterDuration] = useState(DEFAULT_REGISTRATION_DURATION);
-  const [availabilityStatus, setAvailabilityStatus] = useState<'checking' | 'available' | 'taken' | null>(null);
+  const [availabilityStatus, setAvailabilityStatus] = useState<
+    'checking' | 'available' | 'taken' | null
+  >(null);
 
   // Transfer form
   const [transferName, setTransferName] = useState('');
@@ -118,7 +120,10 @@ export default function Names() {
     setIsPending(true);
 
     try {
-      const xdr = await buildRegisterTransaction(address, { name: registerName, duration: registerDuration });
+      const xdr = await buildRegisterTransaction(address, {
+        name: registerName,
+        duration: registerDuration,
+      });
       const signedXdr = await signTransaction(xdr);
       const hash = await submitTransaction(signedXdr);
       setTxHash(hash);
@@ -164,7 +169,10 @@ export default function Names() {
     setIsPending(true);
 
     try {
-      const xdr = await buildRenewTransaction(address, { name: renewName, duration: renewDuration });
+      const xdr = await buildRenewTransaction(address, {
+        name: renewName,
+        duration: renewDuration,
+      });
       const signedXdr = await signTransaction(xdr);
       const hash = await submitTransaction(signedXdr);
       setTxHash(hash);
@@ -282,20 +290,21 @@ export default function Names() {
       </div>
 
       {/* Expiring names warning */}
-      {ownedNames.some((n) => isExpiringSoon(n.expiresAt)) && !isExpired(ownedNames.find((n) => isExpiringSoon(n.expiresAt))!.expiresAt) && (
-        <div className="border border-tertiary bg-surface-container p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-tertiary">⚠</span>
-            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              Names Expiring Soon
-            </span>
+      {ownedNames.some((n) => isExpiringSoon(n.expiresAt)) &&
+        !isExpired(ownedNames.find((n) => isExpiringSoon(n.expiresAt))!.expiresAt) && (
+          <div className="border border-tertiary bg-surface-container p-4">
+            <div className="flex items-center gap-2">
+              <span className="text-tertiary">⚠</span>
+              <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
+                Names Expiring Soon
+              </span>
+            </div>
+            <p className="mt-2 font-body text-sm text-on-surface-variant">
+              {ownedNames.filter((n) => isExpiringSoon(n.expiresAt)).length} name(s) will expire
+              within 30 days. Renew them to keep ownership.
+            </p>
           </div>
-          <p className="mt-2 font-body text-sm text-on-surface-variant">
-            {ownedNames.filter((n) => isExpiringSoon(n.expiresAt)).length} name(s) will expire within 30 days.
-            Renew them to keep ownership.
-          </p>
-        </div>
-      )}
+        )}
 
       {/* List Tab */}
       {activeTab === 'list' && (
@@ -404,7 +413,9 @@ export default function Names() {
             <input
               type="text"
               value={registerName}
-              onChange={(e) => setRegisterName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+              onChange={(e) =>
+                setRegisterName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
+              }
               placeholder="my-name"
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />

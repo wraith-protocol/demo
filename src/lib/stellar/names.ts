@@ -55,10 +55,13 @@ export async function checkAvailability(name: string): Promise<boolean> {
     const contract = new Contract(NAMES_CONTRACT_ID);
 
     const result = await server.simulateTransaction(
-      new TransactionBuilder(new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'), {
-        fee: '100',
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-      })
+      new TransactionBuilder(
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        {
+          fee: '100',
+          networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        },
+      )
         .addOperation(contract.call('get_owner', nativeToScVal(name)))
         .setTimeout(30)
         .build(),
@@ -127,11 +130,7 @@ export async function buildTransferTransaction(
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
-      contract.call(
-        'transfer',
-        nativeToScVal(params.name),
-        new Address(params.to).toScVal(),
-      ),
+      contract.call('transfer', nativeToScVal(params.name), new Address(params.to).toScVal()),
     )
     .setTimeout(30)
     .build();
@@ -191,25 +190,27 @@ export async function buildSetMetadataTransaction(
   const metadataMap = new xdr.ScMap([
     new xdr.ScMapEntry({
       key: nativeToScVal('avatar_url'),
-      val: params.metadata.avatar_url ? nativeToScVal(params.metadata.avatar_url) : xdr.ScVal.scvVoid(),
+      val: params.metadata.avatar_url
+        ? nativeToScVal(params.metadata.avatar_url)
+        : xdr.ScVal.scvVoid(),
     }),
     new xdr.ScMapEntry({
       key: nativeToScVal('twitter_handle'),
-      val: params.metadata.twitter_handle ? nativeToScVal(params.metadata.twitter_handle) : xdr.ScVal.scvVoid(),
+      val: params.metadata.twitter_handle
+        ? nativeToScVal(params.metadata.twitter_handle)
+        : xdr.ScVal.scvVoid(),
     }),
     new xdr.ScMapEntry({
       key: nativeToScVal('description'),
-      val: params.metadata.description ? nativeToScVal(params.metadata.description) : xdr.ScVal.scvVoid(),
+      val: params.metadata.description
+        ? nativeToScVal(params.metadata.description)
+        : xdr.ScVal.scvVoid(),
     }),
   ]);
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
-      contract.call(
-        'set_metadata',
-        nativeToScVal(params.name),
-        xdr.ScVal.scvMap(metadataMap),
-      ),
+      contract.call('set_metadata', nativeToScVal(params.name), xdr.ScVal.scvMap(metadataMap)),
     )
     .setTimeout(30)
     .build();
@@ -227,10 +228,13 @@ export async function getNameRecord(name: string): Promise<NameRecord | null> {
     const contract = new Contract(NAMES_CONTRACT_ID);
 
     const result = await server.simulateTransaction(
-      new TransactionBuilder(new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'), {
-        fee: '100',
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-      })
+      new TransactionBuilder(
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        {
+          fee: '100',
+          networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        },
+      )
         .addOperation(contract.call('get_record', nativeToScVal(name)))
         .setTimeout(30)
         .build(),
@@ -263,10 +267,13 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
     const contract = new Contract(NAMES_CONTRACT_ID);
 
     const result = await server.simulateTransaction(
-      new TransactionBuilder(new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'), {
-        fee: '100',
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-      })
+      new TransactionBuilder(
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        {
+          fee: '100',
+          networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        },
+      )
         .addOperation(contract.call('get_names_by_owner', new Address(ownerAddress).toScVal()))
         .setTimeout(30)
         .build(),

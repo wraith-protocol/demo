@@ -35,9 +35,7 @@ export function ExpiringNamesBanner() {
 
         const now = Math.floor(Date.now() / 1000);
         const thirtyDays = 30 * 24 * 60 * 60;
-        const expiring = records.filter(
-          (n) => n.expiresAt - now < thirtyDays && n.expiresAt > now,
-        );
+        const expiring = records.filter((n) => n.expiresAt - now < thirtyDays && n.expiresAt > now);
         setExpiringCount(expiring.length);
       } catch {
         setExpiringCount(0);
