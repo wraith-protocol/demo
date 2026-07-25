@@ -5,6 +5,7 @@ import { TelemetryBanner } from '@/components/TelemetryBanner';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
+import Settings from '@/pages/Settings';
 import { HelpButton } from '@/components/HelpButton';
 import Vault from '@/pages/Vault';
 import Schedule from '@/pages/Schedule';
@@ -20,6 +21,7 @@ export function App() {
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/vault" element={<Vault />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/pay" element={<Send />} />

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { STELLAR_NETWORK } from '@/config';
 import { useChain } from '@/context/ChainContext';
+import { authenticateWithPasskey, getPasskeyState, shouldUsePasskey } from '@/lib/stellar/passkey';
 
 const CHANNEL_NAME = 'wraith:stellar-wallet';
 
@@ -256,6 +257,15 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   const signMessage = useCallback(
     async (message: string): Promise<Uint8Array> => {
       if (!address) throw new Error('Wallet not connected');
+
+      const passkeyState = getPasskeyState();
+      if (shouldUsePasskey(passkeyState)) {
+        try {
+          return await authenticateWithPasskey({ message });
+        } catch {
+          // Fall back to Freighter if the passkey cannot be unlocked or used.
+        }
+      }
 
       const freighter = await getFreighter();
       const { signedMessage } = await freighter.signMessage(message, {

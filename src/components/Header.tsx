@@ -9,6 +9,7 @@ import { useTheme } from '@/context/ThemeContext';
 const navLinks = [
   { to: '/send', label: 'Send' },
   { to: '/receive', label: 'Receive' },
+  { to: '/settings', label: 'Settings' },
   { to: '/vault', label: 'Vault' },
 ];
 
@@ -21,6 +22,7 @@ export function Header() {
   const navLinks = [
     { to: '/send', label: t('nav.send') },
     { to: '/receive', label: t('nav.receive') },
+    { to: '/settings', label: 'Settings' },
     { to: '/schedule', label: t('nav.schedule') },
   ];
 
