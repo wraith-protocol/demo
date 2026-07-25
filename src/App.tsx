@@ -6,6 +6,9 @@ import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
 import { HelpButton } from '@/components/HelpButton';
+import { UndoToast } from '@/components/UndoToast';
+import Contacts from '@/pages/Contacts';
+import Notifications from '@/pages/Notifications';
 import Vault from '@/pages/Vault';
 import Schedule from '@/pages/Schedule';
 
@@ -23,10 +26,13 @@ export function App() {
           <Route path="/vault" element={<Vault />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/pay" element={<Send />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>
       <HelpButton />
+      <UndoToast />
     </div>
   );
 }
