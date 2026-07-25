@@ -39,6 +39,7 @@ import { KeyVault } from '@/vault';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS, getAssetByKey, parseAssetBalances } from '@/lib/stellar/assets';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -1160,6 +1161,29 @@ export function StellarReceive() {
     }
   }, [stellarKeys, t]);
 
+  const handleToggleNotifications = useCallback(async () => {
+    if (notifications.state.enabled) {
+      await notifications.disableNotifications();
+      if (address) {
+        await notifications.unregisterViewingKey(address);
+      }
+    } else {
+      await notifications.enableNotifications();
+      if (address && stellarKeys) {
+        await notifications.registerViewingKey(address, stellarKeys);
+      }
+    }
+  }, [notifications, address, stellarKeys]);
+
+  const handleFireTestNotification = useCallback(async () => {
+    try {
+      await notifications.fireTestNotification();
+    } catch (err) {
+      console.error('Failed to fire test notification:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
+    }
+  }, [notifications]);
+
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
@@ -1225,29 +1249,6 @@ export function StellarReceive() {
     setPendingImportJson(null);
     setTimeout(() => setImportMessage(null), 3000);
   };
-
-  const handleToggleNotifications = useCallback(async () => {
-    if (notifications.state.enabled) {
-      await notifications.disableNotifications();
-      if (address) {
-        await notifications.unregisterViewingKey(address);
-      }
-    } else {
-      await notifications.enableNotifications();
-      if (address && stellarKeys) {
-        await notifications.registerViewingKey(address, stellarKeys);
-      }
-    }
-  }, [notifications, address, stellarKeys]);
-
-  const handleFireTestNotification = useCallback(async () => {
-    try {
-      await notifications.fireTestNotification();
-    } catch (err) {
-      console.error('Failed to fire test notification:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
-    }
-  }, [notifications]);
 
   return (
     <>
