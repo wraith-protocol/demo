@@ -25,9 +25,18 @@ const MOCK_DEPOSITS = [
   },
 ];
 
+type VaultDeposit = {
+  id: string;
+  recipient: string;
+  amount: string;
+  unlockLedger: number;
+  refundWindow: number;
+  state: 'pending' | 'claimed';
+};
+
 export function StellarVaultClaim() {
-  const { address, signMessage, signTransaction } = useStellarWallet();
-  const [deposits, setDeposits] = useState(MOCK_DEPOSITS);
+  const { address, signMessage } = useStellarWallet();
+  const [deposits, setDeposits] = useState<VaultDeposit[]>(MOCK_DEPOSITS);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimState, setClaimState] = useState<ClaimState>('idle');
   const [error, setError] = useState('');
@@ -47,7 +56,7 @@ export function StellarVaultClaim() {
       try {
         // Step 1: Sign message to prove recipient identity
         const signingMessage = `Claim vault deposit: ${depositId}`;
-        const signature = await signMessage(signingMessage);
+        await signMessage(signingMessage);
 
         setClaimState('claiming');
 

@@ -20,9 +20,14 @@ import {
   getDeployment,
 } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/evm';
+import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { trackEvent } from '@/lib/telemetry';
 import { CopyButton } from '@/components/CopyButton';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
+import { PrivacyBadge } from '@/components/PrivacyBadge';
+import { computePrivacyScore } from '@/lib/privacy-score';
+import { useActivity } from '@/context/ActivityContext';
 import { horizenTestnet } from '@/config';
 
 function StealthRow({
@@ -32,6 +37,7 @@ function StealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: (hash: string) => void;
 }) {
+  const { t } = useTranslation();
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
@@ -40,19 +46,28 @@ function StealthRow({
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
 
+  const { upsert } = useActivity();
+
   useEffect(() => {
     (async () => {
       try {
         const client = createPublicClient({ chain: horizenTestnet, transport: http() });
         const bal = await client.getBalance({ address: match.stealthAddress as `0x${string}` });
-        setBalance((Number(bal) / 1e18).toFixed(6));
+        const balStr = (Number(bal) / 1e18).toFixed(6);
+        setBalance(balStr);
+        upsert({
+          address: match.stealthAddress,
+          chain: 'horizen',
+          balance: balStr,
+          scannedAt: Date.now(),
+        });
       } catch {
         setBalance('0');
       } finally {
         setLoadingBal(false);
       }
     })();
-  }, [match.stealthAddress]);
+  }, [match.stealthAddress, upsert]);
 
   const handleWithdraw = async () => {
     if (!dest) return;
@@ -87,9 +102,10 @@ function StealthRow({
       });
 
       setWithdrawHash(hash);
+      trackEvent('withdraw');
       onWithdrawn(hash);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setWithdrawing(false);
     }
@@ -100,7 +116,7 @@ function StealthRow({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
+            {t('common.stealthAddress')}
           </span>
           <div className="mt-0.5 flex items-center gap-2">
             <a
@@ -119,11 +135,18 @@ function StealthRow({
             <span className="font-mono text-xs text-outline">...</span>
           ) : balance && parseFloat(balance) > 0 ? (
             <>
+              <PrivacyBadge
+                score={computePrivacyScore({
+                  reuseCount: 1,
+                  balance: balance ?? '0',
+                  transferTimestamps: [],
+                })}
+              />
               <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
               <span className="font-heading text-lg font-bold text-on-surface">{balance} ETH</span>
             </>
           ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
+            <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
           )}
         </div>
       </div>
@@ -131,7 +154,7 @@ function StealthRow({
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
+            {t('common.withdrawTo')}
           </label>
           <div className="flex gap-2">
             <input
@@ -146,7 +169,7 @@ function StealthRow({
               disabled={!dest || withdrawing}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? '...' : 'Withdraw'}
+              {withdrawing ? '...' : t('common.withdraw')}
             </button>
           </div>
         </div>
@@ -158,7 +181,7 @@ function StealthRow({
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
           <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
+            {t('common.withdrawn')} —{' '}
             <a
               href={horizenTxUrl(withdrawHash)}
               target="_blank"
@@ -177,13 +200,13 @@ function StealthRow({
             onClick={() => setShowKey(true)}
             className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
           >
-            Reveal private key
+            {t('common.revealPrivateKey')}
           </button>
         ) : (
           <div className="border border-error/20 bg-error/5 p-3">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
+                {t('common.stealthKey')}
               </span>
               <CopyButton text={match.stealthPrivateKey} />
             </div>
@@ -198,6 +221,7 @@ function StealthRow({
 }
 
 export function HorizenReceive() {
+  const { t } = useTranslation();
   const { isConnected, address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
@@ -247,7 +271,7 @@ export function HorizenReceive() {
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setEvmMetaAddress(meta);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Key derivation failed');
+      setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
       setIsDerivingKeys(false);
     }
@@ -278,8 +302,9 @@ export function HorizenReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
       setIsScanning(false);
     }
@@ -289,13 +314,13 @@ export function HorizenReceive() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Horizen Testnet / ETH
+          {t('horizen.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('horizen.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your wallet to scan for incoming stealth transfers on Horizen.
+          {t('horizen.receiveConnectPrompt')}
         </p>
       </section>
     );
@@ -305,13 +330,13 @@ export function HorizenReceive() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Horizen Testnet / ETH
+          {t('horizen.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('horizen.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Derive your stealth keys, register on-chain, then scan for payments.
+          {t('horizen.receiveDescription')}
         </p>
       </div>
 
@@ -322,7 +347,7 @@ export function HorizenReceive() {
             disabled={isDerivingKeys}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
+            {isDerivingKeys ? t('common.signingInWallet') : t('common.deriveKeys')}
           </button>
           {error && <p className="text-sm text-error">{error}</p>}
         </div>
@@ -333,7 +358,7 @@ export function HorizenReceive() {
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Your Stealth Meta-Address
+                {t('common.yourStealthMetaAddress')}
               </span>
               <CopyButton text={evmMetaAddress} />
             </div>
@@ -344,13 +369,13 @@ export function HorizenReceive() {
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              On-Chain Registration
+              {t('common.onChainRegistration')}
             </span>
             {registered ? (
               <div className="mt-3 flex items-center gap-2">
                 <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
                 <span className="font-mono text-xs text-on-surface-variant">
-                  Meta-address registered on-chain
+                  {t('common.metaAddressRegistered')}
                   {regHash && (
                     <>
                       {' — '}
@@ -369,7 +394,7 @@ export function HorizenReceive() {
             ) : (
               <div className="mt-3">
                 <p className="mb-3 font-body text-xs leading-relaxed text-on-surface-variant">
-                  Register your meta-address so senders can look you up by wallet address.
+                  {t('common.registerMetaAddressHint')}
                 </p>
                 <button
                   onClick={registerOnChain}
@@ -377,10 +402,10 @@ export function HorizenReceive() {
                   className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
                 >
                   {isRegPending
-                    ? 'Confirm in wallet...'
+                    ? t('common.confirmInWallet')
                     : isRegConfirming
-                      ? 'Confirming...'
-                      : 'Register On-Chain'}
+                      ? t('common.confirming')
+                      : t('common.registerOnChain')}
                 </button>
               </div>
             )}
@@ -392,11 +417,11 @@ export function HorizenReceive() {
               disabled={isScanning}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
+              {isScanning ? t('common.scanning') : t('common.scanForPayments')}
             </button>
             {hasScanned && (
               <span className="font-mono text-xs text-on-surface-variant">
-                {matched.length} transfer{matched.length !== 1 ? 's' : ''} found
+                {t('common.transfersFound', { count: matched.length })}
               </span>
             )}
           </div>
@@ -414,10 +439,10 @@ export function HorizenReceive() {
           {hasScanned && matched.length === 0 && (
             <div className="py-12 text-center">
               <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
+                {t('common.noTransfersFound')}
               </p>
               <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
+                {t('common.noTransfersMatchedKeys')}
               </p>
             </div>
           )}

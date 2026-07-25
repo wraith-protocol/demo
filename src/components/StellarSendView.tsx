@@ -1,10 +1,14 @@
+import type { ReactNode } from 'react';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import type { StellarAssetKey } from '@/lib/stellar/assets';
+import { STELLAR_ASSETS } from '@/lib/stellar/assets';
 
 export interface StellarSendViewProps {
   isConnected: boolean;
   recipient: string;
   amount: string;
+  assetKey: StellarAssetKey;
   recipientError: string;
   showRecipientError: boolean;
   amountError: string;
@@ -12,7 +16,14 @@ export interface StellarSendViewProps {
   amountInvalid: boolean;
   balanceText: string;
   balanceIsError: boolean;
+  trustlineError: string;
+  simulationStatus: 'idle' | 'loading' | 'success' | 'error';
+  simulationError: string;
+  simulationFee: string | null;
+  simulationReturnValue: string | null;
+  simulationEvents: string[];
   error: string;
+  retryStatus?: string;
   canSubmit: boolean;
   isPending: boolean;
   stealthResult: { stealthAddress: string } | null;
@@ -20,6 +31,7 @@ export interface StellarSendViewProps {
   isSuccess: boolean;
   onRecipientChange: (value: string) => void;
   onRecipientBlur: () => void;
+  onAssetChange: (value: StellarAssetKey) => void;
   onAmountChange: (value: string) => void;
   onAmountBlur: () => void;
   onPaste: () => void;
@@ -32,12 +44,17 @@ export interface StellarSendViewProps {
   paramTo?: boolean;
   paramAmount?: boolean;
   paramMemo?: boolean;
+  onScanQRClick?: () => void;
+  isScanningQR?: boolean;
+  scannerElement?: ReactNode;
 }
 
 export function StellarSendView({
   isConnected,
   recipient,
   amount,
+  assetKey,
+  trustlineError,
   recipientError,
   showRecipientError,
   amountError,
@@ -45,7 +62,13 @@ export function StellarSendView({
   amountInvalid,
   balanceText,
   balanceIsError,
+  simulationStatus,
+  simulationError,
+  simulationFee,
+  simulationReturnValue,
+  simulationEvents,
   error,
+  retryStatus = '',
   canSubmit,
   isPending,
   stealthResult,
@@ -53,6 +76,7 @@ export function StellarSendView({
   isSuccess,
   onRecipientChange,
   onRecipientBlur,
+  onAssetChange,
   onAmountChange,
   onAmountBlur,
   onPaste,
@@ -65,12 +89,15 @@ export function StellarSendView({
   paramTo = false,
   paramAmount = false,
   paramMemo = false,
+  onScanQRClick,
+  isScanningQR = false,
+  scannerElement,
 }: StellarSendViewProps) {
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
@@ -86,14 +113,14 @@ export function StellarSendView({
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          Stellar Testnet / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
           Send
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          Send {assetKey} privately using stealth addresses. The recipient gets funds at a fresh
+          address only they can control.
         </p>
       </div>
 
@@ -114,15 +141,40 @@ export function StellarSendView({
                 aria-describedby="stellar-recipient-error"
                 placeholder="st:xlm:..."
                 disabled={paramTo || isExpired}
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
+                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-28 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               {!paramTo && !isExpired && (
-                <button
-                  onClick={onPaste}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-                >
-                  Paste
-                </button>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-3">
+                  {onScanQRClick && (
+                    <button
+                      onClick={onScanQRClick}
+                      aria-label="Scan QR Code"
+                      className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary flex items-center gap-1"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                      Scan
+                    </button>
+                  )}
+                  <button
+                    onClick={onPaste}
+                    className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                  >
+                    Paste
+                  </button>
+                </div>
               )}
             </div>
             <p
@@ -132,6 +184,27 @@ export function StellarSendView({
             >
               {showRecipientError && recipientError ? recipientError : ' '}
             </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="stellar-asset"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
+              Asset
+            </label>
+            <select
+              id="stellar-asset"
+              value={assetKey}
+              onChange={(e) => onAssetChange(e.target.value as StellarAssetKey)}
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+            >
+              {STELLAR_ASSETS.map((a) => (
+                <option key={a.key} value={a.key}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -152,7 +225,7 @@ export function StellarSendView({
                 className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
+                {assetKey}
               </span>
             </div>
             <p id="stellar-amount-error" className="min-h-5 text-xs text-error" aria-live="polite">
@@ -205,14 +278,98 @@ export function StellarSendView({
             </div>
           </div>
 
+          {simulationStatus === 'loading' && (
+            <div className="border border-outline-variant bg-surface-container p-4">
+              <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                Predicted transfer
+              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Simulating Soroban pre-flight...
+              </p>
+            </div>
+          )}
+
+          {simulationStatus === 'success' && simulationFee && simulationReturnValue !== null && (
+            <div className="border border-outline-variant bg-surface-container p-4">
+              <div className="flex items-center justify-between gap-4">
+                <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                  Predicted transfer
+                </p>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Predicted
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted fee
+                  </span>
+                  <span className="text-right font-mono text-xs text-on-surface-variant">
+                    {simulationFee}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted return value
+                  </span>
+                  <span className="max-w-[65%] min-w-0 break-all text-right font-mono text-xs text-on-surface-variant">
+                    {simulationReturnValue}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted contract events
+                  </span>
+                  {simulationEvents.length > 0 ? (
+                    <ul className="flex flex-col gap-1">
+                      {simulationEvents.map((event, index) => (
+                        <li
+                          key={`${event}-${index}`}
+                          className="border-l border-outline-variant pl-3 font-mono text-xs text-on-surface-variant"
+                        >
+                          {event}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="font-mono text-xs text-on-surface-variant">None</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {simulationStatus === 'error' && simulationError && (
+            <p className="text-sm text-error">{simulationError}</p>
+          )}
+
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
+
+          {trustlineError && (
+            <div className="border border-error/20 bg-error/5 p-3">
+              <p className="font-mono text-xs text-error">{trustlineError}</p>
+              <p className="mt-1 font-body text-xs text-on-surface-variant">
+                To add a{' '}
+                <a
+                  href="https://stellar.org/learn/how-to-add-trustline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline"
+                >
+                  trustline
+                </a>
+                , the recipient needs to set a trustline for {assetKey} on their Stellar account.
+              </p>
+            </div>
+          )}
 
           <button
             onClick={onSend}
             disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? 'Confirm in wallet...' : `Send ${assetKey}`}
           </button>
         </div>
       )}
@@ -226,8 +383,9 @@ export function StellarSendView({
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isSuccess ? 'Final Transfer' : 'Pending Transfer'}
             </span>
+            <span className="font-mono text-[10px] text-outline">{assetKey}</span>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -235,7 +393,7 @@ export function StellarSendView({
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Stealth Address
               </span>
-              <div className="mt-0.5 flex items-center gap-2">
+              <div className="mt-0.5 flex min-w-0  items-center gap-2">
                 <a
                   href={stellarAddrUrl(stealthResult.stealthAddress)}
                   target="_blank"
@@ -251,9 +409,9 @@ export function StellarSendView({
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  Final Transaction Hash
                 </span>
-                <div className="mt-0.5 flex items-center gap-2">
+                <div className="mt-0.5 flex min-w-0 items-center gap-2">
                   <a
                     href={stellarTxUrl(txHash)}
                     target="_blank"
@@ -278,6 +436,7 @@ export function StellarSendView({
           )}
         </div>
       )}
+      {isScanningQR && scannerElement}
     </section>
   );
 }

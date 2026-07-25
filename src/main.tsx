@@ -1,8 +1,22 @@
 import { Buffer } from 'buffer';
 (window as unknown as Record<string, unknown>).Buffer = Buffer;
 
+import '@/i18n';
 import { StrictMode, useState, useMemo, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
+
+// Register service worker for notifications
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw/stellar-notification-sw.js', {
+        type: 'module',
+      })
+      .catch((error) => {
+        console.error('Service worker registration failed:', error);
+      });
+  });
+}
 import { BrowserRouter } from 'react-router-dom';
 import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';

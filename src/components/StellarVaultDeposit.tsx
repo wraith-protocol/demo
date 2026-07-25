@@ -53,7 +53,7 @@ function validateRefundWindow(value: string) {
 }
 
 export function StellarVaultDeposit() {
-  const { address, signTransaction } = useStellarWallet();
+  const { address } = useStellarWallet();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [unlockLedger, setUnlockLedger] = useState('');
@@ -259,7 +259,7 @@ export function StellarVaultDeposit() {
             disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {depositState === 'pending' ? 'Creating deposit...' : 'Create Deposit'}
+            {'Create Deposit'}
           </button>
         </>
       )}

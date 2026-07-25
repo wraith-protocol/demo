@@ -71,7 +71,7 @@ export class FreighterAdapter implements StellarWallet {
 
       const result = await signTransaction(xdr, {
         networkPassphrase: opts.networkPassphrase,
-        accountToSign: opts.publicKey,
+        address: opts.publicKey,
       });
 
       if ('error' in result && result.error) {

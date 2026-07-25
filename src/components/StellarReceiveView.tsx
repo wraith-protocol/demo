@@ -10,6 +10,7 @@ export interface StellarReceiveViewProps {
   isDerivingKeys: boolean;
   keysDerived: boolean;
   metaAddress: string | null;
+  vaultPanel?: ReactNode;
   registered: boolean;
   isRegistering: boolean;
   regHash: string | null;
@@ -18,6 +19,7 @@ export interface StellarReceiveViewProps {
   matchCount: number;
   matches: ReactNode;
   error: string;
+  retryStatus?: string;
   onDeriveKeys: () => void;
   onRegister: () => void;
   onScan: () => void;
@@ -36,6 +38,13 @@ export interface StellarReceiveViewProps {
   importConflicts?: ImportResult['conflicts'] | null;
   onImportConflictResolve?: (action: 'keep-all' | 'overwrite-all') => void;
   onCloseImportModal?: () => void;
+  // Notification props
+  notificationsEnabled?: boolean;
+  notificationsSupported?: boolean;
+  notificationsPermission?: NotificationPermission;
+  onToggleNotifications?: () => void;
+  onFireTestNotification?: () => void;
+  onShowQR?: () => void;
 }
 
 export function StellarReceiveView({
@@ -43,6 +52,7 @@ export function StellarReceiveView({
   isDerivingKeys,
   keysDerived,
   metaAddress,
+  vaultPanel,
   registered,
   isRegistering,
   regHash,
@@ -51,6 +61,7 @@ export function StellarReceiveView({
   matchCount,
   matches,
   error,
+  retryStatus = '',
   onDeriveKeys,
   onRegister,
   onScan,
@@ -69,6 +80,12 @@ export function StellarReceiveView({
   importConflicts,
   onImportConflictResolve,
   onCloseImportModal,
+  notificationsEnabled,
+  notificationsSupported,
+  notificationsPermission,
+  onToggleNotifications,
+  onFireTestNotification,
+  onShowQR,
 }: StellarReceiveViewProps) {
   if (!isConnected) {
     return (
@@ -109,7 +126,9 @@ export function StellarReceiveView({
           >
             {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
           </button>
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
+          {vaultPanel}
         </div>
       )}
 
@@ -120,12 +139,41 @@ export function StellarReceiveView({
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
               </span>
-              <CopyButton text={metaAddress} />
+              <div className="flex items-center gap-2">
+                {onShowQR && (
+                  <button
+                    onClick={onShowQR}
+                    aria-label="Show QR Code for Meta-Address"
+                    className="text-outline hover:text-primary transition-colors p-1"
+                    title="Show QR Code"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="3" y="3" width="7" height="7" />
+                      <rect x="14" y="3" width="7" height="7" />
+                      <rect x="14" y="14" width="7" height="7" />
+                      <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                  </button>
+                )}
+                <CopyButton text={metaAddress} />
+              </div>
             </div>
             <code className="block break-all font-mono text-xs leading-relaxed text-primary">
               {metaAddress}
             </code>
           </div>
+
+          {vaultPanel}
 
           <div className="border border-outline-variant bg-surface-container p-5">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -169,11 +217,66 @@ export function StellarReceiveView({
 
           <StellarPaymentLink metaAddress={metaAddress} />
 
+          {/* Notification Settings */}
+          {notificationsSupported && (
+            <div className="border border-outline-variant bg-surface-container p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Background Notifications
+                </span>
+                <button
+                  onClick={onToggleNotifications}
+                  disabled={!notificationsSupported}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    notificationsEnabled ? 'bg-primary' : 'bg-outline-variant'
+                  } disabled:opacity-30`}
+                >
+                  <span
+                    className={`absolute top-1 h-4 w-4 rounded-full bg-surface transition-transform ${
+                      notificationsEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              {notificationsEnabled ? (
+                <div className="space-y-3">
+                  <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+                    Receive notifications when new stealth payments are detected, even when the tab
+                    is closed.
+                  </p>
+                  <div className="rounded bg-surface-container-high p-3">
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-outline mb-2">
+                      Privacy Disclosure
+                    </p>
+                    <p className="font-body text-[10px] leading-relaxed text-on-surface-variant">
+                      Your viewing key is stored encrypted in IndexedDB using your wallet-derived
+                      key. The service worker periodically scans for new payments and shows
+                      notifications. You can disable this feature at any time.
+                    </p>
+                  </div>
+                  {notificationsPermission === 'granted' && onFireTestNotification && (
+                    <button
+                      onClick={onFireTestNotification}
+                      className="h-9 w-full border border-outline-variant font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                    >
+                      Test Notification
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+                  Enable notifications to receive alerts about incoming stealth payments even when
+                  the tab is closed.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <button
               onClick={onScan}
               disabled={isScanning}
-              className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"
             >
               {isScanning ? 'Scanning...' : 'Scan for Payments'}
             </button>
@@ -184,13 +287,14 @@ export function StellarReceiveView({
             )}
           </div>
 
+          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
           {error && <p className="text-sm text-error">{error}</p>}
 
           {/* Search, filter, and toolbar */}
           {hasScanned && matchCount > 0 && (
             <div className="flex flex-col gap-3">
               {onSearchChange && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="relative flex-1">
                     <svg
                       xmlns="http://www.w3.org/2000/svg"

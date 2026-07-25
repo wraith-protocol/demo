@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { StellarWalletContext } from '@/context/StellarWalletContext';
 import type { StealthKeys as EVMStealthKeys } from '@wraith-protocol/sdk/chains/evm';
 import type { StealthKeys as StellarStealthKeys } from '@wraith-protocol/sdk/chains/stellar';
 import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chains/solana';
@@ -28,6 +29,18 @@ interface StealthKeysContextValue {
 }
 
 export const StealthKeysContext = createContext<StealthKeysContextValue | null>(null);
+
+// Subscribes clearStellar to StellarWalletContext's disconnect listeners.
+// Rendered inside StealthKeysProvider so it can consume both contexts.
+function StealthKeysCleaner({ clearStellar }: { clearStellar: () => void }) {
+  const stellar = useContext(StellarWalletContext);
+  const subscribeToDisconnect = stellar?.subscribeToDisconnect;
+  useEffect(() => {
+    if (!subscribeToDisconnect) return;
+    return subscribeToDisconnect(clearStellar);
+  }, [subscribeToDisconnect, clearStellar]);
+  return null;
+}
 
 export function StealthKeysProvider({ children }: { children: React.ReactNode }) {
   const [evmKeys, setEvmKeys] = useState<EVMStealthKeys | null>(null);
@@ -81,6 +94,7 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
         clearCkb,
       }}
     >
+      <StealthKeysCleaner clearStellar={clearStellar} />
       {children}
     </StealthKeysContext.Provider>
   );

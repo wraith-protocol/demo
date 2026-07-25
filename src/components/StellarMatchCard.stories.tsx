@@ -9,6 +9,7 @@ const meta = {
   args: {
     ...makeMatch(0),
     onDestChange: fn(),
+    onWithdrawAssetKeyChange: fn(),
     onWithdraw: fn(),
     onSponsoredWithdraw: fn(),
     onCancelSponsor: fn(),
@@ -20,17 +21,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const BalanceLoading: Story = {
-  args: { balanceState: 'loading', balance: null },
+  args: { balanceState: 'loading', balances: {} },
 };
 
 export const Funded: Story = {};
 
 export const Empty: Story = {
-  args: { balance: '0' },
+  args: { balances: { XLM: '0' } },
 };
 
 export const BalanceError: Story = {
-  args: { balanceState: 'error', balance: null },
+  args: { balanceState: 'error', balances: {} },
 };
 
 export const Withdrawing: Story = {
@@ -50,7 +51,7 @@ export const WithdrawError: Story = {
 };
 
 export const SponsorPrompt: Story = {
-  args: { balance: '0.5', dest: SAMPLE_STEALTH_ADDRESS, showSponsorPrompt: true },
+  args: { balances: { XLM: '0.5' }, dest: SAMPLE_STEALTH_ADDRESS, showSponsorPrompt: true },
 };
 
 export const SponsoredWithdrawing: Story = {
