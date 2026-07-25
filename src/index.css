@@ -77,6 +77,28 @@ input:focus {
   background: var(--color-scrollbar-thumb);
 }
 
+/* ── Skeleton shimmer animation ────────────────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-skeleton {
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  /* Respect user motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+/* ──────────────────────────────────────────────────────────────────────── */
+
 /* Solana Wallet Adapter overrides */
 .wallet-adapter-button {
   background-color: transparent !important;
