@@ -5,8 +5,12 @@ import { HelpButton } from '@/components/HelpButton';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Vault from '@/pages/Vault';
+import Notifications from '@/pages/Notifications';
+import { useNotificationSW } from '@/hooks/useNotificationSW';
 
 export function App() {
+  useNotificationSW();
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -16,6 +20,7 @@ export function App() {
           <Route path="/send" element={<Send />} />
           <Route path="/receive" element={<Receive />} />
           <Route path="/vault" element={<Vault />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/pay" element={<Send />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
