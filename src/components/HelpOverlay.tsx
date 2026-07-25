@@ -40,36 +40,50 @@ export function HelpOverlay({ onClose }: HelpOverlayProps) {
   }, [onClose]);
 
   // Determine context based on current route
-  const currentContext = location.pathname === '/send' ? 'send' : location.pathname === '/receive' ? 'receive' : 'general';
+  const currentContext =
+    location.pathname === '/send'
+      ? 'send'
+      : location.pathname === '/receive'
+        ? 'receive'
+        : 'general';
 
   // Filter and sort FAQ entries
   const filteredEntries = faqEntries
-    .filter(entry => {
-      const matchesSearch = entry.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           entry.answer.toLowerCase().includes(searchQuery.toLowerCase());
+    .filter((entry) => {
+      const matchesSearch =
+        entry.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        entry.answer.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesSearch;
     })
     .sort((a, b) => {
       // Prioritize entries matching current context
       const aMatchesContext = a.context.includes(currentContext as any);
       const bMatchesContext = b.context.includes(currentContext as any);
-      
+
       if (aMatchesContext && !bMatchesContext) return -1;
       if (!aMatchesContext && bMatchesContext) return 1;
-      
+
       // Then sort by category
-      const categoryOrder: FAQCategory[] = ['getting-started', 'stellar-specifics', 'privacy', 'troubleshooting'];
+      const categoryOrder: FAQCategory[] = [
+        'getting-started',
+        'stellar-specifics',
+        'privacy',
+        'troubleshooting',
+      ];
       return categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
     });
 
   // Group entries by category
-  const groupedEntries = filteredEntries.reduce((acc, entry) => {
-    if (!acc[entry.category]) {
-      acc[entry.category] = [];
-    }
-    acc[entry.category].push(entry);
-    return acc;
-  }, {} as Record<FAQCategory, FAQEntry[]>);
+  const groupedEntries = filteredEntries.reduce(
+    (acc, entry) => {
+      if (!acc[entry.category]) {
+        acc[entry.category] = [];
+      }
+      acc[entry.category].push(entry);
+      return acc;
+    },
+    {} as Record<FAQCategory, FAQEntry[]>,
+  );
 
   return (
     <div
@@ -151,7 +165,9 @@ export function HelpOverlay({ onClose }: HelpOverlayProps) {
                       key={entry.id}
                       entry={entry}
                       isExpanded={expandedEntry === entry.id}
-                      onToggle={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
+                      onToggle={() =>
+                        setExpandedEntry(expandedEntry === entry.id ? null : entry.id)
+                      }
                     />
                   ))}
                 </div>
@@ -163,7 +179,11 @@ export function HelpOverlay({ onClose }: HelpOverlayProps) {
         {/* Footer */}
         <div className="border-t border-outline-variant px-6 py-3">
           <p className="text-xs text-outline">
-            Press <kbd className="mx-1 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd> to close
+            Press{' '}
+            <kbd className="mx-1 rounded border border-outline-variant px-1.5 py-0.5 font-mono text-[10px]">
+              Esc
+            </kbd>{' '}
+            to close
           </p>
         </div>
       </div>
@@ -202,15 +222,10 @@ function FAQItem({ entry, isExpanded, onToggle }: FAQItemProps) {
         </svg>
         <span className="font-medium text-sm text-on-surface">{entry.question}</span>
       </button>
-      
+
       {isExpanded && (
-        <div
-          id={`faq-answer-${entry.id}`}
-          className="px-4 pb-4 pl-12"
-        >
-          <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">
-            {entry.answer}
-          </p>
+        <div id={`faq-answer-${entry.id}`} className="px-4 pb-4 pl-12">
+          <p className="mb-3 text-sm leading-relaxed text-on-surface-variant">{entry.answer}</p>
           {entry.docsLink && (
             <a
               href={entry.docsLink}

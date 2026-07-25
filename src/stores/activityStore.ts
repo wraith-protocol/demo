@@ -77,6 +77,6 @@ export const useActivityStore = create<ActivityState>()(
     }),
     {
       name: 'wraith-activity-storage',
-    }
-  )
+    },
+  ),
 );

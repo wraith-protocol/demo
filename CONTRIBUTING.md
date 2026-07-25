@@ -76,9 +76,7 @@ import { StellarSendView } from './StellarSendView';
 const meta = {
   title: 'Stellar/StellarSendView',
   component: StellarSendView,
-  args: {
-    /* … sensible defaults … */
-  },
+  args: {/* … sensible defaults … */},
 } satisfies Meta<typeof StellarSendView>;
 export default meta;
 

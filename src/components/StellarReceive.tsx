@@ -553,7 +553,7 @@ export function StellarReceive() {
         if (e.data.type === 'SUCCESS') {
           const results = e.data.results;
           setMatched(results);
-          
+
           results.forEach((m: MatchedAnnouncement) => {
             addActivity({
               id: m.stealthAddress, // use address as unique id for receives

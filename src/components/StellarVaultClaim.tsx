@@ -33,43 +33,46 @@ export function StellarVaultClaim() {
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const handleClaim = useCallback(async (depositId: string) => {
-    if (!address) {
-      setError('Wallet not connected');
-      return;
-    }
+  const handleClaim = useCallback(
+    async (depositId: string) => {
+      if (!address) {
+        setError('Wallet not connected');
+        return;
+      }
 
-    setClaimingId(depositId);
-    setClaimState('signing');
-    setError('');
+      setClaimingId(depositId);
+      setClaimState('signing');
+      setError('');
 
-    try {
-      // Step 1: Sign message to prove recipient identity
-      const signingMessage = `Claim vault deposit: ${depositId}`;
-      const signature = await signMessage(signingMessage);
+      try {
+        // Step 1: Sign message to prove recipient identity
+        const signingMessage = `Claim vault deposit: ${depositId}`;
+        const signature = await signMessage(signingMessage);
 
-      setClaimState('claiming');
+        setClaimState('claiming');
 
-      // TODO: Integrate with stealth-vault contract when available
-      // For now, simulate the claim flow
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+        // TODO: Integrate with stealth-vault contract when available
+        // For now, simulate the claim flow
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Simulate transaction hash
-      const simulatedTxHash = `claim_${depositId}_${Date.now()}`;
-      setTxHash(simulatedTxHash);
-      setClaimState('success');
+        // Simulate transaction hash
+        const simulatedTxHash = `claim_${depositId}_${Date.now()}`;
+        setTxHash(simulatedTxHash);
+        setClaimState('success');
 
-      // Update deposit state
-      setDeposits((prev) =>
-        prev.map((d) => (d.id === depositId ? { ...d, state: 'claimed' as const } : d)),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Claim failed');
-      setClaimState('idle');
-    } finally {
-      setClaimingId(null);
-    }
-  }, [address, signMessage]);
+        // Update deposit state
+        setDeposits((prev) =>
+          prev.map((d) => (d.id === depositId ? { ...d, state: 'claimed' as const } : d)),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Claim failed');
+        setClaimState('idle');
+      } finally {
+        setClaimingId(null);
+      }
+    },
+    [address, signMessage],
+  );
 
   const reset = () => {
     setClaimState('idle');

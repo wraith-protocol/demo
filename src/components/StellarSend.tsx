@@ -114,7 +114,11 @@ export function StellarSend() {
 
   const isMetaAddress = recipient.startsWith('st:xlm:');
   const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
-  const isWraithName = !isMetaAddress && cleanedName.length >= 3 && cleanedName.length <= 32 && /^[a-z0-9]+$/.test(cleanedName);
+  const isWraithName =
+    !isMetaAddress &&
+    cleanedName.length >= 3 &&
+    cleanedName.length <= 32 &&
+    /^[a-z0-9]+$/.test(cleanedName);
 
   useEffect(() => {
     if (resolveTimeoutRef.current) {

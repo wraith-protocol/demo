@@ -33,10 +33,7 @@ async function injectAlbedoMock(page: Page, publicKey = 'GALBEDOTEST1234567890AB
 /**
  * Inject a mock Freighter extension into the page.
  */
-async function injectFreighterMock(
-  page: Page,
-  publicKey = 'GFREIGHTERTEST1234567890',
-) {
+async function injectFreighterMock(page: Page, publicKey = 'GFREIGHTERTEST1234567890') {
   await page.addInitScript((pk) => {
     (window as unknown as Record<string, unknown>).freighter = {
       isConnected: () => Promise.resolve({ isConnected: true }),
@@ -50,7 +47,6 @@ async function injectFreighterMock(
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe('StellarWalletPicker', () => {
-
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     // Navigate to Stellar chain (tab or route depending on app layout)
@@ -92,9 +88,7 @@ test.describe('StellarWalletPicker', () => {
     await page.getByTestId('wallet-connect-button').click();
 
     // Wait for detection to complete (detecting… → status)
-    await page.waitForFunction(() =>
-      !document.body.textContent?.includes('Detecting…')
-    );
+    await page.waitForFunction(() => !document.body.textContent?.includes('Detecting…'));
 
     const xbullOption = page.getByTestId('wallet-option-xbull');
     await expect(xbullOption).toContainText('Not detected');
@@ -108,11 +102,9 @@ test.describe('StellarWalletPicker', () => {
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
   });
-
 });
 
 test.describe('Albedo connect path', () => {
-
   test.beforeEach(async ({ page }) => {
     await injectAlbedoMock(page);
     await page.goto('/');
@@ -159,11 +151,9 @@ test.describe('Albedo connect path', () => {
     // Auto-reconnect from localStorage should restore the connected state
     await expect(page.getByTestId('wallet-connected-button')).toBeVisible({ timeout: 5000 });
   });
-
 });
 
 test.describe('Freighter connect path', () => {
-
   test.beforeEach(async ({ page }) => {
     await injectFreighterMock(page);
     await page.goto('/');
@@ -175,9 +165,7 @@ test.describe('Freighter connect path', () => {
     await page.getByTestId('wallet-connect-button').click();
 
     // Wait for detection
-    await page.waitForFunction(() =>
-      !document.body.textContent?.includes('Detecting…')
-    );
+    await page.waitForFunction(() => !document.body.textContent?.includes('Detecting…'));
 
     const freighterOption = page.getByTestId('wallet-option-freighter');
     await expect(freighterOption).toContainText('Installed');
@@ -190,5 +178,4 @@ test.describe('Freighter connect path', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
     await expect(page.getByTestId('wallet-connected-button')).toBeVisible({ timeout: 5000 });
   });
-
 });

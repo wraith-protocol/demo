@@ -9,44 +9,47 @@ test.describe('Activity History', () => {
     await page.evaluate(() => {
       // Mock wallet connection state if necessary
       window.localStorage.setItem('wraith-wallet', JSON.stringify({ address: 'GDTESTWALLET123' }));
-      
+
       // Mock history store
-      window.localStorage.setItem('wraith-activity-storage', JSON.stringify({
-        state: {
-          entries: [
-            {
-              id: 'tx1',
-              chain: 'stellar',
-              wallet: 'GDTESTWALLET123',
-              kind: 'stealth-send',
-              direction: 'out',
-              status: 'confirmed',
-              amount: '10',
-              timestamp: Date.now() - 1000,
-            },
-            {
-              id: 'tx2',
-              chain: 'stellar',
-              wallet: 'GDTESTWALLET123',
-              kind: 'withdrawal',
-              direction: 'out',
-              status: 'pending',
-              amount: '5',
-              timestamp: Date.now() - 2000,
-            },
-            {
-              id: 'tx3',
-              chain: 'stellar',
-              wallet: 'GDTESTWALLET123',
-              kind: 'stealth-receive',
-              direction: 'in',
-              status: 'confirmed',
-              timestamp: Date.now() - 3000,
-            }
-          ]
-        },
-        version: 0
-      }));
+      window.localStorage.setItem(
+        'wraith-activity-storage',
+        JSON.stringify({
+          state: {
+            entries: [
+              {
+                id: 'tx1',
+                chain: 'stellar',
+                wallet: 'GDTESTWALLET123',
+                kind: 'stealth-send',
+                direction: 'out',
+                status: 'confirmed',
+                amount: '10',
+                timestamp: Date.now() - 1000,
+              },
+              {
+                id: 'tx2',
+                chain: 'stellar',
+                wallet: 'GDTESTWALLET123',
+                kind: 'withdrawal',
+                direction: 'out',
+                status: 'pending',
+                amount: '5',
+                timestamp: Date.now() - 2000,
+              },
+              {
+                id: 'tx3',
+                chain: 'stellar',
+                wallet: 'GDTESTWALLET123',
+                kind: 'stealth-receive',
+                direction: 'in',
+                status: 'confirmed',
+                timestamp: Date.now() - 3000,
+              },
+            ],
+          },
+          version: 0,
+        }),
+      );
     });
 
     // Reload to apply localStorage

@@ -52,12 +52,12 @@ const MOCK_CURRENT_LEDGER = 480000;
 function formatCountdown(targetLedger: number, currentLedger: number): string {
   const ledgersRemaining = targetLedger - currentLedger;
   if (ledgersRemaining <= 0) return 'Unlocked';
-  
+
   // Approximate: ~5 seconds per ledger on Stellar
   const secondsRemaining = ledgersRemaining * 5;
   const hours = Math.floor(secondsRemaining / 3600);
   const minutes = Math.floor((secondsRemaining % 3600) / 60);
-  
+
   if (hours > 24) {
     const days = Math.floor(hours / 24);
     return `${days}d ${hours % 24}h`;
@@ -114,34 +114,37 @@ export function VaultStatusTable() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleRefund = useCallback(async (depositId: string) => {
-    if (!address) {
-      setRefundError('Wallet not connected');
-      return;
-    }
+  const handleRefund = useCallback(
+    async (depositId: string) => {
+      if (!address) {
+        setRefundError('Wallet not connected');
+        return;
+      }
 
-    setRefundingId(depositId);
-    setRefundError('');
+      setRefundingId(depositId);
+      setRefundError('');
 
-    try {
-      // TODO: Integrate with stealth-vault contract when available
-      // For now, simulate the refund flow
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        // TODO: Integrate with stealth-vault contract when available
+        // For now, simulate the refund flow
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Simulate transaction hash
-      const simulatedTxHash = `refund_${depositId}_${Date.now()}`;
-      setRefundTxHash(simulatedTxHash);
+        // Simulate transaction hash
+        const simulatedTxHash = `refund_${depositId}_${Date.now()}`;
+        setRefundTxHash(simulatedTxHash);
 
-      // Update deposit state
-      setDeposits((prev) =>
-        prev.map((d) => (d.id === depositId ? { ...d, state: 'refunded' as const } : d)),
-      );
-    } catch (err) {
-      setRefundError(err instanceof Error ? err.message : 'Refund failed');
-    } finally {
-      setRefundingId(null);
-    }
-  }, [address]);
+        // Update deposit state
+        setDeposits((prev) =>
+          prev.map((d) => (d.id === depositId ? { ...d, state: 'refunded' as const } : d)),
+        );
+      } catch (err) {
+        setRefundError(err instanceof Error ? err.message : 'Refund failed');
+      } finally {
+        setRefundingId(null);
+      }
+    },
+    [address],
+  );
 
   if (!address) {
     return (
@@ -159,12 +162,8 @@ export function VaultStatusTable() {
   if (deposits.length === 0) {
     return (
       <div className="py-12 text-center">
-        <p className="font-heading text-sm uppercase tracking-widest text-outline">
-          No Deposits
-        </p>
-        <p className="mt-2 font-body text-xs text-on-surface-variant">
-          No vault deposits found.
-        </p>
+        <p className="font-heading text-sm uppercase tracking-widest text-outline">No Deposits</p>
+        <p className="mt-2 font-body text-xs text-on-surface-variant">No vault deposits found.</p>
       </div>
     );
   }
@@ -225,7 +224,9 @@ export function VaultStatusTable() {
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex items-center gap-2">
-                    <span className={`inline-block h-1.5 w-1.5 ${getStateColor(deposit.state)}`}></span>
+                    <span
+                      className={`inline-block h-1.5 w-1.5 ${getStateColor(deposit.state)}`}
+                    ></span>
                     <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                       {getStateLabel(deposit.state)}
                     </span>
@@ -329,9 +330,7 @@ export function VaultStatusTable() {
 
               {deposit.state === 'refunded' && (
                 <div className="border-t border-outline-variant/30 pt-3">
-                  <p className="font-body text-xs text-outline">
-                    Refunded by sender.
-                  </p>
+                  <p className="font-body text-xs text-outline">Refunded by sender.</p>
                 </div>
               )}
             </div>

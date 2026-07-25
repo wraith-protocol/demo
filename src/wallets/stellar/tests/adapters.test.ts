@@ -15,9 +15,9 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { FreighterAdapter } from '../FreighterAdapter';
-import { AlbedoAdapter }    from '../AlbedoAdapter';
-import { XBullAdapter }     from '../XBullAdapter';
-import { LobstrAdapter }    from '../LobstrAdapter';
+import { AlbedoAdapter } from '../AlbedoAdapter';
+import { XBullAdapter } from '../XBullAdapter';
+import { LobstrAdapter } from '../LobstrAdapter';
 import { WalletError, type StellarWallet } from '../types';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -37,30 +37,30 @@ const SIGNED_XDR =
 // ─── Mock SDK packages ─────────────────────────────────────────────────────
 
 vi.mock('@stellar/freighter-api', () => ({
-  isConnected:     vi.fn().mockResolvedValue({ isConnected: true }),
-  requestAccess:   vi.fn().mockResolvedValue({ address: 'GABCDEF1234567890' }),
-  getNetwork:      vi.fn().mockResolvedValue({ network: 'TESTNET' }),
+  isConnected: vi.fn().mockResolvedValue({ isConnected: true }),
+  requestAccess: vi.fn().mockResolvedValue({ address: 'GABCDEF1234567890' }),
+  getNetwork: vi.fn().mockResolvedValue({ network: 'TESTNET' }),
   signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: SIGNED_XDR }),
 }));
 
 vi.mock('@albedo-link/intent', () => ({
   default: {
     publicKey: vi.fn().mockResolvedValue({ pubkey: 'GALBEDO1234567890' }),
-    tx:        vi.fn().mockResolvedValue({ signed_envelope_xdr: SIGNED_XDR }),
+    tx: vi.fn().mockResolvedValue({ signed_envelope_xdr: SIGNED_XDR }),
   },
 }));
 
 vi.mock('@creit.tech/stellar-wallets-kit', () => {
   const kit = {
-    getAddress:      vi.fn().mockResolvedValue({ address: 'GXBULL1234567890' }),
+    getAddress: vi.fn().mockResolvedValue({ address: 'GXBULL1234567890' }),
     signTransaction: vi.fn().mockResolvedValue({ signedTxXdr: SIGNED_XDR }),
-    disconnect:      vi.fn().mockResolvedValue(undefined),
-    openModal:       vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    openModal: vi.fn().mockResolvedValue(undefined),
   };
   return {
     StellarWalletsKit: vi.fn().mockImplementation(() => kit),
     WalletNetwork: { TESTNET: 'Test SDF Network ; September 2015' },
-    XBULL_ID:  'xbull',
+    XBULL_ID: 'xbull',
     LOBSTR_ID: 'lobstr',
   };
 });
@@ -136,9 +136,7 @@ describe('signTransaction() XDR output', () => {
   });
 
   it('all adapters return the same signed XDR for the same input (mocked)', async () => {
-    const results = await Promise.all(
-      ADAPTERS.map((a) => a.signTransaction(UNSIGNED_XDR, OPTS)),
-    );
+    const results = await Promise.all(ADAPTERS.map((a) => a.signTransaction(UNSIGNED_XDR, OPTS)));
     const xdrs = results.map((r) => r.signedXdr);
     // All mocks return SIGNED_XDR — verifies the contract is respected
     expect(new Set(xdrs).size).toBe(1);
