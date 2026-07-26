@@ -150,6 +150,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.9
         version: 4.1.10(vitest@4.1.10)
+      ajv:
+        specifier: ^8.18.0
+        version: 8.18.0
       autoprefixer:
         specifier: ^10.4.20
         version: 10.5.0(postcss@8.5.9)
