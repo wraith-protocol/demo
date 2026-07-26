@@ -1,6 +1,7 @@
 // @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { QrReader } from 'react-qr-reader';
 import {
   TransactionBuilder,
   Account,
@@ -37,6 +38,7 @@ import {
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
+import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -117,8 +119,11 @@ export function StellarSend() {
   const [, setSubmitAttempted] = useState(false);
 
   const [isScanningQR, setIsScanningQR] = useState(false);
-  const [, setScannerError] = useState('');
+  const [scannerError, setScannerError] = useState('');
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
+  const [isDecodingQrImage, setIsDecodingQrImage] = useState(false);
   const closeScannerRef = useRef<HTMLButtonElement>(null);
+  const qrImageInputRef = useRef<HTMLInputElement>(null);
 
   // Focus close button on mount and handle Escape key to close
   useEffect(() => {
@@ -140,38 +145,61 @@ export function StellarSend() {
     }
   }, [isScanningQR]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handleScanResult = useCallback((result: any, _error: any) => {
-    if (result) {
-      const text = result.text?.trim();
-      if (!text) return;
-
-      // 1. Check if it's a payment link
-      try {
-        const url = new URL(text);
-        const toParam = url.searchParams.get('to');
-        if (toParam && toParam.startsWith('st:xlm:')) {
-          setRecipient(toParam);
-          const amtParam = url.searchParams.get('amount');
-          if (amtParam) setAmount(amtParam);
-          const memoParam = url.searchParams.get('memo');
-          if (memoParam) setMemo(memoParam);
-          setIsScanningQR(false);
-          return;
-        }
-      } catch {
-        // Not a URL, continue checking if it's a raw meta-address
-      }
-
-      // 2. Check if it's a raw meta-address
-      if (text.startsWith('st:xlm:')) {
-        setRecipient(text);
-        setIsScanningQR(false);
-      } else {
-        setScannerError('Invalid QR code. Must be a stealth meta-address or payment link.');
-      }
+  const applyQrPayload = useCallback((text: string) => {
+    try {
+      const payload = parseStellarQrPayload(text);
+      setRecipient(payload.metaAddress);
+      if (payload.amount) setAmount(payload.amount);
+      if (payload.memo) setMemo(payload.memo);
+      setTouched((previous) => ({ ...previous, recipient: true }));
+      setScannerError('');
+      setIsScanningQR(false);
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR code could not be read.',
+      );
     }
   }, []);
+
+  const handleScanResult = useCallback(
+    (result: any, scanError: any) => {
+      const text = result?.getText?.() ?? result?.text;
+      if (text) {
+        applyQrPayload(text);
+        return;
+      }
+
+      if (isCameraUnavailableError(scanError)) {
+        setCameraUnavailable(true);
+        setScannerError('Camera access is unavailable. Choose a saved QR image to continue.');
+      }
+    },
+    [applyQrPayload],
+  );
+
+  const openQrScanner = () => {
+    setScannerError('');
+    setCameraUnavailable(false);
+    setIsScanningQR(true);
+  };
+
+  const handleQrImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsDecodingQrImage(true);
+    setScannerError('');
+    try {
+      applyQrPayload(await decodeQrImage(file));
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR image could not be read.',
+      );
+    } finally {
+      setIsDecodingQrImage(false);
+      event.target.value = '';
+    }
+  };
 
   const [sourceBalance, setSourceBalance] = useState<number | null>(null);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
@@ -725,20 +753,30 @@ export function StellarSend() {
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.recipientMetaAddress')}
             </label>
-            <div className="relative">
+            <div className="flex flex-col gap-2">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder={t('stellar.recipientPlaceholder')}
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
-              <button
-                onClick={handlePaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-              >
-                {t('common.paste')}
-              </button>
+              <div className="flex justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                >
+                  {t('common.paste')}
+                </button>
+                <button
+                  type="button"
+                  onClick={openQrScanner}
+                  className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110"
+                >
+                  Scan QR
+                </button>
+              </div>
             </div>
           </div>
 
@@ -910,6 +948,84 @@ export function StellarSend() {
               {t('common.newTransfer')}
             </button>
           )}
+        </div>
+      )}
+
+      {isScanningQR && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-scanner-title"
+        >
+          <div className="flex w-full max-w-sm flex-col gap-4 border border-outline-variant bg-surface-container p-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2
+                id="qr-scanner-title"
+                className="font-heading text-lg font-bold uppercase tracking-tight text-on-surface"
+              >
+                Scan recipient QR
+              </h2>
+              <button
+                ref={closeScannerRef}
+                type="button"
+                onClick={() => setIsScanningQR(false)}
+                aria-label="Close QR scanner"
+                className="p-1 text-outline transition-colors hover:text-primary"
+              >
+                ×
+              </button>
+            </div>
+
+            {!cameraUnavailable && (
+              <div className="overflow-hidden bg-black">
+                <QrReader
+                  constraints={{ facingMode: { ideal: 'environment' } }}
+                  scanDelay={300}
+                  onResult={handleScanResult}
+                  containerStyle={{ width: '100%' }}
+                  videoStyle={{ width: '100%', height: 'auto' }}
+                />
+              </div>
+            )}
+
+            {cameraUnavailable && (
+              <div className="border border-error/40 bg-error/10 p-3">
+                <p className="font-body text-sm text-error">
+                  Camera permission was denied or the camera is unavailable.
+                </p>
+                <p className="mt-1 font-body text-xs text-on-surface-variant">
+                  Select a screenshot or saved QR image instead.
+                </p>
+              </div>
+            )}
+
+            {scannerError && !cameraUnavailable && (
+              <p role="alert" className="font-body text-sm text-error">
+                {scannerError}
+              </p>
+            )}
+
+            <input
+              ref={qrImageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleQrImage}
+              className="hidden"
+              aria-label="Choose a QR code image"
+            />
+            <button
+              type="button"
+              onClick={() => qrImageInputRef.current?.click()}
+              disabled={isDecodingQrImage}
+              className="h-11 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50"
+            >
+              {isDecodingQrImage ? 'Reading image...' : 'Choose QR image'}
+            </button>
+            <p className="font-body text-[11px] leading-relaxed text-outline">
+              QR images are decoded locally in your browser and are never uploaded.
+            </p>
+          </div>
         </div>
       )}
     </section>

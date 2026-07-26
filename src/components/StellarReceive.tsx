@@ -40,6 +40,7 @@ import { STELLAR_ASSETS, getAssetByKey, parseAssetBalances } from '@/lib/stellar
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
+import { createStellarQrUri } from '@/utils/qr';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -1450,7 +1451,14 @@ export function StellarReceive() {
         }
       />
       {showQRModal && stellarMetaAddress && (
-        <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
+        <QRCodeModal
+          value={stellarMetaAddress}
+          variants={[
+            { label: 'Meta-address', value: stellarMetaAddress },
+            { label: 'Stellar URI', value: createStellarQrUri(stellarMetaAddress) },
+          ]}
+          onClose={() => setShowQRModal(false)}
+        />
       )}
       <StellarBatchWithdrawModal
         isOpen={isBatchModalOpen}

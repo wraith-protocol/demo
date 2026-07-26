@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -6,10 +6,19 @@ interface QRCodeModalProps {
   value: string;
   onClose: () => void;
   title?: string;
+  variants?: Array<{ label: string; value: string }>;
 }
 
-export function QRCodeModal({ value, onClose, title = 'Stealth Meta-Address' }: QRCodeModalProps) {
+export function QRCodeModal({
+  value,
+  onClose,
+  title = 'Stealth Meta-Address',
+  variants,
+}: QRCodeModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const [selectedVariant, setSelectedVariant] = useState(0);
+  const qrVariants = variants?.length ? variants : [{ label: 'Meta-address', value }];
+  const activeVariant = qrVariants[Math.min(selectedVariant, qrVariants.length - 1)];
 
   // Close on Escape key press, and focus close button on mount
   useEffect(() => {
@@ -34,7 +43,7 @@ export function QRCodeModal({ value, onClose, title = 'Stealth Meta-Address' }: 
       try {
         await navigator.share({
           title: title,
-          text: value,
+          text: activeVariant.value,
         });
       } catch (err) {
         console.error('Error sharing:', err);
@@ -42,7 +51,7 @@ export function QRCodeModal({ value, onClose, title = 'Stealth Meta-Address' }: 
     } else {
       // Fallback: Copy to clipboard
       try {
-        await navigator.clipboard.writeText(value);
+        await navigator.clipboard.writeText(activeVariant.value);
       } catch (err) {
         console.error('Failed to copy address:', err);
       }
@@ -88,15 +97,38 @@ export function QRCodeModal({ value, onClose, title = 'Stealth Meta-Address' }: 
         </div>
 
         <div className="flex flex-col items-center gap-4">
+          {qrVariants.length > 1 && (
+            <div
+              className="grid w-full grid-cols-2 border border-outline-variant"
+              aria-label="QR code format"
+            >
+              {qrVariants.map((variant, index) => (
+                <button
+                  key={variant.label}
+                  type="button"
+                  onClick={() => setSelectedVariant(index)}
+                  aria-pressed={selectedVariant === index}
+                  className={`px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                    selectedVariant === index
+                      ? 'bg-primary text-surface'
+                      : 'text-outline hover:text-primary'
+                  }`}
+                >
+                  {variant.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="rounded-lg bg-white p-4">
-            <QRCodeSVG value={value} size={200} />
+            <QRCodeSVG value={activeVariant.value} size={200} />
           </div>
 
           <div className="flex w-full items-center gap-2 rounded bg-surface p-2 border border-outline-variant">
             <code className="block flex-1 truncate font-mono text-[10px] text-primary">
-              {value}
+              {activeVariant.value}
             </code>
-            <CopyButton text={value} />
+            <CopyButton text={activeVariant.value} />
           </div>
 
           <div className="flex w-full gap-2 mt-2">

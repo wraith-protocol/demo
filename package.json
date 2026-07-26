@@ -37,6 +37,7 @@
     "@walletconnect/core": "^2.23.10",
     "@walletconnect/sign-client": "^2.23.10",
     "@wraith-protocol/sdk": "^1.4.5",
+    "@zxing/browser": "0.0.7",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
     "i18next": "^24.2.3",
