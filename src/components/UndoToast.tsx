@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useUndoStore } from '@/stores/undoStore';
 
-function ToastItem({ id, message, onUndo, expiresAt }: {
+function ToastItem({
+  id,
+  message,
+  onUndo,
+  expiresAt,
+}: {
   id: string;
   message: string;
   onUndo: () => void;

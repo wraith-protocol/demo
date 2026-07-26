@@ -11,7 +11,12 @@ interface Notification {
 const INITIAL_NOTIFICATIONS: Notification[] = [
   { id: '1', title: 'Payment received', body: 'You received 10 XLM from Alice.', read: false },
   { id: '2', title: 'Contact added', body: 'Bob was added to your contacts.', read: false },
-  { id: '3', title: 'Schedule executed', body: 'Recurring payment to Carol completed.', read: true },
+  {
+    id: '3',
+    title: 'Schedule executed',
+    body: 'Recurring payment to Carol completed.',
+    read: true,
+  },
 ];
 
 export default function Notifications() {
@@ -35,9 +40,7 @@ export default function Notifications() {
     });
   };
 
-  const filtered = filter === 'unread'
-    ? notifications.filter((n) => !n.read)
-    : notifications;
+  const filtered = filter === 'unread' ? notifications.filter((n) => !n.read) : notifications;
 
   return (
     <div className="flex flex-col gap-6">
@@ -81,7 +84,9 @@ export default function Notifications() {
             className="flex items-start justify-between rounded-xl bg-surface-variant px-4 py-3"
           >
             <div className="flex flex-col gap-1">
-              <span className={`font-body text-sm font-semibold ${n.read ? 'text-on-surface-variant' : 'text-on-surface'}`}>
+              <span
+                className={`font-body text-sm font-semibold ${n.read ? 'text-on-surface-variant' : 'text-on-surface'}`}
+              >
                 {n.title}
               </span>
               <span className="font-body text-xs text-on-surface-variant">{n.body}</span>
