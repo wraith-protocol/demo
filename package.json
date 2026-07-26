@@ -20,6 +20,7 @@
     "test-storybook": "test-storybook"
   },
   "dependencies": {
+    "@albedo-link/intent": "^0.13.0",
     "@ckb-ccc/ccc": "^1.1.25",
     "@ckb-ccc/connector-react": "^1.0.34",
     "@noble/curves": "^1.9.7",
