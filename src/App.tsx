@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
 import { TelemetryBanner } from '@/components/TelemetryBanner';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
@@ -14,6 +15,7 @@ export function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
+      <OfflineBanner />
       <TelemetryBanner />
       <AutoSign />
       <main className="mx-auto w-full max-w-[720px] flex-1 px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10">
