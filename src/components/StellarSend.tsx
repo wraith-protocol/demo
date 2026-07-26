@@ -18,6 +18,9 @@ import {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useContacts } from '@/store/contactsStore';
+import { useNameHistory } from '@/store/nameHistoryStore';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
@@ -104,6 +107,8 @@ export function StellarSend() {
   const [amount, setAmount] = useState(paramAmount || '');
   const [assetKey] = useState<StellarAssetKey>('XLM');
   const [memo, setMemo] = useState(paramMemo || '');
+  const { isKnownAddress, addContact } = useContacts();
+  const { isKnownRecipient, addToHistory } = useNameHistory();
   const [error, setError] = useState('');
   const [, setTouched] = useState({ recipient: false, amount: false });
   const [, setSubmitAttempted] = useState(false);
@@ -183,6 +188,9 @@ export function StellarSend() {
     }
   }, [paramExp]);
 
+  const [showUnknownWarning, setShowUnknownWarning] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [contactName, setContactName] = useState('');
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
     ephemeralPubKey: Uint8Array;
@@ -382,6 +390,10 @@ export function StellarSend() {
     };
   }, [metaAddress, assetKey, recipientError]);
 
+  // Check if recipient is known when it changes
+  const isUnknownRecipient =
+    recipient && !isKnownAddress(recipient) && !isKnownRecipient(recipient);
+
   const handleSend = useCallback(async () => {
     setSubmitAttempted(true);
     setTouched({ recipient: true, amount: true });
@@ -508,6 +520,9 @@ export function StellarSend() {
 
       setTxHash(submitData.hash);
 
+      // Add recipient to history after successful send
+      addToHistory(recipient);
+
       // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
@@ -585,6 +600,17 @@ export function StellarSend() {
     setSubmitAttempted(false);
     setSourceBalance(null);
     setBalanceLookupError('');
+    setShowUnknownWarning(false);
+    setShowSaveDialog(false);
+    setContactName('');
+  };
+
+  const handleSaveContact = () => {
+    if (contactName.trim() && recipient) {
+      addContact(recipient, contactName.trim());
+      setShowSaveDialog(false);
+      setContactName('');
+    }
   };
 
   const handlePaste = async () => {
@@ -688,6 +714,60 @@ export function StellarSend() {
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+
+          {isUnknownRecipient && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant/50 bg-surface-container p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">⚠️</span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-on-surface">
+                    You haven't paid this recipient before
+                  </p>
+                  <p className="text-xs text-on-surface-variant">
+                    This address is not in your contacts or payment history. Please verify the
+                    address carefully before sending.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSaveDialog(true)}
+                className="h-9 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+              >
+                Save to contacts
+              </button>
+            </div>
+          )}
+
+          {showSaveDialog && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant bg-surface-container p-4">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Contact Name
+              </label>
+              <input
+                type="text"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Enter a name for this contact"
+                className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSaveDialog(false)}
+                  className="h-9 flex-1 border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveContact}
+                  disabled={!contactName.trim()}
+                  className="h-9 flex-1 bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleSend}
