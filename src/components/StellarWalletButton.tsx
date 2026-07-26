@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { WALLET_META } from '@/wallets/stellar';
 import type { StellarWalletState } from '@/hooks/useStellarWallet';
+import { StellarLink } from '@/components/StellarLink';
 
 interface Props {
   state: StellarWalletState;
@@ -50,29 +51,31 @@ export function StellarWalletButton({ state }: Props) {
     const meta = WALLET_META[walletId];
     return (
       <div className="relative">
-        <button
-          onClick={() => setShowMenu((v) => !v)}
-          className={[
-            'flex items-center gap-2 px-3 py-1.5 border text-xs transition-colors',
-            'border-[#2a2a2a] text-[#e6e1e5] hover:border-[#444444]',
-          ].join(' ')}
-          aria-label="Wallet menu"
-          data-testid="wallet-connected-button"
-        >
+        <div className="flex items-center gap-2 border border-[#2a2a2a] px-3 py-1.5 text-xs text-[#e6e1e5] transition-colors hover:border-[#444444]">
           <img src={meta.icon} alt={meta.name} width={14} height={14} className="rounded-sm" />
-          <span className="font-mono">{truncate(publicKey)}</span>
-          <svg
-            width="8"
-            height="8"
-            viewBox="0 0 8 8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
+          <StellarLink value={publicKey} type="account" linkClassName="text-xs">
+            {truncate(publicKey)}
+          </StellarLink>
+          <button
+            type="button"
+            onClick={() => setShowMenu((v) => !v)}
+            aria-label="Wallet menu"
+            data-testid="wallet-connected-button"
+            className="text-[#767575] transition-colors hover:text-[#e6e1e5]"
           >
-            <polyline points="1,2 4,5 7,2" />
-          </svg>
-        </button>
+            <svg
+              width="8"
+              height="8"
+              viewBox="0 0 8 8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
+              <polyline points="1,2 4,5 7,2" />
+            </svg>
+          </button>
+        </div>
 
         {showMenu && (
           <div className="absolute right-0 top-full mt-1 z-20 bg-[#141414] border border-[#2a2a2a] w-44">

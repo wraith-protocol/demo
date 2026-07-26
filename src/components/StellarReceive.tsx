@@ -28,7 +28,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useActivity } from '@/context/ActivityContext';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { computePrivacyScore } from '@/lib/privacy-score';
 import { STELLAR_NETWORK } from '@/config';
@@ -531,15 +531,12 @@ function StellarMatchCardContainer({
               {t('common.stealthAddress')}
             </span>
             <div className="mt-0.5 flex items-center gap-2">
-              <a
-                href={stellarAddrUrl(match.stealthAddress)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block truncate font-mono text-xs text-primary underline"
-              >
-                {match.stealthAddress}
-              </a>
-              <CopyButton text={match.stealthAddress} />
+              <StellarLink
+                value={match.stealthAddress}
+                type="account"
+                className="max-w-full"
+                linkClassName="text-xs"
+              />
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -596,14 +593,7 @@ function StellarMatchCardContainer({
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-mono text-[10px] text-on-surface-variant">
               {t('common.withdrawn')} —{' '}
-              <a
-                href={stellarTxUrl(withdrawHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                {withdrawHash.slice(0, 14)}...
-              </a>
+              <StellarLink value={withdrawHash} type="tx" linkClassName="text-[10px]" />
             </span>
           </div>
         )}

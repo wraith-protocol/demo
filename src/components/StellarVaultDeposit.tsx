@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { CopyButton } from '@/components/CopyButton';
+import { StellarLink } from '@/components/StellarLink';
 
 const MIN_XLM_AMOUNT = 0.0000001;
 
@@ -289,10 +290,12 @@ export function StellarVaultDeposit() {
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                   Transaction Hash
                 </span>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="font-mono text-xs text-primary">{txHash}</span>
-                  <CopyButton text={txHash} />
-                </div>
+                <StellarLink
+                  value={txHash}
+                  type="tx"
+                  className="mt-0.5 max-w-full"
+                  linkClassName="text-xs"
+                />
               </div>
             )}
 

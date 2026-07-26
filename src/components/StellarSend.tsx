@@ -20,7 +20,6 @@ import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useContacts } from '@/store/contactsStore';
 import { useNameHistory } from '@/store/nameHistoryStore';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { AssetPicker } from '@/components/AssetPicker';
@@ -29,7 +28,7 @@ import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { getAssetByKey, STELLAR_ASSETS } from '@/lib/stellar/assets';
 import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
-import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import {
   type StellarSendSimulationState,
   emptyStellarSendSimulation,
@@ -870,15 +869,12 @@ export function StellarSend() {
                 {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {stealthResult.stealthAddress}
-                </a>
-                <CopyButton text={stealthResult.stealthAddress} />
+                <StellarLink
+                  value={stealthResult.stealthAddress}
+                  type="account"
+                  className="max-w-full"
+                  linkClassName="text-xs"
+                />
               </div>
             </div>
 
@@ -888,15 +884,12 @@ export function StellarSend() {
                   {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <a
-                    href={stellarTxUrl(txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block truncate font-mono text-xs text-primary underline"
-                  >
-                    {txHash}
-                  </a>
-                  <CopyButton text={txHash} />
+                  <StellarLink
+                    value={txHash}
+                    type="tx"
+                    className="max-w-full"
+                    linkClassName="text-xs"
+                  />
                 </div>
               </div>
             )}
