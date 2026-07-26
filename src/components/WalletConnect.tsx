@@ -137,8 +137,17 @@ function CkbButton() {
 export function WalletConnect() {
   const { chain } = useChain();
 
-  if (chain === 'stellar') return <StellarButton />;
-  if (chain === 'solana') return <SolanaButton />;
-  if (chain === 'ckb') return <CkbButton />;
-  return <HorizenButton />;
+  return (
+    <div data-tour="wallet-connect">
+      {chain === 'stellar' ? (
+        <StellarButton />
+      ) : chain === 'solana' ? (
+        <SolanaButton />
+      ) : chain === 'ckb' ? (
+        <CkbButton />
+      ) : (
+        <HorizenButton />
+      )}
+    </div>
+  );
 }
