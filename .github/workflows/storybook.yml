@@ -21,7 +21,7 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.60.0-noble
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install pnpm
         run: npm install -g pnpm@9.15.9
@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload snapshot diffs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: image-snapshot-diffs
           path: '**/__diff_output__/**'
