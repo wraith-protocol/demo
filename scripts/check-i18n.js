@@ -71,7 +71,10 @@ for (const locale of LOCALES_TO_CHECK) {
       }
     }
     if (extra.length > 0) {
-      console.warn(`\n⚠️   ${locale}.json — ${extra.length} extra key(s) not in EN (will be ignored at runtime):`);
+      const count = extra.length;
+      console.warn(
+        `\n⚠️   ${locale}.json — ${count} extra key(s) not in EN (ignored at runtime):`,
+      );
       for (const key of extra) {
         console.warn(`    + ${key}`);
       }

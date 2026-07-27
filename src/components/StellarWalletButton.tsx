@@ -30,7 +30,7 @@ export function StellarWalletButton({ state }: Props) {
 
   if (status === 'connecting') {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 border border-[#2a2a2a] text-xs text-[#767575]">
+      <div className="flex items-center gap-2 border border-[#2a2a2a] px-3 py-1.5 text-xs text-[#767575]">
         <svg className="animate-spin" width="12" height="12" viewBox="0 0 12 12" fill="none">
           <circle
             cx="6"
@@ -55,7 +55,7 @@ export function StellarWalletButton({ state }: Props) {
         <button
           onClick={() => setShowMenu((v) => !v)}
           className={[
-            'flex items-center gap-2 px-3 py-1.5 border text-xs transition-colors',
+            'flex items-center gap-2 border px-3 py-1.5 text-xs transition-colors',
             'border-[#2a2a2a] text-[#e6e1e5] hover:border-[#444444]',
           ].join(' ')}
           aria-label="Wallet menu"
@@ -77,17 +77,19 @@ export function StellarWalletButton({ state }: Props) {
         </button>
 
         {showMenu && (
-          <div className="absolute right-0 top-full mt-1 z-20 bg-[#141414] border border-[#2a2a2a] w-44">
-            <div className="px-3 py-2 border-b border-[#1e1e1e]">
-              <p className="text-[10px] text-[#555555] uppercase tracking-wide">{t('stellar.connectedVia')}</p>
-              <p className="text-xs text-[#c4c7c5] mt-0.5">{meta.name}</p>
+          <div className="absolute right-0 top-full z-20 mt-1 w-44 border border-[#2a2a2a] bg-[#141414]">
+            <div className="border-b border-[#1e1e1e] px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wide text-[#555555]">
+                {t('stellar.connectedVia')}
+              </p>
+              <p className="mt-0.5 text-xs text-[#c4c7c5]">{meta.name}</p>
             </div>
             <button
               onClick={async () => {
                 setShowMenu(false);
                 await disconnect();
               }}
-              className="w-full text-left px-3 py-2 text-xs text-[#ee7d77] hover:bg-[#1a1a1a] transition-colors"
+              className="w-full px-3 py-2 text-left text-xs text-[#ee7d77] transition-colors hover:bg-[#1a1a1a]"
               data-testid="wallet-disconnect-button"
             >
               {t('stellar.disconnect')}
@@ -102,8 +104,8 @@ export function StellarWalletButton({ state }: Props) {
     <button
       onClick={openPicker}
       className={[
-        'px-3 py-1.5 border border-[#2a2a2a] text-xs text-[#c4c7c5]',
-        'hover:border-[#444444] hover:text-[#e6e1e5] transition-colors',
+        'border border-[#2a2a2a] px-3 py-1.5 text-xs text-[#c4c7c5]',
+        'transition-colors hover:border-[#444444] hover:text-[#e6e1e5]',
       ].join(' ')}
       data-testid="wallet-connect-button"
     >

@@ -209,7 +209,9 @@ export function StellarVaultClaim() {
                   {t('stellar.refundWindow')}
                 </span>
                 <div className="mt-0.5 font-mono text-xs text-on-surface-variant">
-                  {t('stellar.refundWindowLedgers', { value: deposit.refundWindow.toLocaleString() })}
+                  {t('stellar.refundWindowLedgers', {
+                    value: deposit.refundWindow.toLocaleString(),
+                  })}
                 </div>
               </div>
             </div>

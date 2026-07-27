@@ -142,7 +142,9 @@ export function StellarWalletPicker({ state }: Props) {
       <div className="bg-[#141414] border border-[#2a2a2a] w-full max-w-sm p-5 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#e6e1e5]">{t('stellar.walletPickerTitle')}</h2>
+          <h2 className="text-sm font-semibold text-[#e6e1e5]">
+            {t('stellar.walletPickerTitle')}
+          </h2>
           <button
             onClick={closePicker}
             className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
@@ -167,7 +169,9 @@ export function StellarWalletPicker({ state }: Props) {
         <div className="space-y-2">
           {WALLET_IDS.map((id) => {
             const meta = WALLET_META[id];
-            const isAvail = available[id] ?? (id === 'albedo' || id === 'walletconnect'); // albedo & walletconnect always available
+            const isAvail =
+              available[id] ?? (id === 'albedo' || id === 'walletconnect');
+            // albedo & walletconnect are always available (web-based, no extension)
             const isLoading = pending === id;
             const isDisabled = !!pending && pending !== id;
 
@@ -280,7 +284,9 @@ export function StellarWalletPicker({ state }: Props) {
         >
           <div className="bg-[#141414] border border-[#2a2a2a] w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#e6e1e5]">{t('stellar.scanWithWalletConnect')}</h2>
+              <h2 className="text-sm font-semibold text-[#e6e1e5]">
+                {t('stellar.scanWithWalletConnect')}
+              </h2>
               <button
                 onClick={closeWcModal}
                 className="text-[#555555] hover:text-[#c4c7c5] transition-colors"
