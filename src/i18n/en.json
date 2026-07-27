@@ -2,7 +2,8 @@
   "nav": {
     "send": "Send",
     "receive": "Receive",
-    "schedule": "Schedule"
+    "schedule": "Schedule",
+    "names": "Names"
   },
   "header": {
     "menuLabel": "Menu",
