@@ -8,6 +8,8 @@ import Privacy from '@/pages/Privacy';
 import { HelpButton } from '@/components/HelpButton';
 import Vault from '@/pages/Vault';
 import Schedule from '@/pages/Schedule';
+import StellarSplit from '@/pages/StellarSplit';
+import Names from '@/pages/Names';
 
 export function App() {
   return (
@@ -22,7 +24,9 @@ export function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/vault" element={<Vault />} />
           <Route path="/schedule" element={<Schedule />} />
+          <Route path="/stellar/split" element={<StellarSplit />} />
           <Route path="/pay" element={<Send />} />
+          <Route path="/names" element={<Names />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>

@@ -7,12 +7,6 @@ import { LocaleSwitcher } from './LocaleSwitcher';
 import { NetworkChip } from './NetworkChip';
 import { useTheme } from '@/context/ThemeContext';
 
-const navLinks = [
-  { to: '/send', label: 'Send' },
-  { to: '/receive', label: 'Receive' },
-  { to: '/vault', label: 'Vault' },
-];
-
 export function Header() {
   const location = useLocation();
   const { t } = useTranslation();
@@ -23,6 +17,7 @@ export function Header() {
     { to: '/send', label: t('nav.send') },
     { to: '/receive', label: t('nav.receive') },
     { to: '/schedule', label: t('nav.schedule') },
+    { to: '/names', label: t('nav.names') },
   ];
 
   return (
@@ -56,7 +51,7 @@ export function Header() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <LocaleSwitcher />
           <button
             onClick={toggleTheme}
@@ -86,9 +81,11 @@ export function Header() {
               </svg>
             )}
           </button>
-          <ChainSwitcher />
-          <NetworkChip />
-          <WalletConnect />
+          <div className="hidden sm:flex sm:items-center sm:gap-3">
+            <ChainSwitcher />
+             <NetworkChip />
+            <WalletConnect />
+          </div>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
@@ -119,7 +116,7 @@ export function Header() {
       </div>
 
       {mobileMenuOpen && (
-        <div className="border-t border-outline-variant/30 px-4 pb-3 sm:hidden">
+        <div className="border-t border-outline-variant/30 px-4 pb-4 sm:hidden">
           <nav className="flex flex-col gap-0">
             {navLinks.map((link) => (
               <Link
@@ -136,6 +133,20 @@ export function Header() {
               </Link>
             ))}
           </nav>
+          <div className="mt-4 flex flex-col gap-3 border-t border-outline-variant/30 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+                {t('header.chain')}
+              </span>
+              <ChainSwitcher />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+                {t('header.wallet')}
+              </span>
+              <WalletConnect />
+            </div>
+          </div>
         </div>
       )}
     </header>
