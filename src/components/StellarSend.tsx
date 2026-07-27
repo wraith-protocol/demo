@@ -1,4 +1,5 @@
 // @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
+import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -97,7 +98,7 @@ export function StellarSend() {
   const paramMemo = searchParams.get('memo');
   const paramExp = searchParams.get('exp');
 
-  const { address, isConnected, signTransaction } = useStellarWallet();
+  const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
@@ -105,6 +106,7 @@ export function StellarSend() {
   const [assetKey] = useState<StellarAssetKey>('XLM');
   const [memo, setMemo] = useState(paramMemo || '');
   const [error, setError] = useState('');
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [, setTouched] = useState({ recipient: false, amount: false });
   const [, setSubmitAttempted] = useState(false);
 
@@ -388,6 +390,11 @@ export function StellarSend() {
 
     if (!address) {
       setError(t('common.walletNotConnected'));
+      return;
+    }
+
+    if (isNetworkMismatch) {
+      setShowNetworkModal(true);
       return;
     }
 
@@ -760,6 +767,7 @@ export function StellarSend() {
           )}
         </div>
       )}
+      {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
     </section>
   );
 }

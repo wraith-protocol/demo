@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
 import { LocaleSwitcher } from './LocaleSwitcher';
+import { NetworkChip } from './NetworkChip';
 import { useTheme } from '@/context/ThemeContext';
 
 const navLinks = [
@@ -86,6 +87,7 @@ export function Header() {
             )}
           </button>
           <ChainSwitcher />
+          <NetworkChip />
           <WalletConnect />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

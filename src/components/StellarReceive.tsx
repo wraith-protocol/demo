@@ -39,6 +39,7 @@ import { KeyVault } from '@/vault';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS, getAssetByKey, parseAssetBalances } from '@/lib/stellar/assets';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
+import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -174,7 +175,7 @@ function StellarMatchCardContainer({
   onDismissPrivacyWarning: () => void;
 }) {
   const { t } = useTranslation();
-  const { address, signTransaction } = useStellarWallet();
+  const { address, signTransaction, isNetworkMismatch } = useStellarWallet();
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [withdrawAssetKey, setWithdrawAssetKey] = useState<StellarAssetKey>('XLM');
@@ -188,6 +189,7 @@ function StellarMatchCardContainer({
   const [retryStatus, setRetryStatus] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
 
   const { upsert } = useActivity();
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
@@ -229,6 +231,12 @@ function StellarMatchCardContainer({
 
   const handleWithdraw = async () => {
     if (!dest) return;
+
+    if (isNetworkMismatch) {
+      setShowNetworkModal(true);
+      return;
+    }
+
     setError('');
     setRetryStatus('');
     setWithdrawing(true);
@@ -397,6 +405,12 @@ function StellarMatchCardContainer({
 
   const handleSponsoredWithdraw = async () => {
     if (!dest || !address) return;
+
+    if (isNetworkMismatch) {
+      setShowNetworkModal(true);
+      return;
+    }
+
     setError('');
     setRetryStatus('');
     setWithdrawing(true);
@@ -645,13 +659,15 @@ function StellarMatchCardContainer({
         showPrivacyWarning={showPrivacyWarning}
         onDismissPrivacyWarning={onDismissPrivacyWarning}
       />
+      {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
     </>
   );
 }
 
 export function StellarReceive() {
   const { t } = useTranslation();
-  const { address, isConnected, signMessage, signTransaction } = useStellarWallet();
+  const { address, isConnected, signMessage, signTransaction, isNetworkMismatch } =
+    useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
   const addActivity = useActivityStore((state) => state.addEntry);
@@ -673,6 +689,7 @@ export function StellarReceive() {
   }, []);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [retryStatus, setRetryStatus] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
@@ -1018,6 +1035,12 @@ export function StellarReceive() {
 
   const registerOnChain = useCallback(async () => {
     if (!stellarKeys || !address) return;
+
+    if (isNetworkMismatch) {
+      setShowNetworkModal(true);
+      return;
+    }
+
     setIsRegistering(true);
     setError('');
     setRetryStatus('');
@@ -1375,6 +1398,7 @@ export function StellarReceive() {
       {showQRModal && stellarMetaAddress && (
         <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
       )}
+      {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
     </>
   );
 }
