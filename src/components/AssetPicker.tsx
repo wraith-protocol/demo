@@ -54,9 +54,7 @@ export function AssetPicker({
     if (!search) return entries;
     const q = search.toLowerCase();
     return entries.filter(
-      (e) =>
-        e.code.toLowerCase().includes(q) ||
-        (e.issuer && e.issuer.toLowerCase().includes(q)),
+      (e) => e.code.toLowerCase().includes(q) || (e.issuer && e.issuer.toLowerCase().includes(q)),
     );
   }, [entries, search]);
 
@@ -158,5 +156,3 @@ export function AssetPicker({
     </div>
   );
 }
-
-

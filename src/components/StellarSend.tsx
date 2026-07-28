@@ -232,9 +232,23 @@ export function StellarSend() {
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
       ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
       : '';
-  const balanceEntries: Array<{ key: string; code: string; issuer?: string; balance: string; isKnown: boolean; isNative: boolean }> = useMemo(() => {
+  const balanceEntries: Array<{
+    key: string;
+    code: string;
+    issuer?: string;
+    balance: string;
+    isKnown: boolean;
+    isNative: boolean;
+  }> = useMemo(() => {
     const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
-    const entries: Array<{ key: string; code: string; issuer?: string; balance: string; isKnown: boolean; isNative: boolean }> = [];
+    const entries: Array<{
+      key: string;
+      code: string;
+      issuer?: string;
+      balance: string;
+      isKnown: boolean;
+      isNative: boolean;
+    }> = [];
     let hasXlm = false;
     for (const [key, bal] of Object.entries(allBalances)) {
       if (key === 'XLM') {
