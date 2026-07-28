@@ -247,10 +247,10 @@ function StellarMatchCardContainer({
         { onRetry },
       );
       setRetryStatus('');
-      if (!res.ok) throw new Error('Account not found');
+      if (!res.ok) throw new Error(t('stellar.accountNotFound'));
       const account = await res.json();
 
-      if (withdrawBalance <= 0) throw new Error(`No ${withdrawAssetKey} balance`);
+      if (withdrawBalance <= 0) throw new Error(t('stellar.noAssetBalance', { asset: withdrawAssetKey }));
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
 
@@ -258,7 +258,7 @@ function StellarMatchCardContainer({
         const xlmBal = account.balances?.find(
           (b: { asset_type: string }) => b.asset_type === 'native',
         );
-        if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+        if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error(t('stellar.noXlmBalance'));
         const currentBalance = parseFloat(xlmBal.balance);
         const subentryCount = account.subentry_count ?? 0;
         const baseReserve = 0.5;
@@ -321,7 +321,7 @@ function StellarMatchCardContainer({
           throw new Error(
             submitData.extras?.result_codes?.transaction ||
               submitData.title ||
-              'Transaction failed',
+              t('common.transactionFailed'),
           );
         }
 
@@ -367,30 +367,27 @@ function StellarMatchCardContainer({
           body: `tx=${signedXdrStr}`,
         });
 
-        const submitData = await submitRes.json();
+        const submitData2 = await submitRes.json();
         if (!submitRes.ok) {
           throw new Error(
-            submitData.extras?.result_codes?.transaction ||
-              submitData.title ||
-              'Transaction failed',
+            submitData2.extras?.result_codes?.transaction ||
+              submitData2.title ||
+              t('common.transactionFailed'),
           );
         }
 
-        setWithdrawHash(submitData.hash);
+        setWithdrawHash(submitData2.hash);
       }
       trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
-      // In a real robust implementation we'd check if we submitted and mark failed
       setRetryStatus('');
       setError(
         err instanceof RetryExhaustedError
           ? err.message
           : err instanceof Error
             ? err.message
-            : 'Withdraw failed',
+            : t('common.transactionFailed'),
       );
     } finally {
       setWithdrawing(false);
@@ -416,13 +413,13 @@ function StellarMatchCardContainer({
         { onRetry },
       );
       setRetryStatus('');
-      if (!stealthRes.ok) throw new Error('Stealth account not found');
+      if (!stealthRes.ok) throw new Error(t('stellar.stealthAccountNotFound'));
       const stealthAccount = await stealthRes.json();
 
       const xlmBal = stealthAccount.balances?.find(
         (b: { asset_type: string }) => b.asset_type === 'native',
       );
-      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
+      if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error(t('stellar.noXlmBalance'));
 
       // Build inner transaction: mergeAccount to recover all XLM including base reserve
       const stealthSourceAccount = new Account(match.stealthAddress, stealthAccount.sequence);
@@ -486,16 +483,17 @@ function StellarMatchCardContainer({
         body: `tx=${encodeURIComponent(signedFeeBumpXdr)}`,
       });
 
-      const submitData = await submitRes.json();
+      const feeBumpSubmitData = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+          feeBumpSubmitData.extras?.result_codes?.transaction ||
+            feeBumpSubmitData.title ||
+            t('common.transactionFailed'),
         );
       }
 
-      // Fee-bump transactions return the outer hash
-      setFeeBumpHash(submitData.hash);
-      setWithdrawHash(submitData.hash); // For UI consistency
+      setFeeBumpHash(feeBumpSubmitData.hash);
+      setWithdrawHash(feeBumpSubmitData.hash);
       updateActivity(txHashHex, 'confirmed');
       onWithdrawn();
     } catch (err) {
@@ -505,7 +503,7 @@ function StellarMatchCardContainer({
           ? err.message
           : err instanceof Error
             ? err.message
-            : 'Sponsored withdraw failed',
+            : t('stellar.sponsoredWithdrawFailed'),
       );
     } finally {
       setWithdrawing(false);
@@ -574,7 +572,7 @@ function StellarMatchCardContainer({
                 type="text"
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
-                placeholder="Destination address (G...)"
+              placeholder={t('stellar.destinationPlaceholder')}
                 className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
               />
               <button

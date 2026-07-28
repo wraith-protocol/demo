@@ -129,7 +129,14 @@ export function StellarHistory() {
                   }`}
                 />
                 <span className="font-mono text-[10px] uppercase tracking-widest text-on-surface">
-                  {tx.status} • {tx.kind.replace('-', ' ')}
+                  {t(`stellar.${tx.status}Status`)} •{' '}
+                  {tx.kind === 'stealth-send'
+                    ? t('stellar.stealthSend')
+                    : tx.kind === 'stealth-receive'
+                      ? t('stellar.stealthReceive')
+                      : tx.kind === 'withdrawal'
+                        ? t('stellar.withdrawal')
+                        : t('stellar.nameRegistration')}
                 </span>
               </div>
               <span className="font-mono text-[10px] text-outline">

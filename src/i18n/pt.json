@@ -213,7 +213,17 @@
     "saving": "Salvando...",
     "locking": "Bloqueando...",
     "unlocking": "Desbloqueando...",
-    "lockVault": "Bloquear cofre"
+    "sponsoredWithdrawFailed": "Retirada patrocinada falhou",
+    "stealthAccountNotFound": "Conta furtiva não encontrada",
+    "noXlmBalance": "Sem saldo XLM",
+    "accountNotFound": "Conta não encontrada",
+    "noAssetBalance": "Sem saldo de {{asset}}",
+    "trustlineError": "O destinatário não possui trustline para {{asset}}. Peça para adicionar uma trustline para {{asset}}.",
+    "amountRequired": "O valor é obrigatório",
+    "invalidAmount": "Insira um valor válido de {{asset}}",
+    "tooManyDecimals": "{{asset}} suporta até {{decimals}} casas decimais",
+    "amountTooLow": "O valor deve ser maior que {{min}} {{asset}}",
+    "insufficientBalance": "{{asset}} insuficiente (você tem {{have}}, precisa de {{need}})"
   },
   "solana": {
     "network": "Solana Devnet / SOL",

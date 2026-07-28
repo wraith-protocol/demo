@@ -61,32 +61,36 @@ function formatAsset(value: number, assetKey: StellarAssetKey) {
   return value.toFixed(assetInfo.decimals).replace(/\.?0+$/, '');
 }
 
-function validateMetaAddress(value: string) {
-  if (!value) return 'Recipient meta-address is required';
-  if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
+function validateMetaAddress(value: string, t: (k: string) => string) {
+  if (!value) return t('stellar.validMetaAddressError');
+  if (!value.startsWith('st:xlm:')) return t('stellar.validMetaAddressError');
 
   try {
     decodeStealthMetaAddress(value);
     return '';
   } catch {
-    return 'Not a valid Stellar stealth meta-address';
+    return t('stellar.validMetaAddressError');
   }
 }
 
-function validateAmount(value: string, assetKey: StellarAssetKey) {
-  if (!value) return 'Amount is required';
-  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return `Enter a valid ${assetKey} amount`;
+function validateAmount(
+  value: string,
+  assetKey: StellarAssetKey,
+  t: (k: string, opts?: Record<string, unknown>) => string,
+) {
+  if (!value) return t('stellar.amountRequired');
+  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return t('stellar.invalidAmount', { asset: assetKey });
 
   const assetInfo = getAssetByKey(assetKey);
   const decimalPart = value.split('.')[1];
   if (decimalPart && decimalPart.length > assetInfo.decimals) {
-    return `${assetKey} supports up to ${assetInfo.decimals} decimals`;
+    return t('stellar.tooManyDecimals', { asset: assetKey, decimals: assetInfo.decimals });
   }
 
   const parsed = Number(value);
   const minAmount = getMinAmount(assetKey);
   if (!Number.isFinite(parsed) || parsed <= minAmount) {
-    return `Amount must be greater than ${minAmount} ${assetKey}`;
+    return t('stellar.amountTooLow', { min: minAmount, asset: assetKey });
   }
 
   return '';
@@ -206,8 +210,11 @@ export function StellarSend() {
   const metaAddress = recipient.trim();
   const amountValue = amount.trim();
 
-  const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
-  const amountError = useMemo(() => validateAmount(amountValue, assetKey), [amountValue, assetKey]);
+  const recipientError = useMemo(() => validateMetaAddress(metaAddress, t), [metaAddress, t]);
+  const amountError = useMemo(
+    () => validateAmount(amountValue, assetKey, t),
+    [amountValue, assetKey, t],
+  );
   const parsedAmount = amountError ? null : Number(amountValue);
   const requiredBalance =
     parsedAmount === null
@@ -219,11 +226,15 @@ export function StellarSend() {
     !!address && !amountError && !!amountValue && sourceBalance === null && !balanceLookupError;
   const balanceError =
     requiredBalance !== null && sourceBalance !== null && requiredBalance > sourceBalance
-      ? `Insufficient ${assetKey} (you have ${formatAsset(sourceBalance, assetKey)}, need ${formatAsset(requiredBalance, assetKey)})`
+      ? t('stellar.insufficientBalance', {
+          asset: assetKey,
+          have: formatAsset(sourceBalance, assetKey),
+          need: formatAsset(requiredBalance, assetKey),
+        })
       : '';
   const trustlineError =
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
-      ? `Recipient lacks a ${assetKey} trustline. Ask them to add a trustline for ${assetKey}.`
+      ? t('stellar.trustlineError', { asset: assetKey })
       : '';
   const validationError =
     recipientError || amountError || balanceLookupError || balanceError || trustlineError;

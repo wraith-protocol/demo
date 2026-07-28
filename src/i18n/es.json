@@ -215,7 +215,17 @@
     "saving": "Guardando...",
     "locking": "Bloqueando...",
     "unlocking": "Desbloqueando...",
-    "lockVault": "Bloquear bóveda"
+    "sponsoredWithdrawFailed": "Retiro patrocinado fallido",
+    "stealthAccountNotFound": "Cuenta sigilosa no encontrada",
+    "noXlmBalance": "Sin saldo XLM",
+    "accountNotFound": "Cuenta no encontrada",
+    "noAssetBalance": "Sin saldo de {{asset}}",
+    "trustlineError": "El destinatario no tiene trustline para {{asset}}. Pídele que agregue un trustline para {{asset}}.",
+    "amountRequired": "El monto es requerido",
+    "invalidAmount": "Ingresa un monto válido de {{asset}}",
+    "tooManyDecimals": "{{asset}} soporta hasta {{decimals}} decimales",
+    "amountTooLow": "El monto debe ser mayor a {{min}} {{asset}}",
+    "insufficientBalance": "{{asset}} insuficiente (tienes {{have}}, necesitas {{need}})"
   },
   "solana": {
     "network": "Solana Devnet / SOL",

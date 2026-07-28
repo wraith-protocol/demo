@@ -215,7 +215,17 @@
     "saving": "Saving...",
     "locking": "Locking...",
     "unlocking": "Unlocking...",
-    "lockVault": "Lock Vault"
+    "sponsoredWithdrawFailed": "Sponsored withdraw failed",
+    "stealthAccountNotFound": "Stealth account not found",
+    "noXlmBalance": "No XLM balance",
+    "accountNotFound": "Account not found",
+    "noAssetBalance": "No {{asset}} balance",
+    "trustlineError": "Recipient lacks a {{asset}} trustline. Ask them to add a trustline for {{asset}}.",
+    "amountRequired": "Amount is required",
+    "invalidAmount": "Enter a valid {{asset}} amount",
+    "tooManyDecimals": "{{asset}} supports up to {{decimals}} decimals",
+    "amountTooLow": "Amount must be greater than {{min}} {{asset}}",
+    "insufficientBalance": "Insufficient {{asset}} (you have {{have}}, need {{need}})"
   },
   "solana": {
     "network": "Solana Devnet / SOL",

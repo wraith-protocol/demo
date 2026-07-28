@@ -213,7 +213,17 @@
     "saving": "Enregistrement...",
     "locking": "Verrouillage...",
     "unlocking": "Déverrouillage...",
-    "lockVault": "Verrouiller le coffre"
+    "sponsoredWithdrawFailed": "Retrait sponsorisé échoué",
+    "stealthAccountNotFound": "Compte furtif introuvable",
+    "noXlmBalance": "Aucun solde XLM",
+    "accountNotFound": "Compte introuvable",
+    "noAssetBalance": "Aucun solde de {{asset}}",
+    "trustlineError": "Le destinataire n'a pas de trustline pour {{asset}}. Demandez-lui d'ajouter une trustline pour {{asset}}.",
+    "amountRequired": "Le montant est requis",
+    "invalidAmount": "Entrez un montant {{asset}} valide",
+    "tooManyDecimals": "{{asset}} prend en charge jusqu'à {{decimals}} décimales",
+    "amountTooLow": "Le montant doit être supérieur à {{min}} {{asset}}",
+    "insufficientBalance": "{{asset}} insuffisant (vous avez {{have}}, besoin de {{need}})"
   },
   "solana": {
     "network": "Solana Devnet / SOL",
