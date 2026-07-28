@@ -23,9 +23,10 @@ import { useNameHistory } from '@/store/nameHistoryStore';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { AssetPicker } from '@/components/AssetPicker';
 import { trackEvent } from '@/lib/telemetry';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
-import { getAssetByKey } from '@/lib/stellar/assets';
+import { getAssetByKey, STELLAR_ASSETS } from '@/lib/stellar/assets';
 import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
@@ -106,7 +107,8 @@ export function StellarSend() {
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
-  const [assetKey] = useState<StellarAssetKey>('XLM');
+  const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
+  const [allBalances, setAllBalances] = useState<Record<string, string>>({});
   const [memo, setMemo] = useState(paramMemo || '');
   const { isKnownAddress, addContact } = useContacts();
   const { isKnownRecipient, addToHistory } = useNameHistory();
@@ -226,6 +228,36 @@ export function StellarSend() {
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
       ? `Recipient lacks a ${assetKey} trustline. Ask them to add a trustline for ${assetKey}.`
       : '';
+  const trustlineWarning =
+    assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
+      ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
+      : '';
+  const balanceEntries: Array<{ key: string; code: string; issuer?: string; balance: string; isKnown: boolean; isNative: boolean }> = useMemo(() => {
+    const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
+    const entries: Array<{ key: string; code: string; issuer?: string; balance: string; isKnown: boolean; isNative: boolean }> = [];
+    let hasXlm = false;
+    for (const [key, bal] of Object.entries(allBalances)) {
+      if (key === 'XLM') {
+        hasXlm = true;
+        entries.push({ key, code: 'XLM', balance: bal, isKnown: true, isNative: true });
+      } else {
+        const colonIdx = key.indexOf(':');
+        const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
+        const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
+        if (!knownAssetKeys.has(code)) continue;
+        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+      }
+    }
+    if (!hasXlm) {
+      entries.unshift({ key: 'XLM', code: 'XLM', balance: '0', isKnown: true, isNative: true });
+    }
+    entries.sort((a, b) => {
+      if (a.isNative) return -1;
+      if (b.isNative) return 1;
+      return parseFloat(b.balance) - parseFloat(a.balance);
+    });
+    return entries;
+  }, [allBalances]);
   const validationError =
     recipientError || amountError || balanceLookupError || balanceError || trustlineError;
   const canSubmit =
@@ -315,13 +347,27 @@ export function StellarSend() {
         if (!accountRes.ok) throw new Error('Failed to load sender account');
 
         const accountData = (await accountRes.json()) as HorizonAccount;
+        const balances = accountData.balances || [];
+
+        // Build all-balances map for the asset picker
+        const balanceMap: Record<string, string> = {};
+        for (const b of balances) {
+          if (b.asset_type === 'native') {
+            balanceMap['XLM'] = b.balance;
+          } else if (b.asset_code && b.asset_issuer) {
+            balanceMap[`${b.asset_code}:${b.asset_issuer}`] = b.balance;
+          }
+        }
+        setAllBalances(balanceMap);
+
+        // Single-asset balance for validation
         const assetInfo = getAssetByKey(assetKey);
         let parsedBalance: number;
         if (assetInfo.isNative) {
-          const nativeBalance = accountData.balances?.find((bal) => bal.asset_type === 'native');
+          const nativeBalance = balances.find((bal) => bal.asset_type === 'native');
           parsedBalance = Number(nativeBalance?.balance);
         } else {
-          const assetBalance = accountData.balances?.find(
+          const assetBalance = balances.find(
             (bal) =>
               bal.asset_code === assetInfo.key &&
               bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
@@ -361,7 +407,7 @@ export function StellarSend() {
     setTrustlineMissing(false);
     setTrustlineCheckDone(false);
 
-    if (!metaAddress || !recipientError || assetKey === 'XLM') {
+    if (!metaAddress || recipientError || assetKey === 'XLM') {
       if (assetKey === 'XLM') {
         setTrustlineCheckDone(true);
       }
@@ -431,7 +477,8 @@ export function StellarSend() {
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
-      const sendAsset = assetInfo.toAsset();
+      const currentAssetInfo = getAssetByKey(assetKey);
+      const sendAsset = currentAssetInfo.toAsset();
 
       const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
       setRetryStatus('');
@@ -463,7 +510,7 @@ export function StellarSend() {
             amount: amountValue,
           }),
         );
-      } else if (assetInfo.isNative) {
+      } else if (currentAssetInfo.isNative) {
         builder = builder.addOperation(
           Operation.createAccount({
             destination: result.stealthAddress,
@@ -585,7 +632,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction, t]);
+  }, [address, recipient, amount, assetKey, signTransaction, t]);
 
   const reset = () => {
     setRecipient(paramTo || '');
@@ -599,6 +646,8 @@ export function StellarSend() {
     }
     setTouched({ recipient: false, amount: false });
     setSubmitAttempted(false);
+    setAssetKey('XLM');
+    setAllBalances({});
     setSourceBalance(null);
     setBalanceLookupError('');
     setShowUnknownWarning(false);
@@ -683,17 +732,23 @@ export function StellarSend() {
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.amount')}
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+              </div>
+              <AssetPicker
+                balances={balanceEntries}
+                selectedKey={assetKey as string}
+                onSelect={(key) => setAssetKey(key as StellarAssetKey)}
+                trustlineWarning={trustlineWarning}
+                disabled={isPending}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
             </div>
           </div>
 
