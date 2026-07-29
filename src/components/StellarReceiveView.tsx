@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
 import { StellarPaymentLink } from '@/components/StellarPaymentLink';
 import { ImportConflictModal } from '@/components/ImportConflictModal';
+import { EmptyState } from '@/components/EmptyState';
 import type { ImportResult } from '@/lib/stealthLabels';
 
 export interface StellarReceiveViewProps {
@@ -80,6 +82,7 @@ export function StellarReceiveView({
   importConflicts,
   onImportConflictResolve,
   onCloseImportModal,
+  // Notification props
   notificationsEnabled,
   notificationsSupported,
   notificationsPermission,
@@ -87,6 +90,7 @@ export function StellarReceiveView({
   onFireTestNotification,
   onShowQR,
 }: StellarReceiveViewProps) {
+  const navigate = useNavigate();
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
@@ -264,10 +268,27 @@ export function StellarReceiveView({
                   )}
                 </div>
               ) : (
-                <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-                  Enable notifications to receive alerts about incoming stealth payments even when
-                  the tab is closed.
-                </p>
+                <EmptyState
+                  illustration={
+                    <svg
+                      width="48"
+                      height="48"
+                      viewBox="0 0 48 48"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M14 22a10 10 0 0 1 20 0v6c0 3 1 5 2 7H12c1-2 2-4 2-7v-6z" />
+                      <path d="M22 8V6a2 2 0 0 1 4 0v2" />
+                      <path d="M20 37c2 2 6 2 8 0" />
+                      <circle cx="36" cy="12" r="5" fill="currentColor" opacity="0.25" />
+                    </svg>
+                  }
+                  title="Notifications off"
+                  description="Enable notifications to receive alerts about incoming stealth payments even when the tab is closed."
+                />
               )}
             </div>
           )}
@@ -441,25 +462,39 @@ export function StellarReceiveView({
           {matchCount > 0 && <div className="flex flex-col gap-4">{matches}</div>}
 
           {hasScanned && matchCount > 0 && filteredMatchCount === 0 && (
-            <div className="py-12 text-center">
-              <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No matching transfers
-              </p>
-              <p className="mt-2 font-body text-xs text-on-surface-variant">
-                Try adjusting your search or filters.
-              </p>
-            </div>
+            <EmptyState
+              title="No matching transfers"
+              description="Try adjusting your search or filters."
+            />
           )}
 
           {hasScanned && matchCount === 0 && (
-            <div className="py-12 text-center">
-              <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
-              </p>
-              <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
-              </p>
-            </div>
+            <EmptyState
+              illustration={
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="16" cy="16" r="6" />
+                  <circle cx="32" cy="16" r="6" />
+                  <path d="M6 38c0-5.523 4.477-10 10-10" />
+                  <path d="M42 38c0-5.523-4.477-10-10-10" />
+                  <path d="M16 28c-5.523 0-10 4.477-10 10" strokeDasharray="2 2" />
+                  <path d="M32 28c5.523 0 10 4.477 10 10" strokeDasharray="2 2" />
+                  <line x1="16" y1="22" x2="16" y2="28" />
+                  <line x1="32" y1="22" x2="32" y2="28" />
+                </svg>
+              }
+              title="No transfers yet"
+              description="When someone sends you a stealth payment, it will appear here. Share your meta-address above to receive payments."
+              primaryCTA={{ label: 'Send your first payment', onClick: () => navigate('/send') }}
+            />
           )}
 
           {/* Import conflict modal */}

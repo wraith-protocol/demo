@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import {
@@ -12,6 +13,7 @@ import {
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
 import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { EmptyState } from '@/components/EmptyState';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
@@ -206,6 +208,7 @@ function SolanaStealthRow({
 
 export function SolanaReceive() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { connected, signMessage } = useWallet();
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
 
@@ -341,14 +344,32 @@ export function SolanaReceive() {
           )}
 
           {hasScanned && matched.length === 0 && (
-            <div className="py-12 text-center">
-              <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                {t('common.noTransfersFound')}
-              </p>
-              <p className="mt-2 font-body text-xs text-on-surface-variant">
-                {t('common.noTransfersMatchedKeys')}
-              </p>
-            </div>
+            <EmptyState
+              illustration={
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="16" cy="16" r="6" />
+                  <circle cx="32" cy="16" r="6" />
+                  <path d="M6 38c0-5.523 4.477-10 10-10" />
+                  <path d="M42 38c0-5.523-4.477-10-10-10" />
+                  <path d="M16 28c-5.523 0-10 4.477-10 10" strokeDasharray="2 2" />
+                  <path d="M32 28c5.523 0 10 4.477 10 10" strokeDasharray="2 2" />
+                  <line x1="16" y1="22" x2="16" y2="28" />
+                  <line x1="32" y1="22" x2="32" y2="28" />
+                </svg>
+              }
+              title={t('common.noTransfersFound')}
+              description={t('common.noTransfersMatchedKeys')}
+              primaryCTA={{ label: t('common.send'), onClick: () => navigate('/send') }}
+            />
           )}
         </>
       )}
