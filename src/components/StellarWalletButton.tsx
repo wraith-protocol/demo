@@ -58,7 +58,7 @@ export function StellarWalletButton({ state }: Props) {
             'flex items-center gap-2 border px-3 py-1.5 text-xs transition-colors',
             'border-[#2a2a2a] text-[#e6e1e5] hover:border-[#444444]',
           ].join(' ')}
-          aria-label="Wallet menu"
+          aria-label={t('stellar.walletMenuAriaLabel')}
           data-testid="wallet-connected-button"
         >
           <img src={meta.icon} alt={meta.name} width={14} height={14} className="rounded-sm" />

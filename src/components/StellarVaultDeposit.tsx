@@ -8,48 +8,40 @@ const MIN_XLM_AMOUNT = 0.0000001;
 
 type DepositState = 'idle' | 'pending' | 'success';
 
-function validateMetaAddress(value: string) {
-  if (!value) return 'Recipient meta-address is required';
-  if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
-
+function validateMetaAddress(value: string, t: (k: string) => string) {
+  if (!value) return t('stellar.depositRecipientRequired');
+  if (!value.startsWith('st:xlm:')) return t('stellar.validMetaAddressError');
   try {
     decodeStealthMetaAddress(value);
     return '';
   } catch {
-    return 'Not a valid Stellar stealth meta-address';
+    return t('stellar.validMetaAddressError');
   }
 }
 
-function validateAmount(value: string) {
-  if (!value) return 'Amount is required';
-  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return 'Enter a valid XLM amount';
-
+function validateAmount(value: string, t: (k: string) => string) {
+  if (!value) return t('stellar.depositAmountRequired');
+  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return t('stellar.depositInvalidAmount');
   const decimalPart = value.split('.')[1];
-  if (decimalPart && decimalPart.length > 7) return 'XLM supports up to 7 decimals';
-
+  if (decimalPart && decimalPart.length > 7) return t('stellar.depositTooManyDecimals');
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= MIN_XLM_AMOUNT) {
-    return 'Amount must be greater than 0.0000001 XLM';
-  }
-
-  return '';
-}
-
-function validateUnlockLedger(value: string) {
-  if (!value) return 'Unlock ledger is required';
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    return 'Unlock ledger must be a positive integer';
+    return t('stellar.depositAmountTooLow');
   }
   return '';
 }
 
-function validateRefundWindow(value: string) {
-  if (!value) return 'Refund window is required';
+function validateUnlockLedger(value: string, t: (k: string) => string) {
+  if (!value) return t('stellar.depositUnlockLedgerRequired');
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    return 'Refund window must be a positive integer (ledgers)';
-  }
+  if (!Number.isInteger(parsed) || parsed < 1) return t('stellar.depositUnlockLedgerInvalid');
+  return '';
+}
+
+function validateRefundWindow(value: string, t: (k: string) => string) {
+  if (!value) return t('stellar.depositRefundWindowRequired');
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return t('stellar.depositRefundWindowInvalid');
   return '';
 }
 
@@ -77,15 +69,15 @@ export function StellarVaultDeposit() {
   const unlockLedgerValue = unlockLedger.trim();
   const refundWindowValue = refundWindow.trim();
 
-  const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
-  const amountError = useMemo(() => validateAmount(amountValue), [amountValue]);
+  const recipientError = useMemo(() => validateMetaAddress(metaAddress, t), [metaAddress, t]);
+  const amountError = useMemo(() => validateAmount(amountValue, t), [amountValue, t]);
   const unlockLedgerError = useMemo(
-    () => validateUnlockLedger(unlockLedgerValue),
-    [unlockLedgerValue],
+    () => validateUnlockLedger(unlockLedgerValue, t),
+    [unlockLedgerValue, t],
   );
   const refundWindowError = useMemo(
-    () => validateRefundWindow(refundWindowValue),
-    [refundWindowValue],
+    () => validateRefundWindow(refundWindowValue, t),
+    [refundWindowValue, t],
   );
 
   const validationError = recipientError || amountError || unlockLedgerError || refundWindowError;
@@ -108,7 +100,7 @@ export function StellarVaultDeposit() {
     }
 
     if (!canSubmit) {
-      setError(validationError || 'Enter valid deposit details');
+      setError(validationError || t('stellar.enterValidDepositDetails'));
       return;
     }
 

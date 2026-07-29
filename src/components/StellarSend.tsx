@@ -169,7 +169,7 @@ export function StellarSend() {
         setRecipient(text);
         setIsScanningQR(false);
       } else {
-        setScannerError('Invalid QR code. Must be a stealth meta-address or payment link.');
+        setScannerError(t('stellar.invalidQrCode'));
       }
     }
   }, []);
@@ -187,7 +187,7 @@ export function StellarSend() {
       const expSecs = parseInt(paramExp, 10);
       if (!isNaN(expSecs) && expSecs * 1000 < Date.now()) {
         setIsExpired(true);
-        setError('This payment link has expired');
+        setError(t('stellar.paymentLinkExpired'));
       }
     }
   }, [paramExp]);
@@ -267,7 +267,11 @@ export function StellarSend() {
           {
             onRetry: (attempt: number, _: unknown, err: unknown) => {
               const msg = err instanceof Error ? err.message : '';
-              setRetryStatus(`Retrying (${attempt}/3)…${msg ? ` (${msg})` : ''}`);
+              setRetryStatus(
+                msg
+                  ? `${t('stellar.retrying', { attempt })} (${msg})`
+                  : t('stellar.retrying', { attempt }),
+              );
             },
           },
         );
@@ -284,7 +288,7 @@ export function StellarSend() {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         setSimulation({
           status: 'error',
-          error: err instanceof Error ? err.message : 'Simulation failed',
+          error: err instanceof Error ? err.message : t('stellar.simulationFailed'),
           fee: null,
           returnValue: null,
           events: [],
@@ -318,11 +322,11 @@ export function StellarSend() {
           { signal: controller.signal },
           {
             signal: controller.signal,
-            onRetry: (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`),
+            onRetry: (attempt: number) => setRetryStatus(t('stellar.retrying', { attempt })),
           },
         );
         setRetryStatus('');
-        if (!accountRes.ok) throw new Error('Failed to load sender account');
+        if (!accountRes.ok) throw new Error(t('stellar.failedToLoadAccount'));
 
         const accountData = (await accountRes.json()) as HorizonAccount;
         const assetInfo = getAssetByKey(assetKey);
@@ -338,7 +342,7 @@ export function StellarSend() {
           );
           parsedBalance = Number(assetBalance?.balance || 0);
         }
-        if (!Number.isFinite(parsedBalance)) throw new Error(`Failed to read ${assetKey} balance`);
+        if (!Number.isFinite(parsedBalance)) throw new Error(t('stellar.failedToReadBalance', { asset: assetKey }));
 
         setSourceBalance(parsedBalance);
       } catch (err) {
@@ -349,7 +353,7 @@ export function StellarSend() {
               ? err.message
               : err instanceof Error
                 ? err.message
-                : `Failed to check ${assetKey} balance`,
+                : t('stellar.failedToCheckBalance', { asset: assetKey }),
           );
         }
       } finally {
@@ -415,7 +419,7 @@ export function StellarSend() {
     }
 
     if (!canSubmit) {
-      setError(validationError || 'Enter valid send details');
+      setError(validationError || t('stellar.enterValidSendDetails'));
       return;
     }
 
@@ -424,7 +428,7 @@ export function StellarSend() {
     setRetryStatus('');
     let txHashHex = '';
 
-    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
+    const onRetry = (attempt: number) => setRetryStatus(t('stellar.retrying', { attempt }));
 
     try {
       const metaAddress = recipient;

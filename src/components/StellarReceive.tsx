@@ -200,7 +200,7 @@ function StellarMatchCardContainer({
         const res = await fetchWithRetry(
           `${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`,
           {},
-          { onRetry: (attempt) => setRetryStatus(`Retrying (${attempt}/3)…`) },
+          { onRetry: (attempt) => setRetryStatus(t('stellar.retrying', { attempt })) },
         );
         setRetryStatus('');
         if (!res.ok) {
@@ -235,14 +235,11 @@ function StellarMatchCardContainer({
     setRetryStatus('');
     setWithdrawing(true);
 
-    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
+    const onRetry = (attempt: number) => setRetryStatus(t('stellar.retrying', { attempt }));
 
     try {
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
-
-      const res = await fetchWithRetry(
-        `${horizonUrl}/accounts/${match.stealthAddress}`,
         {},
         { onRetry },
       );
@@ -268,7 +265,7 @@ function StellarMatchCardContainer({
         const needsSponsor = currentBalance < minAccountReserve + estimatedFee + feeBumpFee;
 
         if (needsSponsor && !address) {
-          throw new Error('Sponsored withdrawal requires connected wallet');
+          throw new Error(t('stellar.sponsoredWithdrawalRequiresWallet'));
         }
 
         if (needsSponsor) {
@@ -278,7 +275,7 @@ function StellarMatchCardContainer({
         }
 
         const sendableAmount = (currentBalance - minAccountReserve - estimatedFee).toFixed(7);
-        if (parseFloat(sendableAmount) <= 0) throw new Error('Balance too low to cover reserve');
+        if (parseFloat(sendableAmount) <= 0) throw new Error(t('stellar.balanceTooLowForReserve'));
 
         const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
           .addOperation(

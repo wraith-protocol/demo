@@ -244,7 +244,7 @@ export function StellarSendView({
               type="text"
               value={memo}
               onChange={(e) => onMemoChange?.(e.target.value)}
-              placeholder="e.g. Coffee"
+              placeholder={t('stellar.memoPlaceholder')}
               maxLength={28}
               disabled={paramMemo || isExpired}
               className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
@@ -356,16 +356,15 @@ export function StellarSendView({
             <div className="border border-error/20 bg-error/5 p-3">
               <p className="font-mono text-xs text-error">{trustlineError}</p>
               <p className="mt-1 font-body text-xs text-on-surface-variant">
-                To add a{' '}
                 <a
                   href="https://stellar.org/learn/how-to-add-trustline"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary underline"
                 >
-                  trustline
-                </a>
-                , the recipient needs to set a trustline for {assetKey} on their Stellar account.
+                  {t('stellar.trustlineLink')}
+                </a>{' '}
+                {t('stellar.trustlineHelpText', { asset: assetKey })}
               </p>
             </div>
           )}

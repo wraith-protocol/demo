@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
 import { CopyButton } from '@/components/CopyButton';
 
@@ -7,6 +8,7 @@ export interface StellarPaymentLinkProps {
 }
 
 export function StellarPaymentLink({ metaAddress }: StellarPaymentLinkProps) {
+  const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
   const [amount, setAmount] = useState('');
   const [memo, setMemo] = useState('');
@@ -36,13 +38,13 @@ export function StellarPaymentLink({ metaAddress }: StellarPaymentLinkProps) {
     <div className="border border-outline-variant bg-surface-container p-5">
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Receive Payment
+          {t('stellar.paymentLinkTitle')}
         </span>
         <button
           onClick={() => setShowForm(!showForm)}
           className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary transition-colors hover:brightness-110"
         >
-          {showForm ? 'Close' : 'Generate Payment Link'}
+          {showForm ? t('stellar.paymentLinkClose') : t('stellar.paymentLinkGenerate')}
         </button>
       </div>
 
@@ -50,7 +52,7 @@ export function StellarPaymentLink({ metaAddress }: StellarPaymentLinkProps) {
         <div className="mt-4 flex flex-col gap-4 border-t border-outline-variant/30 pt-4">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount (optional)
+              {t('stellar.paymentLinkAmountLabel')}
             </label>
             <input
               type="text"
@@ -62,37 +64,37 @@ export function StellarPaymentLink({ metaAddress }: StellarPaymentLinkProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Memo (optional)
+              {t('stellar.paymentLinkMemoLabel')}
             </label>
             <input
               type="text"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              placeholder="e.g. Coffee"
+              placeholder={t('stellar.memoPlaceholder')}
               maxLength={28}
               className="h-10 border border-outline-variant bg-surface px-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Expires In
+              {t('stellar.paymentLinkExpiresLabel')}
             </label>
             <select
               value={expiresIn}
               onChange={(e) => setExpiresIn(e.target.value)}
               className="h-10 border border-outline-variant bg-surface px-3 font-mono text-sm text-primary focus:border-primary"
             >
-              <option value="1h">1 hour</option>
-              <option value="24h">24 hours</option>
-              <option value="7d">7 days</option>
-              <option value="never">Never</option>
+              <option value="1h">{t('stellar.paymentLinkExpires1h')}</option>
+              <option value="24h">{t('stellar.paymentLinkExpires24h')}</option>
+              <option value="7d">{t('stellar.paymentLinkExpires7d')}</option>
+              <option value="never">{t('stellar.paymentLinkNeverExpires')}</option>
             </select>
           </div>
           <button
             onClick={handleGenerate}
             className="mt-2 h-10 w-full bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110"
           >
-            Generate Link
+            {t('stellar.paymentLinkGenerateBtn')}
           </button>
         </div>
       )}
@@ -102,7 +104,7 @@ export function StellarPaymentLink({ metaAddress }: StellarPaymentLinkProps) {
           <div className="rounded-lg bg-white p-3">
             <QRCodeSVG value={generatedUrl} size={160} />
           </div>
-          <div className="flex w-full items-center gap-2 rounded bg-surface p-2 border border-outline-variant">
+          <div className="flex w-full items-center gap-2 rounded border border-outline-variant bg-surface p-2">
             <code className="block flex-1 truncate font-mono text-[10px] text-primary">
               {generatedUrl}
             </code>

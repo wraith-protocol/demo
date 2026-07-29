@@ -160,7 +160,7 @@ export function StellarMatchCard({
                     setIsEditingLabel(false);
                   }
                 }}
-                placeholder="Add a label..."
+                placeholder={t('stellar.matchCardAddLabel')}
                 maxLength={64}
                 className="h-7 flex-1 border border-outline-variant bg-surface px-2 font-body text-sm text-on-surface placeholder:text-outline focus:border-primary"
               />
@@ -169,7 +169,9 @@ export function StellarMatchCard({
                 {currentLabel ? (
                   <span className="font-body text-sm text-on-surface">{currentLabel}</span>
                 ) : (
-                  <span className="font-body text-xs italic text-outline">No label</span>
+                  <span className="font-body text-xs italic text-outline">
+                    {t('stellar.matchCardNoLabel')}
+                  </span>
                 )}
                 <button
                   onClick={() => {
@@ -177,7 +179,7 @@ export function StellarMatchCard({
                     setIsEditingLabel(true);
                   }}
                   className="text-outline transition-colors hover:text-primary"
-                  title="Edit label"
+                  title={t('stellar.matchCardEditLabel')}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -202,7 +204,7 @@ export function StellarMatchCard({
                   <button
                     onClick={onUnhide}
                     className="shrink-0 text-outline transition-colors hover:text-primary"
-                    title="Unhide"
+                    title={t('stellar.matchCardUnhide')}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -224,7 +226,7 @@ export function StellarMatchCard({
                   <button
                     onClick={onHide}
                     className="shrink-0 text-outline transition-colors hover:text-primary"
-                    title="Hide"
+                    title={t('stellar.matchCardHide')}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -296,7 +298,7 @@ export function StellarMatchCard({
                         setIsAddingTag(false);
                       }
                     }}
-                    placeholder="tag name"
+                    placeholder={t('stellar.matchCardTagPlaceholder')}
                     maxLength={64}
                     className="h-5 w-20 border border-outline-variant bg-surface px-1 font-mono text-[10px] text-on-surface placeholder:text-outline focus:border-primary"
                   />
