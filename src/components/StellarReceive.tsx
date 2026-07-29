@@ -247,7 +247,8 @@ function StellarMatchCardContainer({
       if (!res.ok) throw new Error(t('stellar.accountNotFound'));
       const account = await res.json();
 
-      if (withdrawBalance <= 0) throw new Error(t('stellar.noAssetBalance', { asset: withdrawAssetKey }));
+      if (withdrawBalance <= 0)
+        throw new Error(t('stellar.noAssetBalance', { asset: withdrawAssetKey }));
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
 

@@ -342,7 +342,8 @@ export function StellarSend() {
           );
           parsedBalance = Number(assetBalance?.balance || 0);
         }
-        if (!Number.isFinite(parsedBalance)) throw new Error(t('stellar.failedToReadBalance', { asset: assetKey }));
+        if (!Number.isFinite(parsedBalance))
+          throw new Error(t('stellar.failedToReadBalance', { asset: assetKey }));
 
         setSourceBalance(parsedBalance);
       } catch (err) {
