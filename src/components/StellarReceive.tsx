@@ -37,9 +37,10 @@ import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/re
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
 import { KeyVault } from '@/vault';
-import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS, getAssetByKey, parseAssetBalances } from '@/lib/stellar/assets';
 import { useStellarNotifications } from '@/hooks/useStellarNotifications';
+import { useStealthLabels } from '@/hooks/useStealthLabels';
+import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -173,6 +174,8 @@ function StellarMatchCardContainer({
   onTagClick: (tag: string) => void;
   showPrivacyWarning: boolean;
   onDismissPrivacyWarning: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const { t } = useTranslation();
   const { address, signTransaction } = useStellarWallet();
@@ -523,6 +526,15 @@ function StellarMatchCardContainer({
     <>
       <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
         <div className="flex items-start justify-between gap-4">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={!!isSelected}
+              onChange={onToggleSelect}
+              className="mt-1 h-4 w-4 shrink-0 rounded-none border-outline-variant bg-surface text-primary focus:ring-0"
+              aria-label={`Select stealth deposit ${match.stealthAddress}`}
+            />
+          )}
           <div className="min-w-0 flex-1">
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.stealthAddress')}
@@ -691,6 +703,34 @@ export function StellarReceive() {
   const [knownBalances, setKnownBalances] = useState<Record<string, string>>({});
   const [visibleCount, setVisibleCount] = useState(25);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  const [selectedAddresses, setSelectedAddresses] = useState<Set<string>>(new Set());
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+
+  const toggleSelectAddress = useCallback((addr: string) => {
+    setSelectedAddresses((prev) => {
+      const next = new Set(prev);
+      if (next.has(addr)) {
+        next.delete(addr);
+      } else {
+        next.add(addr);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedAddresses((prev) => {
+      if (prev.size === filteredMatched.length && filteredMatched.length > 0) {
+        return new Set();
+      }
+      return new Set(filteredMatched.map((m) => m.stealthAddress));
+    });
+  }, [filteredMatched]);
+
+  const selectedMatches = useMemo(() => {
+    return matched.filter((m) => selectedAddresses.has(m.stealthAddress));
+  }, [matched, selectedAddresses]);
 
   const handleBalanceFetched = useCallback((addr: string, bal: string) => {
     setKnownBalances((prev) => {
@@ -1169,6 +1209,29 @@ export function StellarReceive() {
     }
   }, [stellarKeys, t]);
 
+  const handleToggleNotifications = useCallback(async () => {
+    if (notifications.state.enabled) {
+      await notifications.disableNotifications();
+      if (address) {
+        await notifications.unregisterViewingKey(address);
+      }
+    } else {
+      await notifications.enableNotifications();
+      if (address && stellarKeys) {
+        await notifications.registerViewingKey(address, stellarKeys);
+      }
+    }
+  }, [notifications, address, stellarKeys]);
+
+  const handleFireTestNotification = useCallback(async () => {
+    try {
+      await notifications.fireTestNotification();
+    } catch (err) {
+      console.error('Failed to fire test notification:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
+    }
+  }, [notifications]);
+
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
@@ -1235,29 +1298,6 @@ export function StellarReceive() {
     setTimeout(() => setImportMessage(null), 3000);
   };
 
-  const handleToggleNotifications = useCallback(async () => {
-    if (notifications.state.enabled) {
-      await notifications.disableNotifications();
-      if (address) {
-        await notifications.unregisterViewingKey(address);
-      }
-    } else {
-      await notifications.enableNotifications();
-      if (address && stellarKeys) {
-        await notifications.registerViewingKey(address, stellarKeys);
-      }
-    }
-  }, [notifications, address, stellarKeys]);
-
-  const handleFireTestNotification = useCallback(async () => {
-    try {
-      await notifications.fireTestNotification();
-    } catch (err) {
-      console.error('Failed to fire test notification:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fire test notification');
-    }
-  }, [notifications]);
-
   return (
     <>
       <input
@@ -1311,6 +1351,41 @@ export function StellarReceive() {
         matches={
           filteredMatched.length > 0 && (
             <div className="flex flex-col gap-4">
+              {/* Multi-select Batch Action Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border border-outline-variant bg-surface-container p-3">
+                <label className="flex items-center gap-2 font-mono text-xs text-on-surface cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedAddresses.size > 0 &&
+                      selectedAddresses.size === filteredMatched.length
+                    }
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded-none border-outline-variant bg-surface text-primary focus:ring-0"
+                  />
+                  <span>
+                    Select All ({selectedAddresses.size} / {filteredMatched.length})
+                  </span>
+                </label>
+
+                {selectedAddresses.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedAddresses(new Set())}
+                      className="h-9 border border-outline-variant px-3 font-heading text-[10px] uppercase tracking-widest text-outline hover:text-on-surface"
+                    >
+                      Clear Selection
+                    </button>
+                    <button
+                      onClick={() => setIsBatchModalOpen(true)}
+                      className="h-9 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface hover:brightness-110"
+                    >
+                      Withdraw Selected ({selectedAddresses.size})
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <input
                 type="text"
                 placeholder="Search by address or amount..."
@@ -1354,6 +1429,8 @@ export function StellarReceive() {
                       >
                         <StellarMatchCardContainer
                           match={m}
+                          isSelected={selectedAddresses.has(m.stealthAddress)}
+                          onToggleSelect={() => toggleSelectAddress(m.stealthAddress)}
                           onWithdrawn={() => {}}
                           labelData={null}
                           onSaveLabel={() => {}}
@@ -1384,6 +1461,17 @@ export function StellarReceive() {
       {showQRModal && stellarMetaAddress && (
         <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
       )}
+      <StellarBatchWithdrawModal
+        isOpen={isBatchModalOpen}
+        onClose={() => setIsBatchModalOpen(false)}
+        selectedMatches={selectedMatches}
+        knownBalances={knownBalances}
+        onBatchSuccess={() => {
+          setSelectedAddresses(new Set());
+          setIsBatchModalOpen(false);
+          scanPayments();
+        }}
+      />
     </>
   );
 }

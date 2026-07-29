@@ -18,11 +18,15 @@ import {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useContacts } from '@/store/contactsStore';
+import { useNameHistory } from '@/store/nameHistoryStore';
+import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { AssetPicker } from '@/components/AssetPicker';
 import { trackEvent } from '@/lib/telemetry';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
-import { getAssetByKey } from '@/lib/stellar/assets';
+import { getAssetByKey, STELLAR_ASSETS } from '@/lib/stellar/assets';
 import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
@@ -32,6 +36,7 @@ import {
   simulateStellarSendAnnouncement,
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
+import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -102,8 +107,11 @@ export function StellarSend() {
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
-  const [assetKey] = useState<StellarAssetKey>('XLM');
+  const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
+  const [allBalances, setAllBalances] = useState<Record<string, string>>({});
   const [memo, setMemo] = useState(paramMemo || '');
+  const { isKnownAddress, addContact } = useContacts();
+  const { isKnownRecipient, addToHistory } = useNameHistory();
   const [error, setError] = useState('');
   const [, setTouched] = useState({ recipient: false, amount: false });
   const [, setSubmitAttempted] = useState(false);
@@ -183,6 +191,9 @@ export function StellarSend() {
     }
   }, [paramExp]);
 
+  const [showUnknownWarning, setShowUnknownWarning] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [contactName, setContactName] = useState('');
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
     ephemeralPubKey: Uint8Array;
@@ -217,6 +228,50 @@ export function StellarSend() {
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
       ? `Recipient lacks a ${assetKey} trustline. Ask them to add a trustline for ${assetKey}.`
       : '';
+  const trustlineWarning =
+    assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
+      ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
+      : '';
+  const balanceEntries: Array<{
+    key: string;
+    code: string;
+    issuer?: string;
+    balance: string;
+    isKnown: boolean;
+    isNative: boolean;
+  }> = useMemo(() => {
+    const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
+    const entries: Array<{
+      key: string;
+      code: string;
+      issuer?: string;
+      balance: string;
+      isKnown: boolean;
+      isNative: boolean;
+    }> = [];
+    let hasXlm = false;
+    for (const [key, bal] of Object.entries(allBalances)) {
+      if (key === 'XLM') {
+        hasXlm = true;
+        entries.push({ key, code: 'XLM', balance: bal, isKnown: true, isNative: true });
+      } else {
+        const colonIdx = key.indexOf(':');
+        const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
+        const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
+        if (!knownAssetKeys.has(code)) continue;
+        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+      }
+    }
+    if (!hasXlm) {
+      entries.unshift({ key: 'XLM', code: 'XLM', balance: '0', isKnown: true, isNative: true });
+    }
+    entries.sort((a, b) => {
+      if (a.isNative) return -1;
+      if (b.isNative) return 1;
+      return parseFloat(b.balance) - parseFloat(a.balance);
+    });
+    return entries;
+  }, [allBalances]);
   const validationError =
     recipientError || amountError || balanceLookupError || balanceError || trustlineError;
   const canSubmit =
@@ -306,13 +361,27 @@ export function StellarSend() {
         if (!accountRes.ok) throw new Error('Failed to load sender account');
 
         const accountData = (await accountRes.json()) as HorizonAccount;
+        const balances = accountData.balances || [];
+
+        // Build all-balances map for the asset picker
+        const balanceMap: Record<string, string> = {};
+        for (const b of balances) {
+          if (b.asset_type === 'native') {
+            balanceMap['XLM'] = b.balance;
+          } else if (b.asset_code && b.asset_issuer) {
+            balanceMap[`${b.asset_code}:${b.asset_issuer}`] = b.balance;
+          }
+        }
+        setAllBalances(balanceMap);
+
+        // Single-asset balance for validation
         const assetInfo = getAssetByKey(assetKey);
         let parsedBalance: number;
         if (assetInfo.isNative) {
-          const nativeBalance = accountData.balances?.find((bal) => bal.asset_type === 'native');
+          const nativeBalance = balances.find((bal) => bal.asset_type === 'native');
           parsedBalance = Number(nativeBalance?.balance);
         } else {
-          const assetBalance = accountData.balances?.find(
+          const assetBalance = balances.find(
             (bal) =>
               bal.asset_code === assetInfo.key &&
               bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
@@ -352,7 +421,7 @@ export function StellarSend() {
     setTrustlineMissing(false);
     setTrustlineCheckDone(false);
 
-    if (!metaAddress || !recipientError || assetKey === 'XLM') {
+    if (!metaAddress || recipientError || assetKey === 'XLM') {
       if (assetKey === 'XLM') {
         setTrustlineCheckDone(true);
       }
@@ -381,6 +450,10 @@ export function StellarSend() {
       globalThis.clearTimeout(timeout);
     };
   }, [metaAddress, assetKey, recipientError]);
+
+  // Check if recipient is known when it changes
+  const isUnknownRecipient =
+    recipient && !isKnownAddress(recipient) && !isKnownRecipient(recipient);
 
   const handleSend = useCallback(async () => {
     setSubmitAttempted(true);
@@ -418,7 +491,8 @@ export function StellarSend() {
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
-      const sendAsset = assetInfo.toAsset();
+      const currentAssetInfo = getAssetByKey(assetKey);
+      const sendAsset = currentAssetInfo.toAsset();
 
       const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
       setRetryStatus('');
@@ -450,7 +524,7 @@ export function StellarSend() {
             amount: amountValue,
           }),
         );
-      } else if (assetInfo.isNative) {
+      } else if (currentAssetInfo.isNative) {
         builder = builder.addOperation(
           Operation.createAccount({
             destination: result.stealthAddress,
@@ -507,6 +581,9 @@ export function StellarSend() {
       }
 
       setTxHash(submitData.hash);
+
+      // Add recipient to history after successful send
+      addToHistory(recipient);
 
       // Announce via Soroban (best-effort)
       try {
@@ -569,7 +646,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction, t]);
+  }, [address, recipient, amount, assetKey, signTransaction, t]);
 
   const reset = () => {
     setRecipient(paramTo || '');
@@ -583,8 +660,21 @@ export function StellarSend() {
     }
     setTouched({ recipient: false, amount: false });
     setSubmitAttempted(false);
+    setAssetKey('XLM');
+    setAllBalances({});
     setSourceBalance(null);
     setBalanceLookupError('');
+    setShowUnknownWarning(false);
+    setShowSaveDialog(false);
+    setContactName('');
+  };
+
+  const handleSaveContact = () => {
+    if (contactName.trim() && recipient) {
+      addContact(recipient, contactName.trim());
+      setShowSaveDialog(false);
+      setContactName('');
+    }
   };
 
   const handlePaste = async () => {
@@ -615,6 +705,8 @@ export function StellarSend() {
 
   return (
     <section className="flex flex-col gap-8">
+      <ExpiringNamesBanner />
+
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
           {t('stellar.network')}
@@ -654,17 +746,23 @@ export function StellarSend() {
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.amount')}
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+              </div>
+              <AssetPicker
+                balances={balanceEntries}
+                selectedKey={assetKey as string}
+                onSelect={(key) => setAssetKey(key as StellarAssetKey)}
+                trustlineWarning={trustlineWarning}
+                disabled={isPending}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
             </div>
           </div>
 
@@ -688,6 +786,60 @@ export function StellarSend() {
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+
+          {isUnknownRecipient && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant/50 bg-surface-container p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">⚠️</span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-on-surface">
+                    You haven't paid this recipient before
+                  </p>
+                  <p className="text-xs text-on-surface-variant">
+                    This address is not in your contacts or payment history. Please verify the
+                    address carefully before sending.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSaveDialog(true)}
+                className="h-9 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+              >
+                Save to contacts
+              </button>
+            </div>
+          )}
+
+          {showSaveDialog && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant bg-surface-container p-4">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Contact Name
+              </label>
+              <input
+                type="text"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Enter a name for this contact"
+                className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSaveDialog(false)}
+                  className="h-9 flex-1 border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveContact}
+                  disabled={!contactName.trim()}
+                  className="h-9 flex-1 bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleSend}
