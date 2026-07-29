@@ -30,6 +30,56 @@ export function getAssetByKey(key: StellarAssetKey): (typeof STELLAR_ASSETS)[num
   return asset;
 }
 
+export interface DynamicAssetInfo {
+  key: string;
+  label: string;
+  decimals: number;
+  isNative: boolean;
+  isKnown: boolean;
+  toAsset: () => Asset;
+}
+
+export function resolveAssetInfo(key: string): DynamicAssetInfo {
+  if (key === 'XLM') {
+    return {
+      key: 'XLM',
+      label: 'XLM',
+      decimals: 7,
+      isNative: true,
+      isKnown: true,
+      toAsset: () => Asset.native(),
+    };
+  }
+
+  const known = STELLAR_ASSETS.find((a) => a.key === key);
+  if (known) {
+    return { ...known, isKnown: true };
+  }
+
+  const colonIdx = key.indexOf(':');
+  if (colonIdx >= 0) {
+    const code = key.slice(0, colonIdx);
+    const issuer = key.slice(colonIdx + 1);
+    return {
+      key,
+      label: code,
+      decimals: 7,
+      isNative: false,
+      isKnown: false,
+      toAsset: () => new Asset(code, issuer),
+    };
+  }
+
+  return {
+    key,
+    label: key,
+    decimals: 7,
+    isNative: false,
+    isKnown: false,
+    toAsset: () => Asset.native(),
+  };
+}
+
 export interface HorizonBalanceEntry {
   asset_type: string;
   asset_code?: string;
