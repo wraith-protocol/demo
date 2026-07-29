@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl } from '@/lib/explorer';
 import { useActivityStore, ActivityKind, ActivityStatus } from '@/stores/activityStore';
+import { EmptyState } from '@/components/EmptyState';
 
 export function StellarHistory() {
+  const navigate = useNavigate();
   const { address, isConnected } = useStellarWallet();
   const { entries, clearHistory, pollPending } = useActivityStore();
 
@@ -100,13 +103,37 @@ export function StellarHistory() {
       </div>
 
       {walletEntries.length === 0 && (
-        <p className="font-body text-sm text-on-surface-variant">No activity recorded yet.</p>
+        <EmptyState
+          illustration={
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 48 48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="6" y="6" width="36" height="36" rx="0" />
+              <line x1="14" y1="18" x2="34" y2="18" />
+              <line x1="14" y1="24" x2="30" y2="24" />
+              <line x1="14" y1="30" x2="26" y2="30" />
+              <circle cx="36" cy="34" r="6" fill="currentColor" opacity="0.2" />
+              <path d="M34 34l2 2 4-4" />
+            </svg>
+          }
+          title="No activity yet"
+          description="Your payment activity will show up here. Send or receive a stealth payment to get started."
+          primaryCTA={{ label: 'Send your first payment', onClick: () => navigate('/send') }}
+        />
       )}
 
       {walletEntries.length > 0 && filteredEntries.length === 0 && (
-        <p className="font-body text-sm text-on-surface-variant">
-          No activity matches the filters.
-        </p>
+        <EmptyState
+          title="No matches"
+          description="No activity matches the current filters. Try selecting a different type or status."
+        />
       )}
 
       <div className="flex flex-col gap-4">
@@ -122,7 +149,7 @@ export function StellarHistory() {
                     tx.status === 'confirmed'
                       ? 'bg-secondary'
                       : tx.status === 'pending'
-                        ? 'bg-tertiary animate-pulse'
+                        ? 'bg-warning animate-pulse'
                         : 'bg-error'
                   }`}
                 />
