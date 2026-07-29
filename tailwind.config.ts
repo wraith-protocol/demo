@@ -9,6 +9,7 @@ const config: Config = {
         surface: {
           DEFAULT: 'var(--color-surface)',
           container: 'var(--color-surface-container)',
+          'container-high': 'var(--color-surface-container-high)',
           bright: 'var(--color-surface-bright)',
         },
         primary: 'var(--color-primary)',
@@ -19,6 +20,8 @@ const config: Config = {
           variant: 'var(--color-outline-variant)',
         },
         error: 'var(--color-error)',
+        warning: 'var(--color-warning)',
+        secondary: 'var(--color-secondary)',
         tertiary: 'var(--color-tertiary)',
       },
       fontFamily: {
