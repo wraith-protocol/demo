@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import { StellarLink } from '@/components/StellarLink';
 import { PrivacyTooltip } from '@/components/PrivacyTooltip';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS, getAssetByKey, formatStellarAssetAmount } from '@/lib/stellar/assets';
@@ -340,17 +340,12 @@ export function StellarMatchCard({
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
             Stealth Address
           </span>
-          <div className="mt-0.5 flex items-center gap-2">
-            <a
-              href={stellarAddrUrl(stealthAddress)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block truncate font-mono text-xs text-primary underline"
-            >
-              {stealthAddress}
-            </a>
-            <CopyButton text={stealthAddress} />
-          </div>
+          <StellarLink
+            value={stealthAddress}
+            type="account"
+            className="mt-0.5 max-w-full"
+            linkClassName="text-xs"
+          />
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
           {balanceState === 'loading' ? (
@@ -454,14 +449,7 @@ export function StellarMatchCard({
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-mono text-[10px] text-on-surface-variant">
               {feeBumpHash ? 'Sponsored withdrawal complete' : 'Withdrawn'} —{' '}
-              <a
-                href={stellarTxUrl(withdrawHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                {withdrawHash.slice(0, 14)}...
-              </a>
+              <StellarLink value={withdrawHash} type="tx" linkClassName="text-[10px]" />
             </span>
           </div>
           {feeBumpHash && (

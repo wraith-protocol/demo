@@ -38,6 +38,7 @@
     "@walletconnect/core": "^2.23.10",
     "@walletconnect/sign-client": "^2.23.10",
     "@wraith-protocol/sdk": "^1.4.5",
+    "@zxing/browser": "0.0.7",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
     "i18next": "^24.2.3",
@@ -53,6 +54,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@commitlint/cli": "^19.0.0",
     "@commitlint/config-conventional": "^19.0.0",
     "@playwright/test": "^1.61.0",
@@ -69,6 +71,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.5.0",
     "@vitest/coverage-v8": "^4.1.9",
+    "ajv": "^8.18.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.2.1",
     "http-server": "^14.1.1",
@@ -76,7 +79,7 @@
     "jest-image-snapshot": "^6.5.2",
     "msw": "^2",
     "msw-storybook-addon": "^2",
-    "playwright": "1.60.0",
+    "playwright": "^1.61.0",
     "postcss": "^8.5.0",
     "prettier": "^3.0.0",
     "storybook": "^8",

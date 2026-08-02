@@ -2,10 +2,14 @@
   "nav": {
     "send": "Enviar",
     "receive": "Recibir",
-    "schedule": "Programar"
+    "schedule": "Programar",
+    "names": "Nombres",
+    "activity": "Actividad"
   },
   "header": {
-    "menuLabel": "Menú"
+    "menuLabel": "Menú",
+    "chain": "Cadena",
+    "wallet": "Billetera"
   },
   "walletConnect": {
     "connectWallet": "Conectar billetera",
