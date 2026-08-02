@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useStellarWallet } from '@/context/StellarWalletContext';
-import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import { useStellarWallet } from '@/context/StellarWalletContext';
+import { StellarLink } from '@/components/StellarLink';
 
 type DepositState = 'pending' | 'claimed' | 'refunded';
 
@@ -184,17 +184,12 @@ export function VaultStatusTable() {
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Transaction Hash
             </span>
-            <div className="mt-0.5 flex items-center gap-2">
-              <a
-                href={stellarTxUrl(refundTxHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-xs text-primary underline"
-              >
-                {refundTxHash}
-              </a>
-              <CopyButton text={refundTxHash} />
-            </div>
+            <StellarLink
+              value={refundTxHash}
+              type="tx"
+              className="mt-0.5 max-w-full"
+              linkClassName="text-xs"
+            />
           </div>
         </div>
       )}

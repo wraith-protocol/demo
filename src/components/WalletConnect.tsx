@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useChain } from '@/context/ChainContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { trackEvent } from '@/lib/telemetry';
+import { StellarLink } from '@/components/StellarLink';
 
 const btnBase =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
@@ -69,9 +70,19 @@ function StellarButton() {
 
   if (isConnected && address) {
     return (
-      <button onClick={disconnect} className={btnConnected}>
-        {address.slice(0, 4)}...{address.slice(-4)}
-      </button>
+      <div className={`${btnConnected} flex items-center gap-2`}>
+        <StellarLink value={address} type="account" linkClassName="text-[10px] sm:text-xs">
+          {address.slice(0, 4)}...{address.slice(-4)}
+        </StellarLink>
+        <button
+          type="button"
+          onClick={disconnect}
+          className="text-outline transition-colors hover:text-error"
+          aria-label="Disconnect Stellar wallet"
+        >
+          ×
+        </button>
+      </div>
     );
   }
 

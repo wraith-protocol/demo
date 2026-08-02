@@ -28,7 +28,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useActivity } from '@/context/ActivityContext';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { computePrivacyScore } from '@/lib/privacy-score';
 import { STELLAR_NETWORK } from '@/config';
@@ -41,6 +41,7 @@ import { useStellarNotifications } from '@/hooks/useStellarNotifications';
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
+import { createStellarQrUri } from '@/utils/qr';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -545,15 +546,12 @@ function StellarMatchCardContainer({
               {t('common.stealthAddress')}
             </span>
             <div className="mt-0.5 flex items-center gap-2">
-              <a
-                href={stellarAddrUrl(match.stealthAddress)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block truncate font-mono text-xs text-primary underline"
-              >
-                {match.stealthAddress}
-              </a>
-              <CopyButton text={match.stealthAddress} />
+              <StellarLink
+                value={match.stealthAddress}
+                type="account"
+                className="max-w-full"
+                linkClassName="text-xs"
+              />
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -610,14 +608,7 @@ function StellarMatchCardContainer({
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             <span className="font-mono text-[10px] text-on-surface-variant">
               {t('common.withdrawn')} —{' '}
-              <a
-                href={stellarTxUrl(withdrawHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                {withdrawHash.slice(0, 14)}...
-              </a>
+              <StellarLink value={withdrawHash} type="tx" linkClassName="text-[10px]" />
             </span>
           </div>
         )}
@@ -1473,7 +1464,14 @@ export function StellarReceive() {
         }
       />
       {showQRModal && stellarMetaAddress && (
-        <QRCodeModal value={stellarMetaAddress} onClose={() => setShowQRModal(false)} />
+        <QRCodeModal
+          value={stellarMetaAddress}
+          variants={[
+            { label: 'Meta-address', value: stellarMetaAddress },
+            { label: 'Stellar URI', value: createStellarQrUri(stellarMetaAddress) },
+          ]}
+          onClose={() => setShowQRModal(false)}
+        />
       )}
       {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
       <StellarBatchWithdrawModal

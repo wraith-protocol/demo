@@ -10,6 +10,8 @@ import Vault from '@/pages/Vault';
 import Schedule from '@/pages/Schedule';
 import StellarSplit from '@/pages/StellarSplit';
 import Names from '@/pages/Names';
+import Activity from '@/pages/Activity';
+import Debug from '@/pages/Debug';
 
 export function App() {
   return (
@@ -27,6 +29,9 @@ export function App() {
           <Route path="/stellar/split" element={<StellarSplit />} />
           <Route path="/pay" element={<Send />} />
           <Route path="/names" element={<Names />} />
+          <Route path="/activity" element={<Activity />} />
+          <Route path="/history" element={<Activity />} />
+          <Route path="/debug" element={<Debug />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>
       </main>

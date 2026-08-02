@@ -2,6 +2,7 @@
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { QrReader } from 'react-qr-reader';
 import {
   TransactionBuilder,
   Account,
@@ -21,15 +22,15 @@ import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useContacts } from '@/store/contactsStore';
 import { useNameHistory } from '@/store/nameHistoryStore';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { STELLAR_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { AssetPicker } from '@/components/AssetPicker';
 import { trackEvent } from '@/lib/telemetry';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
-import { getAssetByKey } from '@/lib/stellar/assets';
+import { getAssetByKey, STELLAR_ASSETS } from '@/lib/stellar/assets';
 import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
-import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import {
   type StellarSendSimulationState,
   emptyStellarSendSimulation,
@@ -37,6 +38,7 @@ import {
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
+import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -107,7 +109,8 @@ export function StellarSend() {
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
-  const [assetKey] = useState<StellarAssetKey>('XLM');
+  const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
+  const [allBalances, setAllBalances] = useState<Record<string, string>>({});
   const [memo, setMemo] = useState(paramMemo || '');
   const { isKnownAddress, addContact } = useContacts();
   const { isKnownRecipient, addToHistory } = useNameHistory();
@@ -117,8 +120,11 @@ export function StellarSend() {
   const [, setSubmitAttempted] = useState(false);
 
   const [isScanningQR, setIsScanningQR] = useState(false);
-  const [, setScannerError] = useState('');
+  const [scannerError, setScannerError] = useState('');
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
+  const [isDecodingQrImage, setIsDecodingQrImage] = useState(false);
   const closeScannerRef = useRef<HTMLButtonElement>(null);
+  const qrImageInputRef = useRef<HTMLInputElement>(null);
 
   // Focus close button on mount and handle Escape key to close
   useEffect(() => {
@@ -140,38 +146,61 @@ export function StellarSend() {
     }
   }, [isScanningQR]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handleScanResult = useCallback((result: any, _error: any) => {
-    if (result) {
-      const text = result.text?.trim();
-      if (!text) return;
-
-      // 1. Check if it's a payment link
-      try {
-        const url = new URL(text);
-        const toParam = url.searchParams.get('to');
-        if (toParam && toParam.startsWith('st:xlm:')) {
-          setRecipient(toParam);
-          const amtParam = url.searchParams.get('amount');
-          if (amtParam) setAmount(amtParam);
-          const memoParam = url.searchParams.get('memo');
-          if (memoParam) setMemo(memoParam);
-          setIsScanningQR(false);
-          return;
-        }
-      } catch {
-        // Not a URL, continue checking if it's a raw meta-address
-      }
-
-      // 2. Check if it's a raw meta-address
-      if (text.startsWith('st:xlm:')) {
-        setRecipient(text);
-        setIsScanningQR(false);
-      } else {
-        setScannerError('Invalid QR code. Must be a stealth meta-address or payment link.');
-      }
+  const applyQrPayload = useCallback((text: string) => {
+    try {
+      const payload = parseStellarQrPayload(text);
+      setRecipient(payload.metaAddress);
+      if (payload.amount) setAmount(payload.amount);
+      if (payload.memo) setMemo(payload.memo);
+      setTouched((previous) => ({ ...previous, recipient: true }));
+      setScannerError('');
+      setIsScanningQR(false);
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR code could not be read.',
+      );
     }
   }, []);
+
+  const handleScanResult = useCallback(
+    (result: any, scanError: any) => {
+      const text = result?.getText?.() ?? result?.text;
+      if (text) {
+        applyQrPayload(text);
+        return;
+      }
+
+      if (isCameraUnavailableError(scanError)) {
+        setCameraUnavailable(true);
+        setScannerError('Camera access is unavailable. Choose a saved QR image to continue.');
+      }
+    },
+    [applyQrPayload],
+  );
+
+  const openQrScanner = () => {
+    setScannerError('');
+    setCameraUnavailable(false);
+    setIsScanningQR(true);
+  };
+
+  const handleQrImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsDecodingQrImage(true);
+    setScannerError('');
+    try {
+      applyQrPayload(await decodeQrImage(file));
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR image could not be read.',
+      );
+    } finally {
+      setIsDecodingQrImage(false);
+      event.target.value = '';
+    }
+  };
 
   const [sourceBalance, setSourceBalance] = useState<number | null>(null);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
@@ -228,6 +257,50 @@ export function StellarSend() {
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
       ? `Recipient lacks a ${assetKey} trustline. Ask them to add a trustline for ${assetKey}.`
       : '';
+  const trustlineWarning =
+    assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
+      ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
+      : '';
+  const balanceEntries: Array<{
+    key: string;
+    code: string;
+    issuer?: string;
+    balance: string;
+    isKnown: boolean;
+    isNative: boolean;
+  }> = useMemo(() => {
+    const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
+    const entries: Array<{
+      key: string;
+      code: string;
+      issuer?: string;
+      balance: string;
+      isKnown: boolean;
+      isNative: boolean;
+    }> = [];
+    let hasXlm = false;
+    for (const [key, bal] of Object.entries(allBalances)) {
+      if (key === 'XLM') {
+        hasXlm = true;
+        entries.push({ key, code: 'XLM', balance: bal, isKnown: true, isNative: true });
+      } else {
+        const colonIdx = key.indexOf(':');
+        const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
+        const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
+        if (!knownAssetKeys.has(code)) continue;
+        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+      }
+    }
+    if (!hasXlm) {
+      entries.unshift({ key: 'XLM', code: 'XLM', balance: '0', isKnown: true, isNative: true });
+    }
+    entries.sort((a, b) => {
+      if (a.isNative) return -1;
+      if (b.isNative) return 1;
+      return parseFloat(b.balance) - parseFloat(a.balance);
+    });
+    return entries;
+  }, [allBalances]);
   const validationError =
     recipientError || amountError || balanceLookupError || balanceError || trustlineError;
   const canSubmit =
@@ -317,13 +390,27 @@ export function StellarSend() {
         if (!accountRes.ok) throw new Error('Failed to load sender account');
 
         const accountData = (await accountRes.json()) as HorizonAccount;
+        const balances = accountData.balances || [];
+
+        // Build all-balances map for the asset picker
+        const balanceMap: Record<string, string> = {};
+        for (const b of balances) {
+          if (b.asset_type === 'native') {
+            balanceMap['XLM'] = b.balance;
+          } else if (b.asset_code && b.asset_issuer) {
+            balanceMap[`${b.asset_code}:${b.asset_issuer}`] = b.balance;
+          }
+        }
+        setAllBalances(balanceMap);
+
+        // Single-asset balance for validation
         const assetInfo = getAssetByKey(assetKey);
         let parsedBalance: number;
         if (assetInfo.isNative) {
-          const nativeBalance = accountData.balances?.find((bal) => bal.asset_type === 'native');
+          const nativeBalance = balances.find((bal) => bal.asset_type === 'native');
           parsedBalance = Number(nativeBalance?.balance);
         } else {
-          const assetBalance = accountData.balances?.find(
+          const assetBalance = balances.find(
             (bal) =>
               bal.asset_code === assetInfo.key &&
               bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
@@ -363,7 +450,7 @@ export function StellarSend() {
     setTrustlineMissing(false);
     setTrustlineCheckDone(false);
 
-    if (!metaAddress || !recipientError || assetKey === 'XLM') {
+    if (!metaAddress || recipientError || assetKey === 'XLM') {
       if (assetKey === 'XLM') {
         setTrustlineCheckDone(true);
       }
@@ -438,7 +525,8 @@ export function StellarSend() {
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
-      const sendAsset = assetInfo.toAsset();
+      const currentAssetInfo = getAssetByKey(assetKey);
+      const sendAsset = currentAssetInfo.toAsset();
 
       const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
       setRetryStatus('');
@@ -470,7 +558,7 @@ export function StellarSend() {
             amount: amountValue,
           }),
         );
-      } else if (assetInfo.isNative) {
+      } else if (currentAssetInfo.isNative) {
         builder = builder.addOperation(
           Operation.createAccount({
             destination: result.stealthAddress,
@@ -592,7 +680,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction, t]);
+  }, [address, recipient, amount, assetKey, signTransaction, t]);
 
   const reset = () => {
     setRecipient(paramTo || '');
@@ -606,6 +694,8 @@ export function StellarSend() {
     }
     setTouched({ recipient: false, amount: false });
     setSubmitAttempted(false);
+    setAssetKey('XLM');
+    setAllBalances({});
     setSourceBalance(null);
     setBalanceLookupError('');
     setShowUnknownWarning(false);
@@ -669,20 +759,30 @@ export function StellarSend() {
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.recipientMetaAddress')}
             </label>
-            <div className="relative">
+            <div className="flex flex-col gap-2">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder={t('stellar.recipientPlaceholder')}
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
-              <button
-                onClick={handlePaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-              >
-                {t('common.paste')}
-              </button>
+              <div className="flex justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                >
+                  {t('common.paste')}
+                </button>
+                <button
+                  type="button"
+                  onClick={openQrScanner}
+                  className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110"
+                >
+                  Scan QR
+                </button>
+              </div>
             </div>
           </div>
 
@@ -690,17 +790,23 @@ export function StellarSend() {
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.amount')}
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+              </div>
+              <AssetPicker
+                balances={balanceEntries}
+                selectedKey={assetKey as string}
+                onSelect={(key) => setAssetKey(key as StellarAssetKey)}
+                trustlineWarning={trustlineWarning}
+                disabled={isPending}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
             </div>
           </div>
 
@@ -808,15 +914,12 @@ export function StellarSend() {
                 {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {stealthResult.stealthAddress}
-                </a>
-                <CopyButton text={stealthResult.stealthAddress} />
+                <StellarLink
+                  value={stealthResult.stealthAddress}
+                  type="account"
+                  className="max-w-full"
+                  linkClassName="text-xs"
+                />
               </div>
             </div>
 
@@ -826,15 +929,12 @@ export function StellarSend() {
                   {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <a
-                    href={stellarTxUrl(txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block truncate font-mono text-xs text-primary underline"
-                  >
-                    {txHash}
-                  </a>
-                  <CopyButton text={txHash} />
+                  <StellarLink
+                    value={txHash}
+                    type="tx"
+                    className="max-w-full"
+                    linkClassName="text-xs"
+                  />
                 </div>
               </div>
             )}
@@ -851,6 +951,84 @@ export function StellarSend() {
         </div>
       )}
       {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
+
+      {isScanningQR && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-scanner-title"
+        >
+          <div className="flex w-full max-w-sm flex-col gap-4 border border-outline-variant bg-surface-container p-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2
+                id="qr-scanner-title"
+                className="font-heading text-lg font-bold uppercase tracking-tight text-on-surface"
+              >
+                Scan recipient QR
+              </h2>
+              <button
+                ref={closeScannerRef}
+                type="button"
+                onClick={() => setIsScanningQR(false)}
+                aria-label="Close QR scanner"
+                className="p-1 text-outline transition-colors hover:text-primary"
+              >
+                ×
+              </button>
+            </div>
+
+            {!cameraUnavailable && (
+              <div className="overflow-hidden bg-black">
+                <QrReader
+                  constraints={{ facingMode: { ideal: 'environment' } }}
+                  scanDelay={300}
+                  onResult={handleScanResult}
+                  containerStyle={{ width: '100%' }}
+                  videoStyle={{ width: '100%', height: 'auto' }}
+                />
+              </div>
+            )}
+
+            {cameraUnavailable && (
+              <div className="border border-error/40 bg-error/10 p-3">
+                <p className="font-body text-sm text-error">
+                  Camera permission was denied or the camera is unavailable.
+                </p>
+                <p className="mt-1 font-body text-xs text-on-surface-variant">
+                  Select a screenshot or saved QR image instead.
+                </p>
+              </div>
+            )}
+
+            {scannerError && !cameraUnavailable && (
+              <p role="alert" className="font-body text-sm text-error">
+                {scannerError}
+              </p>
+            )}
+
+            <input
+              ref={qrImageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleQrImage}
+              className="hidden"
+              aria-label="Choose a QR code image"
+            />
+            <button
+              type="button"
+              onClick={() => qrImageInputRef.current?.click()}
+              disabled={isDecodingQrImage}
+              className="h-11 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50"
+            >
+              {isDecodingQrImage ? 'Reading image...' : 'Choose QR image'}
+            </button>
+            <p className="font-body text-[11px] leading-relaxed text-outline">
+              QR images are decoded locally in your browser and are never uploaded.
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
