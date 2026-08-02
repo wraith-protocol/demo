@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { useStellarWallet } from '@/context/StellarWalletContext';
-import { stellarTxUrl } from '@/lib/explorer';
 import { CopyButton } from '@/components/CopyButton';
+import { useStellarWallet } from '@/context/StellarWalletContext';
+import { StellarLink } from '@/components/StellarLink';
 
 type ClaimState = 'idle' | 'signing' | 'claiming' | 'success';
 
@@ -119,17 +119,12 @@ export function StellarVaultClaim() {
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Transaction Hash
             </span>
-            <div className="mt-0.5 flex items-center gap-2">
-              <a
-                href={stellarTxUrl(txHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-xs text-primary underline"
-              >
-                {txHash}
-              </a>
-              <CopyButton text={txHash} />
-            </div>
+            <StellarLink
+              value={txHash}
+              type="tx"
+              className="mt-0.5 max-w-full"
+              linkClassName="text-xs"
+            />
           </div>
         </div>
 

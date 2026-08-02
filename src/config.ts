@@ -32,7 +32,6 @@ export const STELLAR_NETWORK = {
   networkPassphrase: 'Test SDF Network ; September 2015',
   rpcUrl: 'https://soroban-testnet.stellar.org',
   horizonUrl: 'https://horizon-testnet.stellar.org',
-  explorerUrl: 'https://stellar.expert/explorer/testnet',
 } as const;
 
 export const SOLANA_NETWORK = {

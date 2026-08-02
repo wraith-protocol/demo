@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { stellarTxUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import { CopyButton } from '@/components/CopyButton';
 import { StellarPaymentLink } from '@/components/StellarPaymentLink';
 import { ImportConflictModal } from '@/components/ImportConflictModal';
@@ -191,14 +191,7 @@ export function StellarReceiveView({
                   {regHash && (
                     <>
                       {' — '}
-                      <a
-                        href={stellarTxUrl(regHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary underline"
-                      >
-                        {regHash.slice(0, 14)}...
-                      </a>
+                      <StellarLink value={regHash} type="tx" linkClassName="text-xs" />
                     </>
                   )}
                 </span>

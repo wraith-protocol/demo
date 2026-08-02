@@ -1,3 +1,5 @@
+import { StellarLink } from '@/components/StellarLink';
+
 export const walletBtnBase =
   'bg-transparent border border-outline-variant px-3 py-1.5 font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50 sm:px-4 sm:py-2 sm:text-xs h-8 sm:h-9';
 export const walletBtnConnected =
@@ -47,9 +49,19 @@ export function FreighterConnectButton({
 
   if (status === 'connected' && address) {
     return (
-      <button onClick={onDisconnect} className={walletBtnConnected}>
-        {address.slice(0, 4)}...{address.slice(-4)}
-      </button>
+      <div className={`${walletBtnConnected} flex items-center gap-2`}>
+        <StellarLink value={address} type="account" linkClassName="text-[10px] sm:text-xs">
+          {address.slice(0, 4)}...{address.slice(-4)}
+        </StellarLink>
+        <button
+          type="button"
+          onClick={onDisconnect}
+          className="text-outline transition-colors hover:text-error"
+          aria-label="Disconnect Stellar wallet"
+        >
+          ×
+        </button>
+      </div>
     );
   }
 
