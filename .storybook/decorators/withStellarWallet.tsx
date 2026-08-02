@@ -6,7 +6,7 @@ interface StellarWalletOverrides {
   isConnected?: boolean;
   isInstalled?: boolean | null;
   isNetworkMismatch?: boolean;
-   freighterNetwork?: string | null;
+  freighterNetwork?: string | null;
   connect?: () => Promise<void>;
   disconnect?: () => void;
   signMessage?: (message: string) => Promise<Uint8Array>;
