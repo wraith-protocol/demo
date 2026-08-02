@@ -84,7 +84,7 @@ export function Header() {
           </button>
           <div className="hidden sm:flex sm:items-center sm:gap-3">
             <ChainSwitcher />
-             <NetworkChip />
+            <NetworkChip />
             <WalletConnect />
           </div>
           <button
