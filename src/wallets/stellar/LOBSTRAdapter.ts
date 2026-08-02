@@ -74,31 +74,19 @@ export class LOBSTRAdapter implements StellarWallet {
         const publicKey = result.publicKey ?? '';
 
         if (!publicKey) {
-          throw new WalletError(
-            'No public key returned from LOBSTR',
-            'CONNECT_FAILED',
-            'lobstr',
-          );
+          throw new WalletError('No public key returned from LOBSTR', 'CONNECT_FAILED', 'lobstr');
         }
 
         return { publicKey, network: 'testnet' };
       } catch (err) {
         if (err instanceof WalletError) throw err;
-        throw new WalletError(
-          `LOBSTR connect failed: ${String(err)}`,
-          'CONNECT_FAILED',
-          'lobstr',
-        );
+        throw new WalletError(`LOBSTR connect failed: ${String(err)}`, 'CONNECT_FAILED', 'lobstr');
       }
     }
 
     // Deep-link path — throw a specific error with the URL
     // so the UI can display a clickable link.
-    throw new WalletError(
-      this.getConnectUrl(),
-      'CONNECT_FAILED',
-      'lobstr',
-    );
+    throw new WalletError(this.getConnectUrl(), 'CONNECT_FAILED', 'lobstr');
   }
 
   async signTransaction(xdr: string, opts: SignOpts = {}): Promise<SignResult> {
@@ -113,11 +101,7 @@ export class LOBSTRAdapter implements StellarWallet {
         });
 
         if (!signedXdr) {
-          throw new WalletError(
-            'No signed XDR returned from LOBSTR',
-            'SIGN_FAILED',
-            'lobstr',
-          );
+          throw new WalletError('No signed XDR returned from LOBSTR', 'SIGN_FAILED', 'lobstr');
         }
 
         return { signedXdr };

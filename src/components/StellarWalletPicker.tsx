@@ -168,8 +168,7 @@ export function StellarWalletPicker({ state }: Props) {
             // Albedo and WalletConnect are web-based — always available.
             // LOBSTR is always available via deep-links even without extension.
             const isAvail =
-              available[id] ??
-              (id === 'albedo' || id === 'walletconnect' || id === 'lobstr');
+              available[id] ?? (id === 'albedo' || id === 'walletconnect' || id === 'lobstr');
             const isLoading = pending === id;
             const isDisabled = !!pending && pending !== id;
 
@@ -268,8 +267,8 @@ export function StellarWalletPicker({ state }: Props) {
 
         {/* Footer note */}
         <p className="text-[10px] text-[#333333] leading-relaxed pt-1">
-          Albedo, LOBSTR, and WalletConnect work in any browser — no extension needed. Freighter
-          and xBull require their browser extension to be installed.
+          Albedo, LOBSTR, and WalletConnect work in any browser — no extension needed. Freighter and
+          xBull require their browser extension to be installed.
         </p>
       </div>
 

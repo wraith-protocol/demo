@@ -55,13 +55,7 @@ export function getAdapter(id: WalletId): StellarWallet {
 }
 
 /** All wallet IDs in display order. */
-export const WALLET_IDS: WalletId[] = [
-  'freighter',
-  'albedo',
-  'xbull',
-  'lobstr',
-  'walletconnect',
-];
+export const WALLET_IDS: WalletId[] = ['freighter', 'albedo', 'xbull', 'lobstr', 'walletconnect'];
 
 /** Metadata used by the picker without instantiating adapters. */
 export const WALLET_META: Record<WalletId, { name: string; icon: string; installUrl: string }> = {
