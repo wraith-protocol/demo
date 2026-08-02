@@ -208,7 +208,11 @@ self.addEventListener('activate', (event) => {
       (async () => {
         if ('periodicSync' in self.registration) {
           try {
-            await (self.registration as ServiceWorkerRegistration & { periodicSync: { register(tag: string, opts: object): Promise<void> } }).periodicSync.register(SYNC_TAG, {
+            await (
+              self.registration as ServiceWorkerRegistration & {
+                periodicSync: { register(tag: string, opts: object): Promise<void> };
+              }
+            ).periodicSync.register(SYNC_TAG, {
               minInterval: SYNC_INTERVAL_MINUTES * 60 * 1000,
             });
             console.log('[app-sw] Periodic sync registered');
@@ -319,7 +323,11 @@ self.addEventListener('message', (event) => {
           db.close();
 
           if (allKeys.length === 0 && 'periodicSync' in self.registration) {
-            await (self.registration as ServiceWorkerRegistration & { periodicSync: { unregister(tag: string): Promise<void> } }).periodicSync.unregister(SYNC_TAG);
+            await (
+              self.registration as ServiceWorkerRegistration & {
+                periodicSync: { unregister(tag: string): Promise<void> };
+              }
+            ).periodicSync.unregister(SYNC_TAG);
           }
 
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_UNREGISTERED' });
