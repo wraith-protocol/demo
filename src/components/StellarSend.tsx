@@ -28,7 +28,6 @@ import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { getAssetByKey } from '@/lib/stellar/assets';
 import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
-import { stellarAddrUrl, stellarTxUrl } from '@/lib/explorer';
 import {
   type StellarSendSimulationState,
   emptyStellarSendSimulation,
@@ -737,11 +736,10 @@ export function StellarSend() {
                 <span className="text-lg">⚠️</span>
                 <div className="flex flex-col gap-1">
                   <p className="text-sm font-medium text-on-surface">
-                    You haven't paid this recipient before
+                    {t('stellar.unknownRecipientWarning')}
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    This address is not in your contacts or payment history. Please verify the
-                    address carefully before sending.
+                    {t('stellar.unknownRecipientDesc')}
                   </p>
                 </div>
               </div>
@@ -749,7 +747,7 @@ export function StellarSend() {
                 onClick={() => setShowSaveDialog(true)}
                 className="h-9 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
               >
-                Save to contacts
+                {t('stellar.saveToContacts')}
               </button>
             </div>
           )}
@@ -757,13 +755,13 @@ export function StellarSend() {
           {showSaveDialog && (
             <div className="flex flex-col gap-3 rounded border border-outline-variant bg-surface-container p-4">
               <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Contact Name
+                {t('stellar.contactNameLabel')}
               </label>
               <input
                 type="text"
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
-                placeholder="Enter a name for this contact"
+                placeholder={t('stellar.contactNamePlaceholder')}
                 className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
                 autoFocus
               />
@@ -772,14 +770,14 @@ export function StellarSend() {
                   onClick={() => setShowSaveDialog(false)}
                   className="h-9 flex-1 border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
                 >
-                  Cancel
+                  {t('stellar.cancel')}
                 </button>
                 <button
                   onClick={handleSaveContact}
                   disabled={!contactName.trim()}
                   className="h-9 flex-1 bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
                 >
-                  Save
+                  {t('stellar.saveContact')}
                 </button>
               </div>
             </div>

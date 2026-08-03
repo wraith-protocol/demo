@@ -284,7 +284,13 @@
     "trustlineHelpText": "To add a trustline, the recipient needs to set a trustline for {{asset}} on their Stellar account.",
     "trustlineLink": "trustline",
     "memoPlaceholder": "e.g. Coffee",
-    "walletMenuAriaLabel": "Wallet menu"
+    "walletMenuAriaLabel": "Wallet menu",
+    "unknownRecipientWarning": "You haven't paid this recipient before",
+    "unknownRecipientDesc": "This address is not in your contacts or payment history. Please verify the address carefully before sending.",
+    "saveToContacts": "Save to contacts",
+    "contactNameLabel": "Contact Name",
+    "contactNamePlaceholder": "Enter a name for this contact",
+    "saveContact": "Save"
   },
   "solana": {
     "network": "Solana Devnet / SOL",
