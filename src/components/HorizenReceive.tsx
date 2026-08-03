@@ -359,7 +359,10 @@ export function HorizenReceive() {
 
       {evmKeys && evmMetaAddress && (
         <>
-          <div className="border border-outline-variant bg-surface-container p-5" data-tour="meta-address">
+          <div
+            className="border border-outline-variant bg-surface-container p-5"
+            data-tour="meta-address"
+          >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 {t('common.yourStealthMetaAddress')}

@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useCallback,
-  useRef,
-  type ReactNode,
-} from 'react';
+import { createContext, useContext, useCallback, useRef, type ReactNode } from 'react';
 import { driver } from 'driver.js';
 import 'driver.js/dist/driver.css';
 
@@ -80,7 +74,7 @@ function buildTourSteps() {
       popover: {
         title: 'Sending stealth payments',
         description:
-          'To send, switch to the <strong>Send</strong> tab. Paste the recipient\'s stealth meta-address, enter an amount, and confirm. The SDK generates a fresh one-time address per transfer — the recipient\'s real address is never exposed on-chain.',
+          "To send, switch to the <strong>Send</strong> tab. Paste the recipient's stealth meta-address, enter an amount, and confirm. The SDK generates a fresh one-time address per transfer — the recipient's real address is never exposed on-chain.",
         side: 'bottom' as const,
         align: 'start' as const,
       },
