@@ -58,7 +58,10 @@ importers:
         version: 2.23.10(@react-native-async-storage/async-storage@1.24.0(react-native@0.85.1(@babel/core@7.29.0)(@types/react@19.2.14)(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@6.0.6)))(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
       '@wraith-protocol/sdk':
         specifier: ^1.4.5
-        version: 1.4.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+        version: 1.4.5(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(@stellar/stellar-sdk@13.3.0)(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
+      '@zxing/browser':
+        specifier: 0.0.7
+        version: 0.0.7(@zxing/library@0.18.6)
       bs58:
         specifier: ^6.0.0
         version: 6.0.0
@@ -153,6 +156,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.9
         version: 4.1.10(vitest@4.1.10)
+      ajv:
+        specifier: ^8.18.0
+        version: 8.18.0
       autoprefixer:
         specifier: ^10.4.20
         version: 10.5.0(postcss@8.5.9)

@@ -1,11 +1,14 @@
 import { ActivityEntry } from '@/stores/activityStore';
 import { stellarTxUrl, horizenTxUrl, solanaTxUrl, ckbTxUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 
 interface ActivityRowProps {
   entry: ActivityEntry;
 }
 
 export function ActivityRow({ entry }: ActivityRowProps) {
+  const isStellarAccount =
+    entry.chain === 'stellar' && !!entry.recipient && /^[GM][A-Z2-7]+$/.test(entry.recipient);
   const getExplorerUrl = () => {
     switch (entry.chain) {
       case 'stellar':
@@ -115,14 +118,23 @@ export function ActivityRow({ entry }: ActivityRowProps) {
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Recipient / Address
             </span>
-            <span
-              className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
-              title={entry.recipient}
-            >
-              {entry.recipient.length > 30
-                ? `${entry.recipient.slice(0, 12)}...${entry.recipient.slice(-12)}`
-                : entry.recipient}
-            </span>
+            {isStellarAccount ? (
+              <StellarLink
+                value={entry.recipient!}
+                type="account"
+                className="max-w-[240px]"
+                linkClassName="text-[10px]"
+              />
+            ) : (
+              <span
+                className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
+                title={entry.recipient}
+              >
+                {entry.recipient.length > 30
+                  ? `${entry.recipient.slice(0, 12)}...${entry.recipient.slice(-12)}`
+                  : entry.recipient}
+              </span>
+            )}
           </div>
         )}
 
@@ -131,14 +143,18 @@ export function ActivityRow({ entry }: ActivityRowProps) {
             <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
               Hash
             </span>
-            <a
-              href={getExplorerUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-[10px] text-tertiary hover:underline"
-            >
-              {entry.id.slice(0, 12)}...{entry.id.slice(-12)}
-            </a>
+            {entry.chain === 'stellar' ? (
+              <StellarLink value={entry.id} type="tx" linkClassName="text-[10px]" />
+            ) : (
+              <a
+                href={getExplorerUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[10px] text-tertiary hover:underline"
+              >
+                {entry.id.slice(0, 12)}...{entry.id.slice(-12)}
+              </a>
+            )}
           </div>
         )}
       </div>

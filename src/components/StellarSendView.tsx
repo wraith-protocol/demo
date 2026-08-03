@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
-import { CopyButton } from '@/components/CopyButton';
+import { StellarLink } from '@/components/StellarLink';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS } from '@/lib/stellar/assets';
 
@@ -394,15 +393,12 @@ export function StellarSendView({
                 Stealth Address
               </span>
               <div className="mt-0.5 flex min-w-0  items-center gap-2">
-                <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {stealthResult.stealthAddress}
-                </a>
-                <CopyButton text={stealthResult.stealthAddress} />
+                <StellarLink
+                  value={stealthResult.stealthAddress}
+                  type="account"
+                  className="max-w-full"
+                  linkClassName="text-xs"
+                />
               </div>
             </div>
 
@@ -412,15 +408,12 @@ export function StellarSendView({
                   Final Transaction Hash
                 </span>
                 <div className="mt-0.5 flex min-w-0 items-center gap-2">
-                  <a
-                    href={stellarTxUrl(txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block truncate font-mono text-xs text-primary underline"
-                  >
-                    {txHash}
-                  </a>
-                  <CopyButton text={txHash} />
+                  <StellarLink
+                    value={txHash}
+                    type="tx"
+                    className="max-w-full"
+                    linkClassName="text-xs"
+                  />
                 </div>
               </div>
             )}

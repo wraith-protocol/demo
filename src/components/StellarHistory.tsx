@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { stellarTxUrl } from '@/lib/explorer';
 import { useActivityStore, ActivityKind, ActivityStatus } from '@/stores/activityStore';
 import { EmptyState } from '@/components/EmptyState';
+import { StellarLink } from '@/components/StellarLink';
 
+/** @deprecated Use the `/activity` page. Retained for existing imports. */
 export function StellarHistory() {
   const navigate = useNavigate();
   const { address, isConnected } = useStellarWallet();
@@ -186,14 +187,23 @@ export function StellarHistory() {
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Recipient / Address
                   </span>
-                  <span
-                    className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
-                    title={tx.recipient}
-                  >
-                    {tx.recipient.length > 30
-                      ? `${tx.recipient.slice(0, 12)}...${tx.recipient.slice(-12)}`
-                      : tx.recipient}
-                  </span>
+                  {/^[GM][A-Z2-7]+$/.test(tx.recipient) ? (
+                    <StellarLink
+                      value={tx.recipient}
+                      type="account"
+                      className="max-w-[240px]"
+                      linkClassName="text-[10px]"
+                    />
+                  ) : (
+                    <span
+                      className="max-w-[200px] truncate font-mono text-[10px] text-on-surface"
+                      title={tx.recipient}
+                    >
+                      {tx.recipient.length > 30
+                        ? `${tx.recipient.slice(0, 12)}...${tx.recipient.slice(-12)}`
+                        : tx.recipient}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -202,14 +212,7 @@ export function StellarHistory() {
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Hash
                   </span>
-                  <a
-                    href={stellarTxUrl(tx.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[10px] text-tertiary hover:underline"
-                  >
-                    {tx.id.slice(0, 12)}...{tx.id.slice(-12)}
-                  </a>
+                  <StellarLink value={tx.id} type="tx" linkClassName="text-[10px]" />
                 </div>
               )}
             </div>

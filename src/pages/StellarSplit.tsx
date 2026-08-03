@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { CopyButton } from '@/components/CopyButton';
-import { stellarTxUrl } from '@/lib/explorer';
+import { StellarLink } from '@/components/StellarLink';
 import { trackEvent } from '@/lib/telemetry';
 import { STELLAR_NETWORK } from '@/config';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
@@ -404,17 +403,12 @@ export default function StellarSplit() {
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 {t('common.transactionHash')}
               </span>
-              <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={stellarTxUrl(result.horizonHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {result.horizonHash}
-                </a>
-                <CopyButton text={result.horizonHash} />
-              </div>
+              <StellarLink
+                value={result.horizonHash}
+                type="tx"
+                className="mt-0.5 max-w-full"
+                linkClassName="text-xs"
+              />
             </div>
           </div>
 
