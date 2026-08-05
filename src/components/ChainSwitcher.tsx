@@ -12,7 +12,7 @@ export function ChainSwitcher({ disabledChains = [] }: { disabledChains?: Chain[
   const { chain, setChain } = useChain();
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="chain-switcher">
       <select
         value={chain}
         onChange={(e) => setChain(e.target.value as Chain)}

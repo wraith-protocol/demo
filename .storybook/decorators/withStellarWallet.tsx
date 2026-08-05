@@ -6,6 +6,7 @@ interface StellarWalletOverrides {
   isConnected?: boolean;
   isInstalled?: boolean | null;
   isNetworkMismatch?: boolean;
+  freighterNetwork?: string | null;
   connect?: () => Promise<void>;
   disconnect?: () => void;
   signMessage?: (message: string) => Promise<Uint8Array>;
@@ -25,6 +26,7 @@ export function withStellarWallet(overrides: StellarWalletOverrides = {}): Decor
     isConnected: overrides.isConnected ?? address !== null,
     isInstalled: overrides.isInstalled !== undefined ? overrides.isInstalled : true,
     isNetworkMismatch: overrides.isNetworkMismatch ?? false,
+    freighterNetwork: overrides.freighterNetwork ?? null,
     connect: overrides.connect ?? (async () => {}),
     disconnect: overrides.disconnect ?? (() => {}),
     signMessage: overrides.signMessage ?? (async () => new Uint8Array(64)),

@@ -2,12 +2,15 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
 import { TelemetryBanner } from '@/components/TelemetryBanner';
-import { OfflineBanner } from '@/components/OfflineBanner';
+import { TourLauncher } from '@/components/TourLauncher';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
+import Settings from '@/pages/Settings';
 import { HelpButton } from '@/components/HelpButton';
 import Vault from '@/pages/Vault';
+import Notifications from '@/pages/Notifications';
+import { useNotificationSW } from '@/hooks/useNotificationSW';
 import Schedule from '@/pages/Schedule';
 import StellarSplit from '@/pages/StellarSplit';
 import Names from '@/pages/Names';
@@ -15,6 +18,8 @@ import Activity from '@/pages/Activity';
 import Debug from '@/pages/Debug';
 
 export function App() {
+  useNotificationSW();
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -27,6 +32,7 @@ export function App() {
           <Route path="/receive" element={<Receive />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/vault" element={<Vault />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/stellar/split" element={<StellarSplit />} />
           <Route path="/pay" element={<Send />} />

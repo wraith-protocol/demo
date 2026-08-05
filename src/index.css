@@ -202,3 +202,148 @@ ccc-connector button {
 ccc-connector img {
   border-radius: 0 !important;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Onboarding Tour — driver.js overrides
+   Matches Wraith's sharp-corner, dark-monochrome design system
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Override driver.js popover to match our design system */
+.driver-popover.wraith-tour-popover {
+  background-color: var(--color-surface-container);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 0 !important;
+  color: var(--color-on-surface);
+  font-family: 'Inter', sans-serif;
+  max-width: 340px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-on-surface);
+  margin-bottom: 10px;
+  line-height: 1.3;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-description {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-on-surface-variant);
+  margin-bottom: 16px;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-description strong {
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-description em {
+  color: var(--color-on-surface-variant);
+  font-style: italic;
+}
+
+/* Navigation buttons */
+.driver-popover.wraith-tour-popover .driver-popover-navigation-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-prev-btn,
+.driver-popover.wraith-tour-popover .driver-popover-next-btn,
+.driver-popover.wraith-tour-popover .driver-popover-done-btn {
+  border-radius: 0 !important;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 14px;
+  height: 32px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  border: none;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-prev-btn {
+  background: transparent;
+  border: 1px solid var(--color-outline-variant);
+  color: var(--color-outline);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-prev-btn:hover {
+  background: var(--color-surface-bright);
+  color: var(--color-on-surface-variant);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-next-btn,
+.driver-popover.wraith-tour-popover .driver-popover-done-btn {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-next-btn:hover,
+.driver-popover.wraith-tour-popover .driver-popover-done-btn:hover {
+  opacity: 0.85;
+}
+
+/* Close button */
+.driver-popover.wraith-tour-popover .driver-popover-close-btn {
+  color: var(--color-outline);
+  font-size: 16px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-close-btn:hover {
+  color: var(--color-on-surface);
+}
+
+/* Progress dots */
+.driver-popover.wraith-tour-popover .driver-popover-progress-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--color-outline);
+  margin-right: auto;
+  letter-spacing: 0.05em;
+}
+
+/* Arrow / caret */
+.driver-popover.wraith-tour-popover .driver-popover-arrow {
+  /* Let driver.js handle positioning, just ensure colour matches */
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-arrow-side-top::before {
+  border-top-color: var(--color-outline-variant);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-arrow-side-bottom::before {
+  border-bottom-color: var(--color-outline-variant);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-arrow-side-left::before {
+  border-left-color: var(--color-outline-variant);
+}
+
+.driver-popover.wraith-tour-popover .driver-popover-arrow-side-right::before {
+  border-right-color: var(--color-outline-variant);
+}
+
+/* Highlighted element ring */
+.driver-active-element {
+  box-shadow: 0 0 0 2px var(--color-primary) !important;
+}

@@ -124,6 +124,7 @@ export function StellarReceiveView({
       {!keysDerived && (
         <div className="flex flex-col gap-4">
           <button
+            data-tour="derive-keys"
             onClick={onDeriveKeys}
             disabled={isDerivingKeys}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
@@ -138,7 +139,10 @@ export function StellarReceiveView({
 
       {keysDerived && metaAddress && (
         <>
-          <div className="border border-outline-variant bg-surface-container p-5">
+          <div
+            className="border border-outline-variant bg-surface-container p-5"
+            data-tour="meta-address"
+          >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                 Your Stealth Meta-Address
@@ -288,6 +292,7 @@ export function StellarReceiveView({
 
           <div className="flex items-center justify-between">
             <button
+              data-tour="scan-payments"
               onClick={onScan}
               disabled={isScanning}
               className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"

@@ -12,6 +12,7 @@
  *
  * Albedo and WalletConnect are always shown as available (web-based, no extension needed).
  * WalletConnect displays a QR code when selected.
+ * LOBSTR uses deep-links when the extension is not detected.
  */
 
 import { useState, useEffect } from 'react';
@@ -164,7 +165,10 @@ export function StellarWalletPicker({ state }: Props) {
         <div className="space-y-2">
           {WALLET_IDS.map((id) => {
             const meta = WALLET_META[id];
-            const isAvail = available[id] ?? (id === 'albedo' || id === 'walletconnect'); // albedo & walletconnect always available
+            // Albedo and WalletConnect are web-based — always available.
+            // LOBSTR is always available via deep-links even without extension.
+            const isAvail =
+              available[id] ?? (id === 'albedo' || id === 'walletconnect' || id === 'lobstr');
             const isLoading = pending === id;
             const isDisabled = !!pending && pending !== id;
 
@@ -263,8 +267,8 @@ export function StellarWalletPicker({ state }: Props) {
 
         {/* Footer note */}
         <p className="text-[10px] text-[#333333] leading-relaxed pt-1">
-          Albedo and WalletConnect work in any browser — no extension needed. Other wallets require
-          their browser extension to be installed.
+          Albedo, LOBSTR, and WalletConnect work in any browser — no extension needed. Freighter and
+          xBull require their browser extension to be installed.
         </p>
       </div>
 

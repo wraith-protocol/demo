@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { CopyButton } from '@/components/CopyButton';
+import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { StellarLink } from '@/components/StellarLink';
 
@@ -35,17 +36,23 @@ type VaultDeposit = {
 };
 
 export function StellarVaultClaim() {
-  const { address, signMessage } = useStellarWallet();
+  const { address, signMessage, isNetworkMismatch } = useStellarWallet();
   const [deposits, setDeposits] = useState<VaultDeposit[]>(MOCK_DEPOSITS);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimState, setClaimState] = useState<ClaimState>('idle');
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
 
   const handleClaim = useCallback(
     async (depositId: string) => {
       if (!address) {
         setError('Wallet not connected');
+        return;
+      }
+
+      if (isNetworkMismatch) {
+        setShowNetworkModal(true);
         return;
       }
 
@@ -80,7 +87,7 @@ export function StellarVaultClaim() {
         setClaimingId(null);
       }
     },
-    [address, signMessage],
+    [address, signMessage, isNetworkMismatch],
   );
 
   const reset = () => {
@@ -221,6 +228,8 @@ export function StellarVaultClaim() {
           </button>
         </div>
       ))}
+
+      {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
     </div>
   );
 }

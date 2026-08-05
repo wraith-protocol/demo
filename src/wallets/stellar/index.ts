@@ -14,6 +14,9 @@ export * from './types';
 // Re-export adapters for direct use in tests
 export { FreighterAdapter } from './FreighterAdapter';
 export { WalletConnectAdapter } from './WalletConnectAdapter';
+export { AlbedoAdapter } from './AlbedoAdapter';
+export { XBullAdapter } from './XBullAdapter';
+export { LOBSTRAdapter } from './LOBSTRAdapter';
 
 import type { StellarWallet, WalletId } from './types';
 
@@ -21,11 +24,6 @@ import type { StellarWallet, WalletId } from './types';
  * Returns a fresh adapter instance for the given wallet ID.
  * Import is synchronous here — the individual adapter files are the
  * lazy boundary (they import their SDK packages lazily inside methods).
- *
- * Note: albedo / xbull / lobstr adapters were staged behind their own
- * optional deps (`@albedo-link/intent`, `@creit.tech/stellar-wallets-kit`)
- * and are temporarily disabled until those deps land. Falling through to
- * Freighter keeps the picker usable in the meantime.
  */
 export function getAdapter(id: WalletId): StellarWallet {
   switch (id) {
@@ -33,10 +31,22 @@ export function getAdapter(id: WalletId): StellarWallet {
       const { WalletConnectAdapter } = require('./WalletConnectAdapter');
       return new WalletConnectAdapter();
     }
-    case 'freighter':
-    case 'albedo':
-    case 'xbull':
-    case 'lobstr':
+    case 'freighter': {
+      const { FreighterAdapter } = require('./FreighterAdapter');
+      return new FreighterAdapter();
+    }
+    case 'albedo': {
+      const { AlbedoAdapter } = require('./AlbedoAdapter');
+      return new AlbedoAdapter();
+    }
+    case 'xbull': {
+      const { XBullAdapter } = require('./XBullAdapter');
+      return new XBullAdapter();
+    }
+    case 'lobstr': {
+      const { LOBSTRAdapter } = require('./LOBSTRAdapter');
+      return new LOBSTRAdapter();
+    }
     default: {
       const { FreighterAdapter } = require('./FreighterAdapter');
       return new FreighterAdapter();
@@ -45,7 +55,7 @@ export function getAdapter(id: WalletId): StellarWallet {
 }
 
 /** All wallet IDs in display order. */
-export const WALLET_IDS: WalletId[] = ['freighter', 'walletconnect'];
+export const WALLET_IDS: WalletId[] = ['freighter', 'albedo', 'xbull', 'lobstr', 'walletconnect'];
 
 /** Metadata used by the picker without instantiating adapters. */
 export const WALLET_META: Record<WalletId, { name: string; icon: string; installUrl: string }> = {

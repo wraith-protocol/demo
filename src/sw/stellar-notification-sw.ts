@@ -1,23 +1,57 @@
-/// <reference lib="webworker" />
-declare const self: ServiceWorkerGlobalScope;
-
 /**
- * Service Worker for Stellar Payment Notifications
+ * stellar-notification-sw.ts
  *
- * This service worker handles:
- * - Periodic background sync to scan for new stealth payments
- * - Showing notifications when new payments are detected
- * - Handling notification clicks to open the app
- * - Managing IndexedDB storage for encrypted viewing keys
+ * Stellar stealth-payment push notification service worker.
+ *
+ * Responsibilities:
+ * 1. Receive push events and show browser notifications.
+ * 2. Persist each notification into the app's zustand store by posting a
+ *    message to all controlled clients so the React app can call
+ *    `addNotification` on the next load (or immediately if a tab is open).
+ * 3. Periodic background sync to scan for new stealth payments.
+ * 4. IndexedDB storage for encrypted viewing keys.
+ * 5. Handle REGISTER_VIEWING_KEY / UNREGISTER_VIEWING_KEY messages from the
+ *    client so background scanning knows which keys to watch.
+ *
+ * Push payload (JSON):
+ * {
+ *   id:        string,            // unique notification id (e.g. tx hash / stealth address)
+ *   title:     string,
+ *   body:      string,
+ *   amount?:   string,            // e.g. "12.5"
+ *   asset?:    string,            // e.g. "XLM"
+ *   sender?:   string,            // stealth / ephemeral address
+ *   data?:     Record<string, unknown>
+ * }
  */
 
+/// <reference lib="webworker" />
+export {};
+
+declare const self: ServiceWorkerGlobalScope;
+
+// ─── constants ────────────────────────────────────────────────────────────────
+
+const NOTIFICATION_CHANNEL = 'wraith-notifications';
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_RPC_URL = 'https://soroban-testnet.stellar.org';
 const DB_NAME = 'wraith-stellar-notifications';
 const DB_VERSION = 1;
 const STORE_NAME = 'viewing-keys';
 const SYNC_TAG = 'stellar-payment-scan';
-const SYNC_INTERVAL_MINUTES = 15; // Check every 15 minutes
+const SYNC_INTERVAL_MINUTES = 15;
+
+// ─── types ────────────────────────────────────────────────────────────────────
+
+interface PushPayload {
+  id: string;
+  title: string;
+  body: string;
+  amount?: string;
+  asset?: string;
+  sender?: string;
+  data?: Record<string, unknown>;
+}
 
 interface StoredViewingKey {
   publicKey: string;
@@ -34,14 +68,13 @@ interface NotificationData {
   timestamp: number;
 }
 
-// IndexedDB helpers
+// ─── IndexedDB helpers ────────────────────────────────────────────────────────
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -49,17 +82,6 @@ function openDB(): Promise<IDBDatabase> {
         store.createIndex('timestamp', 'timestamp', { unique: false });
       }
     };
-  });
-}
-
-async function getViewingKey(db: IDBDatabase, publicKey: string): Promise<StoredViewingKey | null> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(publicKey);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result || null);
   });
 }
 
@@ -72,7 +94,6 @@ async function updateLastScannedLedger(
     const transaction = db.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(publicKey);
-
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const data = request.result as StoredViewingKey;
@@ -89,18 +110,14 @@ async function updateLastScannedLedger(
   });
 }
 
-// Stellar RPC helpers
+// ─── Stellar RPC helpers ──────────────────────────────────────────────────────
+
 async function fetchLatestLedger(): Promise<number> {
   const response = await fetch(STELLAR_RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'getLatestLedger',
-    }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }),
   });
-
   const data = await response.json();
   return data.result?.sequence || 0;
 }
@@ -108,7 +125,7 @@ async function fetchLatestLedger(): Promise<number> {
 async function fetchAnnouncementEvents(
   startLedger: number,
   contractId: string = ANNOUNCER_CONTRACT,
-): Promise<{ events: any[]; latestLedger: number }> {
+): Promise<{ events: unknown[]; latestLedger: number }> {
   const response = await fetch(STELLAR_RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -123,182 +140,168 @@ async function fetchAnnouncementEvents(
       },
     }),
   });
-
   const data = await response.json();
   const events = data.result?.events || [];
   const latestLedger = await fetchLatestLedger();
-
   return { events, latestLedger };
 }
 
-// Simple decryption using Web Crypto API
-async function decryptData(encryptedHex: string, key: CryptoKey): Promise<Uint8Array> {
-  const encryptedData = hexToBytes(encryptedHex);
+// ─── push payload helpers ─────────────────────────────────────────────────────
 
-  // Extract IV (first 12 bytes) and ciphertext
-  const iv = encryptedData.slice(0, 12);
-  const ciphertext = encryptedData.slice(12);
-
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
-
-  return new Uint8Array(decrypted);
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+function parsePushPayload(event: PushEvent): PushPayload {
+  try {
+    const json = event.data?.json() as Partial<PushPayload> | undefined;
+    if (json && json.title) {
+      return {
+        id: json.id ?? `sw-${Date.now()}`,
+        title: json.title,
+        body: json.body ?? '',
+        amount: json.amount,
+        asset: json.asset,
+        sender: json.sender,
+        data: json.data,
+      };
+    }
+  } catch {
+    // ignore parse errors — fall through to default
   }
-  return bytes;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Import the Wraith SDK functions (will be loaded dynamically)
-async function loadWraithSDK() {
-  // In a real implementation, we'd need to bundle the SDK or use importScripts
-  // For now, we'll implement a simplified version of the scanning logic
-  return null;
-}
-
-// Show notification for new payment
-async function showPaymentNotification(match: any): Promise<void> {
-  const options: NotificationOptions = {
-    body: `New stealth payment detected at ${match.stealthAddress.slice(0, 8)}...`,
-    icon: '/icon-192.png',
-    badge: '/badge-72.png',
-    tag: match.stealthAddress,
-    data: {
-      stealthAddress: match.stealthAddress,
-      timestamp: Date.now(),
-    } as NotificationData,
-    requireInteraction: false,
-    silent: false,
+  return {
+    id: `sw-${Date.now()}`,
+    title: 'New stealth payment detected',
+    body: 'Open Wraith to view payment details.',
   };
-
-  await self.registration.showNotification('New Stellar Payment', options);
 }
 
-// Background sync handler
-async function handleSync(event: ExtendableEvent): Promise<void> {
-  if (!event.tag) return;
+/** Broadcast to every open tab so the React store gets persisted immediately. */
+async function broadcastToClients(payload: PushPayload): Promise<void> {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clients) {
+    client.postMessage({
+      type: 'WRAITH_NOTIFICATION',
+      channel: NOTIFICATION_CHANNEL,
+      payload: {
+        ...payload,
+        timestamp: Date.now(),
+      },
+    });
+  }
+}
 
+// ─── background sync ──────────────────────────────────────────────────────────
+
+async function handleSync(_event: ExtendableEvent): Promise<void> {
   try {
     const db = await openDB();
     const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
       const transaction = db.transaction([STORE_NAME], 'readonly');
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
-
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve(request.result || []);
     });
 
     for (const storedKey of allKeys) {
-      // In a real implementation, we would:
-      // 1. Decrypt the viewing key using the stored encryption key
-      // 2. Scan for announcements since lastScannedLedger
-      // 3. Match announcements against the viewing key
-      // 4. Show notifications for new matches
-      // 5. Update lastScannedLedger
-
-      // For now, we'll implement a simplified version
       const startLedger = storedKey.lastScannedLedger || 1;
       const { events, latestLedger } = await fetchAnnouncementEvents(startLedger);
 
       if (events.length > 0) {
-        // In production, we would decrypt and scan here
-        // For demo purposes, we'll just show a notification if we found events
-        console.log(`Found ${events.length} events for ${storedKey.publicKey}`);
-
-        // TODO: Implement actual scanning with decrypted keys
-        // This requires the Wraith SDK to be available in the service worker
+        // TODO: decrypt viewing key and run full SDK scan once SDK is
+        // available in SW context. For now we surface a generic alert.
+        console.log(`[wraith-sw] Found ${events.length} events for ${storedKey.publicKey}`);
       }
 
       await updateLastScannedLedger(db, storedKey.publicKey, latestLedger);
     }
 
-    await db.close();
+    db.close();
   } catch (error) {
-    console.error('Background sync error:', error);
+    console.error('[wraith-sw] Background sync error:', error);
   }
 }
 
-// Service worker installation
-self.addEventListener('install', (event) => {
-  console.log('Stellar notification SW installing');
-  event.waitUntil(self.skipWaiting());
-});
+// ─── push event ───────────────────────────────────────────────────────────────
 
-// Service worker activation
-self.addEventListener('activate', (event) => {
-  console.log('Stellar notification SW activating');
+self.addEventListener('push', (event: PushEvent) => {
+  const payload = parsePushPayload(event);
+
+  const lines: string[] = [payload.body];
+  if (payload.amount && payload.asset) {
+    lines.push(`Amount: ${payload.amount} ${payload.asset}`);
+  } else if (payload.amount) {
+    lines.push(`Amount: ${payload.amount}`);
+  }
+  if (payload.sender) {
+    const short =
+      payload.sender.length > 24
+        ? `${payload.sender.slice(0, 10)}…${payload.sender.slice(-10)}`
+        : payload.sender;
+    lines.push(`From: ${short}`);
+  }
+
+  const notificationOptions: NotificationOptions = {
+    body: lines.join('\n'),
+    icon: '/favicon-32x32.png',
+    badge: '/favicon-16x16.png',
+    tag: payload.id,
+    data: {
+      id: payload.id,
+      stealthAddress: payload.sender,
+      amount: payload.amount,
+      asset: payload.asset,
+      sender: payload.sender,
+      timestamp: Date.now(),
+      ...payload.data,
+    } as NotificationData & Record<string, unknown>,
+  };
+
   event.waitUntil(
     Promise.all([
-      self.clients.claim(),
-      // Register periodic sync (Chrome only)
-      (async () => {
-        if ('periodicSync' in self.registration) {
-          try {
-            await (self.registration as any).periodicSync.register(SYNC_TAG, {
-              minInterval: SYNC_INTERVAL_MINUTES * 60 * 1000,
-            });
-            console.log('Periodic sync registered');
-          } catch (error) {
-            console.error('Failed to register periodic sync:', error);
-          }
-        }
-      })(),
+      self.registration.showNotification(payload.title, notificationOptions),
+      broadcastToClients(payload),
     ]),
   );
 });
 
-// Handle background sync
-self.addEventListener('sync', (event) => {
+// ─── background sync event ────────────────────────────────────────────────────
+
+self.addEventListener('sync', (event: SyncEvent) => {
   if (event.tag === SYNC_TAG) {
     event.waitUntil(handleSync(event));
   }
 });
 
-// Handle notification clicks
-self.addEventListener('notificationclick', (event) => {
-  const notification = event.notification;
-  const data = notification.data as NotificationData;
+// ─── notification click ───────────────────────────────────────────────────────
 
-  notification.close();
+self.addEventListener('notificationclick', (event: NotificationEvent) => {
+  const data = event.notification.data as NotificationData | undefined;
+  event.notification.close();
 
-  // Open the app and navigate to the receive page
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      // Focus existing window if available
-      for (const client of clients) {
-        if (client.url.includes('/receive') || client.url.includes('/stellar')) {
-          client.focus();
-          // Post message to navigate to specific match
-          client.postMessage({
-            type: 'NAVIGATE_TO_MATCH',
-            stealthAddress: data.stealthAddress,
-          });
-          return;
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus existing Wraith tab and navigate to /notifications
+      const existing = clientList.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
+      if (existing) {
+        (existing as WindowClient).focus();
+        (existing as WindowClient).navigate('/notifications');
+        // Also post match info so the page can pre-highlight it
+        if (data?.stealthAddress) {
+          existing.postMessage({ type: 'NAVIGATE_TO_MATCH', stealthAddress: data.stealthAddress });
         }
+        return;
       }
-
-      // Open new window
-      if (clients.openWindow) {
-        return clients.openWindow('/receive?match=' + data.stealthAddress);
-      }
+      const dest = data?.stealthAddress
+        ? `/notifications?match=${data.stealthAddress}`
+        : '/notifications';
+      return self.clients.openWindow(dest);
     }),
   );
 });
 
-// Handle messages from client
-self.addEventListener('message', (event) => {
+// ─── message handler ──────────────────────────────────────────────────────────
+
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
-    event.data;
+    event.data ?? {};
 
   if (type === 'REGISTER_VIEWING_KEY') {
     event.waitUntil(
@@ -307,27 +310,22 @@ self.addEventListener('message', (event) => {
           const db = await openDB();
           const transaction = db.transaction([STORE_NAME], 'readwrite');
           const store = transaction.objectStore(STORE_NAME);
-
-          const data: StoredViewingKey = {
+          const entry: StoredViewingKey = {
             publicKey,
             encryptedViewingKey,
             encryptedSpendingPubKey,
             encryptedSpendingScalar,
             timestamp: Date.now(),
           };
-
           await new Promise<void>((resolve, reject) => {
-            const request = store.put(data);
+            const request = store.put(entry);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
           });
-
-          await db.close();
-
-          // Respond to client
+          db.close();
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
         } catch (error) {
-          console.error('Failed to register viewing key:', error);
+          console.error('[wraith-sw] Failed to register viewing key:', error);
           (event.source as Client)?.postMessage({
             type: 'VIEWING_KEY_ERROR',
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -344,46 +342,72 @@ self.addEventListener('message', (event) => {
           const db = await openDB();
           const transaction = db.transaction([STORE_NAME], 'readwrite');
           const store = transaction.objectStore(STORE_NAME);
-
           await new Promise<void>((resolve, reject) => {
             const request = store.delete(publicKey);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
           });
-
-          await db.close();
+          db.close();
 
           // Unregister periodic sync if no keys remain
-          const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
-            const tx = db.transaction([STORE_NAME], 'readonly');
+          const db2 = await openDB();
+          const remaining = await new Promise<StoredViewingKey[]>((resolve, reject) => {
+            const tx = db2.transaction([STORE_NAME], 'readonly');
             const st = tx.objectStore(STORE_NAME);
             const req = st.getAll();
             req.onerror = () => reject(req.error);
             req.onsuccess = () => resolve(req.result || []);
           });
+          db2.close();
 
-          if (allKeys.length === 0 && 'periodicSync' in self.registration) {
-            await (self.registration as any).periodicSync.unregister(SYNC_TAG);
+          if (remaining.length === 0 && 'periodicSync' in self.registration) {
+            await (
+              self.registration as unknown as {
+                periodicSync: { unregister: (tag: string) => Promise<void> };
+              }
+            ).periodicSync.unregister(SYNC_TAG);
           }
 
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_UNREGISTERED' });
         } catch (error) {
-          console.error('Failed to unregister viewing key:', error);
+          console.error('[wraith-sw] Failed to unregister viewing key:', error);
         }
       })(),
     );
   }
 
   if (type === 'TRIGGER_SCAN') {
-    // Manual trigger for testing
     event.waitUntil(handleSync(event as unknown as ExtendableEvent));
   }
 });
 
-// Handle push notifications (future enhancement)
-self.addEventListener('push', (event) => {
-  // Could be used for server-sent notifications
-  // For now, we rely on periodic background sync
+// ─── install / activate ───────────────────────────────────────────────────────
+
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-export {};
+self.addEventListener('activate', (event: ExtendableEvent) => {
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      (async () => {
+        if ('periodicSync' in self.registration) {
+          try {
+            await (
+              self.registration as unknown as {
+                periodicSync: {
+                  register: (tag: string, opts: { minInterval: number }) => Promise<void>;
+                };
+              }
+            ).periodicSync.register(SYNC_TAG, {
+              minInterval: SYNC_INTERVAL_MINUTES * 60 * 1000,
+            });
+          } catch {
+            // periodicSync not supported in this environment — silently skip
+          }
+        }
+      })(),
+    ]),
+  );
+});

@@ -9,6 +9,7 @@ interface StellarWalletContextValue {
   isConnected: boolean;
   isInstalled: boolean | null; // null while the initial extension check is in-flight
   isNetworkMismatch: boolean;
+  freighterNetwork: string | null;
   connect: () => Promise<void>;
   disconnect: () => void;
   signMessage: (message: string) => Promise<Uint8Array>;
@@ -30,7 +31,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   const [address, setAddress] = useState<string | null>(null);
   const [isInstalled, setIsInstalled] = useState<boolean | null>(null);
   const [freighterPassphrase, setFreighterPassphrase] = useState<string | null>(null);
-
+  const [freighterNetwork, setFreighterNetwork] = useState<string | null>(null);
   const tabId = useRef(crypto.randomUUID());
   const channelRef = useRef<BroadcastChannel | null>(null);
   const passPhraseRef = useRef<string | null>(null);
@@ -120,6 +121,10 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
           passPhraseRef.current = pass;
         }
 
+        if (details.network) {
+          setFreighterNetwork(details.network);
+        }
+
         // Restore silently only if user has not explicitly disconnected this session
         const { isAllowed: allowed } = await freighter.isAllowed();
         if (allowed && !manuallyDisconnected.current) {
@@ -142,10 +147,12 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
         w.watch(
           ({
             address: newAddr,
+            network: newNetwork,
             networkPassphrase: newPass,
             error,
           }: {
             address?: string;
+            network?: string;
             networkPassphrase?: string;
             error?: unknown;
           }) => {
@@ -157,6 +164,9 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
             if (newPass && newPass !== passPhraseRef.current) {
               passPhraseRef.current = newPass;
               setFreighterPassphrase(newPass);
+              if (newNetwork) {
+                setFreighterNetwork(newNetwork);
+              }
               fireListeners();
               channelRef.current?.postMessage({
                 type: 'NETWORK_CHANGED',
@@ -318,6 +328,7 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
         isConnected,
         isInstalled,
         isNetworkMismatch,
+        freighterNetwork,
         connect,
         disconnect,
         signMessage,
