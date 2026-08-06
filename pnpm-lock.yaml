@@ -104,6 +104,24 @@ importers:
       wagmi:
         specifier: ^2.14.0
         version: 2.19.5(@react-native-async-storage/async-storage@1.24.0(react-native@0.85.1(@babel/core@7.29.0)(@types/react@19.2.14)(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@6.0.6)))(@tanstack/query-core@5.99.0)(@tanstack/react-query@5.99.0(react@19.2.5))(@types/react@19.2.14)(bufferutil@4.1.0)(react-native@0.85.1(@babel/core@7.29.0)(@types/react@19.2.14)(bufferutil@4.1.0)(react@19.2.5)(utf-8-validate@6.0.6))(react@19.2.5)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.47.17(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))(zod@3.25.76)
+      workbox-cacheable-response:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-expiration:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-precaching:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-routing:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-strategies:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-window:
+        specifier: ^7.4.1
+        version: 7.4.1
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.14)(react@19.2.5)(use-sync-external-store@1.4.0(react@19.2.5))
@@ -13951,7 +13969,7 @@ snapshots:
   get-proto@1.0.1:
     dependencies:
       dunder-proto: 1.0.1
-      es-object-atoms: 1.1.1
+      es-object-atoms: 1.1.2
 
   get-stdin@5.0.1: {}
 
@@ -17199,6 +17217,17 @@ snapshots:
       - bufferutil
       - utf-8-validate
       - zod
+
+  vite-plugin-pwa@0.21.1(vite@6.4.2(@types/node@26.1.1)(jiti@1.21.7)(terser@5.46.1)(yaml@2.8.3))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1):
+    dependencies:
+      debug: 4.4.3
+      pretty-bytes: 6.1.1
+      tinyglobby: 0.2.16
+      vite: 6.4.2(@types/node@26.1.1)(jiti@1.21.7)(terser@5.46.1)(yaml@2.8.3)
+      workbox-build: 7.4.1(@types/babel__core@7.20.5)
+      workbox-window: 7.4.1
+    transitivePeerDependencies:
+      - supports-color
 
   vite@6.4.2(@types/node@26.1.1)(jiti@1.21.7)(terser@5.46.1)(yaml@2.8.3):
     dependencies:

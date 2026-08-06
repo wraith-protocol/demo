@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
 import { TelemetryBanner } from '@/components/TelemetryBanner';
-import { TourLauncher } from '@/components/TourLauncher';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import Send from '@/pages/Send';
 import Receive from '@/pages/Receive';
 import Privacy from '@/pages/Privacy';
