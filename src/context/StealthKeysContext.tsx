@@ -103,11 +103,21 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     setIsRecoveryMode(true);
     setIsReadOnly(!kitData.spendingScalarHex);
 
-    const viewingKey = kitData.viewingScalarHex ? hexToBytes(kitData.viewingScalarHex) : new Uint8Array(32);
-    const spendingPubKey = kitData.spendingPubKeyHex ? hexToBytes(kitData.spendingPubKeyHex) : new Uint8Array(32);
-    const viewingPubKey = kitData.viewingPubKeyHex ? hexToBytes(kitData.viewingPubKeyHex) : new Uint8Array(32);
+    const viewingKey = kitData.viewingScalarHex
+      ? hexToBytes(kitData.viewingScalarHex)
+      : new Uint8Array(32);
+    const spendingPubKey = kitData.spendingPubKeyHex
+      ? hexToBytes(kitData.spendingPubKeyHex)
+      : new Uint8Array(32);
+    const viewingPubKey = kitData.viewingPubKeyHex
+      ? hexToBytes(kitData.viewingPubKeyHex)
+      : new Uint8Array(32);
     const spendingScalar = kitData.spendingScalarHex
-      ? BigInt(kitData.spendingScalarHex.startsWith('0x') ? kitData.spendingScalarHex : `0x${kitData.spendingScalarHex}`)
+      ? BigInt(
+          kitData.spendingScalarHex.startsWith('0x')
+            ? kitData.spendingScalarHex
+            : `0x${kitData.spendingScalarHex}`,
+        )
       : undefined;
 
     const chain = kitData.chain?.toLowerCase() || '';
@@ -210,4 +220,3 @@ export function useStealthKeys() {
   if (!ctx) throw new Error('useStealthKeys must be used within StealthKeysProvider');
   return ctx;
 }
-

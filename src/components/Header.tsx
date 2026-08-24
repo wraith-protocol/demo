@@ -44,7 +44,6 @@ export function Header() {
             )}
           </Link>
 
-
           <nav className="hidden gap-0 sm:flex">
             {navLinks.map((link) => (
               <Link
