@@ -3,14 +3,17 @@ import {
   Account,
   Contract,
   nativeToScVal,
+  scValToNative,
   Address,
   xdr,
 } from '@stellar/stellar-sdk';
+import { Buffer } from 'buffer';
 import { STELLAR_NETWORK } from '@/config';
 
-// Wraith Names contract ID on Stellar Testnet
-// TODO: Replace with actual contract ID from deployment
-export const NAMES_CONTRACT_ID = 'CD3Z7J2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
+// Override for futurenet recordings or a new deployment without rebuilding this module.
+export const NAMES_CONTRACT_ID =
+  import.meta.env.VITE_WRAITH_NAMES_CONTRACT_ID ||
+  'CD3Z7J2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 
 export interface NameMetadata {
   avatar_url?: string;
@@ -43,6 +46,236 @@ export interface RenewParams {
 export interface MetadataParams {
   name: string;
   metadata: NameMetadata;
+}
+
+export interface NameAuction {
+  name: string;
+  commitEnd: number;
+  revealEnd: number;
+  highestBidder: string | null;
+  highestAmount: bigint;
+  settled: boolean;
+}
+
+export interface NameAuctionConfig {
+  reservePrice: bigint;
+  minBidIncrement: bigint;
+  commitSecs: number;
+  revealSecs: number;
+}
+
+export interface CommitBidParams {
+  name: string;
+  commitmentHex: string;
+  deposit: bigint;
+}
+
+export interface RevealBidParams {
+  name: string;
+  amount: bigint;
+  saltHex: string;
+}
+
+export const MIN_AUCTION_BID_INCREMENT = 1_000_000n; // 0.1 XLM in stroops
+
+async function getSourceAccount(fromAddress: string) {
+  const accountRes = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${fromAddress}`);
+  if (!accountRes.ok) throw new Error('Failed to load account');
+  const accountData = (await accountRes.json()) as { sequence: string };
+  return new Account(fromAddress, accountData.sequence);
+}
+
+async function simulateRead<T>(operation: xdr.Operation): Promise<T> {
+  const { rpc } = await import('@stellar/stellar-sdk');
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+  const tx = new TransactionBuilder(
+    new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+    { fee: '100', networkPassphrase: STELLAR_NETWORK.networkPassphrase },
+  )
+    .addOperation(operation)
+    .setTimeout(30)
+    .build();
+  const simulation = await server.simulateTransaction(tx);
+  if ('error' in simulation) throw new Error(simulation.error);
+  if (!simulation.result) throw new Error('Contract returned no result');
+  return scValToNative(simulation.result.retval) as T;
+}
+
+async function buildAuctionTransaction(fromAddress: string, operation: xdr.Operation) {
+  const { rpc } = await import('@stellar/stellar-sdk');
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+  const sourceAccount = await getSourceAccount(fromAddress);
+  const tx = new TransactionBuilder(sourceAccount, {
+    fee: '100',
+    networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+  })
+    .addOperation(operation)
+    .setTimeout(30)
+    .build();
+  const simulation = await server.simulateTransaction(tx);
+  if ('error' in simulation) throw new Error(simulation.error);
+  return rpc.assembleTransaction(tx, simulation).build().toXDR();
+}
+
+function bytesScVal(hex: string) {
+  const normalized = hex.startsWith('0x') ? hex.slice(2) : hex;
+  if (!/^[0-9a-f]{64}$/i.test(normalized)) throw new Error('Expected a 32-byte hex value');
+  return xdr.ScVal.scvBytes(Buffer.from(normalized, 'hex'));
+}
+
+function normalizeAuction(value: Record<string, unknown> | null): NameAuction | null {
+  if (!value) return null;
+  return {
+    name: String(value.name ?? ''),
+    commitEnd: Number(value.commit_end ?? 0),
+    revealEnd: Number(value.reveal_end ?? 0),
+    highestBidder: value.highest_bidder ? String(value.highest_bidder) : null,
+    highestAmount: BigInt(String(value.highest_amount ?? 0)),
+    settled: Boolean(value.settled),
+  };
+}
+
+export async function getNameAuction(name: string): Promise<NameAuction | null> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  const value = await simulateRead<Record<string, unknown> | null>(
+    contract.call('get_auction', nativeToScVal(name.trim().toLowerCase())),
+  );
+  return normalizeAuction(value);
+}
+
+export async function getNameAuctionConfig(): Promise<NameAuctionConfig | null> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  const value = await simulateRead<Record<string, unknown> | null>(contract.call('auction_config'));
+  if (!value) return null;
+  return {
+    reservePrice: BigInt(String(value.reserve_price ?? 0)),
+    minBidIncrement: BigInt(
+      String(value.min_increment ?? value.min_bid_increment ?? MIN_AUCTION_BID_INCREMENT),
+    ),
+    commitSecs: Number(value.commit_secs ?? 0),
+    revealSecs: Number(value.reveal_secs ?? 0),
+  };
+}
+
+export async function getActiveNameAuctions(names: string[]): Promise<NameAuction[]> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  try {
+    const values = await simulateRead<Array<Record<string, unknown>>>(
+      contract.call('get_active_auctions'),
+    );
+    if (Array.isArray(values)) {
+      return values
+        .map((value) => normalizeAuction(value))
+        .filter((auction): auction is NameAuction => auction !== null);
+    }
+  } catch {
+    // Current sealed-bid deployments expose lookup-by-name only. Fall back to
+    // the locally tracked names while remaining compatible with enumerable ABIs.
+  }
+
+  const uniqueNames = [...new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean))];
+  const auctions = await Promise.all(
+    uniqueNames.map(async (name) => {
+      try {
+        return await getNameAuction(name);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return auctions.filter((auction): auction is NameAuction => auction !== null);
+}
+
+export async function computeNameBidCommitment(
+  bidder: string,
+  name: string,
+  amount: bigint,
+  saltHex: string,
+): Promise<string> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  const commitment = await simulateRead<Uint8Array>(
+    contract.call(
+      'compute_commitment',
+      nativeToScVal(name.trim().toLowerCase()),
+      new Address(bidder).toScVal(),
+      nativeToScVal(amount, { type: 'i128' }),
+      bytesScVal(saltHex),
+    ),
+  );
+  return Buffer.from(commitment).toString('hex');
+}
+
+export async function buildCommitNameBidTransaction(
+  bidder: string,
+  params: CommitBidParams,
+): Promise<string> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  return buildAuctionTransaction(
+    bidder,
+    contract.call(
+      'commit_bid',
+      new Address(bidder).toScVal(),
+      nativeToScVal(params.name.trim().toLowerCase()),
+      bytesScVal(params.commitmentHex),
+      nativeToScVal(params.deposit, { type: 'i128' }),
+    ),
+  );
+}
+
+export async function buildRevealNameBidTransaction(
+  bidder: string,
+  params: RevealBidParams,
+): Promise<string> {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  return buildAuctionTransaction(
+    bidder,
+    contract.call(
+      'reveal_bid',
+      new Address(bidder).toScVal(),
+      nativeToScVal(params.name.trim().toLowerCase()),
+      nativeToScVal(params.amount, { type: 'i128' }),
+      bytesScVal(params.saltHex),
+    ),
+  );
+}
+
+export async function buildSettleNameAuctionTransaction(fromAddress: string, name: string) {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  return buildAuctionTransaction(
+    fromAddress,
+    contract.call('settle_auction', nativeToScVal(name.trim().toLowerCase())),
+  );
+}
+
+export async function buildRefundNameBidTransaction(bidder: string, name: string) {
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  return buildAuctionTransaction(
+    bidder,
+    contract.call(
+      'withdraw_bid',
+      new Address(bidder).toScVal(),
+      nativeToScVal(name.trim().toLowerCase()),
+    ),
+  );
+}
+
+export async function buildClaimAuctionNameTransaction(
+  winner: string,
+  name: string,
+  stealthMetaAddress: Uint8Array,
+) {
+  if (stealthMetaAddress.length !== 64)
+    throw new Error('A 64-byte stealth meta-address is required');
+  const contract = new Contract(NAMES_CONTRACT_ID);
+  return buildAuctionTransaction(
+    winner,
+    contract.call(
+      'claim_name',
+      new Address(winner).toScVal(),
+      nativeToScVal(name.trim().toLowerCase()),
+      xdr.ScVal.scvBytes(Buffer.from(stealthMetaAddress)),
+    ),
+  );
 }
 
 /**

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { stellarTxUrl } from '@/lib/explorer';
 import {
@@ -13,6 +14,7 @@ import {
   type NameMetadata,
 } from '@/lib/stellar/names';
 import { CopyButton } from '@/components/CopyButton';
+import { useNameWatchlistStore } from '@/store/nameWatchlistStore';
 
 const DEFAULT_REGISTRATION_DURATION = 365 * 24 * 60 * 60; // 1 year in seconds
 
@@ -32,6 +34,11 @@ export default function Names() {
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const watchedAuctions = useNameWatchlistStore((state) => state.watchedAuctions);
+  const now = Math.floor(Date.now() / 1000);
+  const endingSoonAuctions = watchedAuctions.filter(
+    (auction) => auction.endsAt > now && auction.endsAt - now < 24 * 60 * 60,
+  );
 
   // Register form
   const [registerName, setRegisterName] = useState('');
@@ -267,7 +274,35 @@ export default function Names() {
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
           Register, transfer, and manage your Wraith Names. Set metadata to customize your identity.
         </p>
+        <Link
+          to="/names/auctions"
+          className="mt-2 w-fit font-heading text-[10px] font-semibold uppercase tracking-widest text-primary underline"
+        >
+          Browse name auctions
+        </Link>
       </div>
+
+      {endingSoonAuctions.length > 0 && (
+        <div className="border border-tertiary bg-surface-container p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
+                Watched auctions ending soon
+              </span>
+              <p className="mt-2 font-body text-sm text-on-surface-variant">
+                {endingSoonAuctions.map((auction) => `${auction.name}.wraith`).join(', ')}{' '}
+                {endingSoonAuctions.length === 1 ? 'ends' : 'end'} in under 24 hours.
+              </p>
+            </div>
+            <Link
+              to="/names/auctions"
+              className="shrink-0 font-heading text-[10px] uppercase tracking-widest text-primary underline"
+            >
+              View
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-outline-variant">
