@@ -396,4 +396,44 @@ export class KeyVault {
       this.resetIdleTimer();
     }
   }
+
+  async exportRecoveryKit(
+    label: string,
+    passphrase: string,
+    metaAddress: string,
+    chain = 'stellar',
+    labels?: Record<string, any>,
+  ) {
+    const keys = await this.get<any>(label);
+    if (!keys) {
+      throw new Error(`No keys found in vault for label "${label}"`);
+    }
+
+    const { exportRecoveryKit: exportKit, bytesToHex: bToHex } = await import('@/lib/stellar/recoveryKit');
+
+    const viewingScalarHex = keys.viewingKey
+      ? typeof keys.viewingKey === 'string'
+        ? keys.viewingKey
+        : bToHex(keys.viewingKey)
+      : '';
+    const viewingPubKeyHex = keys.viewingPubKey ? bToHex(keys.viewingPubKey) : undefined;
+    const spendingPubKeyHex = keys.spendingPubKey ? bToHex(keys.spendingPubKey) : undefined;
+    const spendingScalarHex = keys.spendingScalar
+      ? typeof keys.spendingScalar === 'bigint'
+        ? keys.spendingScalar.toString(16).padStart(64, '0')
+        : String(keys.spendingScalar)
+      : undefined;
+
+    return exportKit({
+      passphrase,
+      chain,
+      metaAddress,
+      viewingScalarHex,
+      viewingPubKeyHex,
+      spendingPubKeyHex,
+      spendingScalarHex,
+      labels,
+    });
+  }
 }
+

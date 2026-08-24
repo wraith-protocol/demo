@@ -4,6 +4,8 @@ import type { StealthKeys as EVMStealthKeys } from '@wraith-protocol/sdk/chains/
 import type { StealthKeys as StellarStealthKeys } from '@wraith-protocol/sdk/chains/stellar';
 import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chains/solana';
 import type { StealthKeys as CKBStealthKeys } from '@wraith-protocol/sdk/chains/ckb';
+import { hexToBytes, type RecoveryKitData } from '@/lib/stellar/recoveryKit';
+import { importLabels } from '@/lib/stealthLabels';
 
 interface StealthKeysContextValue {
   evmKeys: EVMStealthKeys | null;
@@ -14,6 +16,12 @@ interface StealthKeysContextValue {
   solanaMetaAddress: string | null;
   ckbKeys: CKBStealthKeys | null;
   ckbMetaAddress: string | null;
+  isRecoveryMode: boolean;
+  isReadOnly: boolean;
+  setIsRecoveryMode: (active: boolean) => void;
+  setIsReadOnly: (readOnly: boolean) => void;
+  restoreFromRecoveryKit: (kitData: RecoveryKitData) => void;
+  exitRecoveryMode: () => void;
   setEvmKeys: (keys: EVMStealthKeys) => void;
   setEvmMetaAddress: (metaAddress: string) => void;
   setStellarKeys: (keys: StellarStealthKeys) => void;
@@ -51,22 +59,113 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
   const [solanaMetaAddress, setSolanaMetaAddress] = useState<string | null>(null);
   const [ckbKeys, setCkbKeys] = useState<CKBStealthKeys | null>(null);
   const [ckbMetaAddress, setCkbMetaAddress] = useState<string | null>(null);
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   const clearEvm = useCallback(() => {
+    if (isRecoveryMode) return;
     setEvmKeys(null);
     setEvmMetaAddress(null);
-  }, []);
+  }, [isRecoveryMode]);
+
   const clearStellar = useCallback(() => {
+    if (isRecoveryMode) return;
     setStellarKeys(null);
     setStellarMetaAddress(null);
-  }, []);
+  }, [isRecoveryMode]);
+
   const clearSolana = useCallback(() => {
+    if (isRecoveryMode) return;
     setSolanaKeys(null);
     setSolanaMetaAddress(null);
-  }, []);
+  }, [isRecoveryMode]);
+
   const clearCkb = useCallback(() => {
+    if (isRecoveryMode) return;
     setCkbKeys(null);
     setCkbMetaAddress(null);
+  }, [isRecoveryMode]);
+
+  const exitRecoveryMode = useCallback(() => {
+    setIsRecoveryMode(false);
+    setIsReadOnly(false);
+    setEvmKeys(null);
+    setEvmMetaAddress(null);
+    setStellarKeys(null);
+    setStellarMetaAddress(null);
+    setSolanaKeys(null);
+    setSolanaMetaAddress(null);
+    setCkbKeys(null);
+    setCkbMetaAddress(null);
+  }, []);
+
+  const restoreFromRecoveryKit = useCallback((kitData: RecoveryKitData) => {
+    setIsRecoveryMode(true);
+    setIsReadOnly(!kitData.spendingScalarHex);
+
+    const viewingKey = kitData.viewingScalarHex ? hexToBytes(kitData.viewingScalarHex) : new Uint8Array(32);
+    const spendingPubKey = kitData.spendingPubKeyHex ? hexToBytes(kitData.spendingPubKeyHex) : new Uint8Array(32);
+    const viewingPubKey = kitData.viewingPubKeyHex ? hexToBytes(kitData.viewingPubKeyHex) : new Uint8Array(32);
+    const spendingScalar = kitData.spendingScalarHex
+      ? BigInt(kitData.spendingScalarHex.startsWith('0x') ? kitData.spendingScalarHex : `0x${kitData.spendingScalarHex}`)
+      : undefined;
+
+    const chain = kitData.chain?.toLowerCase() || '';
+
+    if (chain === 'stellar' || kitData.metaAddress?.startsWith('st:xlm:')) {
+      const keys: StellarStealthKeys = {
+        viewingKey,
+        spendingPubKey,
+        viewingPubKey,
+        spendingScalar: spendingScalar as any,
+      };
+      setStellarKeys(keys);
+      setStellarMetaAddress(kitData.metaAddress);
+    } else if (chain === 'horizen' || kitData.metaAddress?.startsWith('st:eth:')) {
+      const keys: EVMStealthKeys = {
+        viewingKey: kitData.viewingScalarHex as any,
+        spendingPubKey: (kitData.spendingPubKeyHex || '') as any,
+        viewingPubKey: (kitData.viewingPubKeyHex || '') as any,
+        spendingScalar: (kitData.spendingScalarHex || '') as any,
+      };
+      setEvmKeys(keys);
+      setEvmMetaAddress(kitData.metaAddress);
+    } else if (chain === 'solana' || kitData.metaAddress?.startsWith('st:sol:')) {
+      const keys: SolanaStealthKeys = {
+        viewingKey,
+        spendingPubKey,
+        viewingPubKey,
+        spendingScalar: spendingScalar as any,
+      };
+      setSolanaKeys(keys);
+      setSolanaMetaAddress(kitData.metaAddress);
+    } else if (chain === 'ckb' || kitData.metaAddress?.startsWith('st:ckb:')) {
+      const keys: CKBStealthKeys = {
+        viewingKey: kitData.viewingScalarHex as any,
+        spendingPubKey: (kitData.spendingPubKeyHex || '') as any,
+        viewingPubKey: (kitData.viewingPubKeyHex || '') as any,
+        spendingScalar: (kitData.spendingScalarHex || '') as any,
+      };
+      setCkbKeys(keys);
+      setCkbMetaAddress(kitData.metaAddress);
+    } else {
+      const keys: StellarStealthKeys = {
+        viewingKey,
+        spendingPubKey,
+        viewingPubKey,
+        spendingScalar: spendingScalar as any,
+      };
+      setStellarKeys(keys);
+      setStellarMetaAddress(kitData.metaAddress);
+    }
+
+    if (kitData.labels) {
+      try {
+        importLabels(kitData.metaAddress, JSON.stringify(kitData.labels), true);
+      } catch {
+        // Labels restore optional
+      }
+    }
   }, []);
 
   return (
@@ -80,6 +179,12 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
         solanaMetaAddress,
         ckbKeys,
         ckbMetaAddress,
+        isRecoveryMode,
+        isReadOnly,
+        setIsRecoveryMode,
+        setIsReadOnly,
+        restoreFromRecoveryKit,
+        exitRecoveryMode,
         setEvmKeys,
         setEvmMetaAddress,
         setStellarKeys,
@@ -105,3 +210,4 @@ export function useStealthKeys() {
   if (!ctx) throw new Error('useStealthKeys must be used within StealthKeysProvider');
   return ctx;
 }
+

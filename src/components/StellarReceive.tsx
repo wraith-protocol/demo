@@ -1237,7 +1237,7 @@ export function StellarReceive() {
     }
   }, [notifications]);
 
-  if (!isConnected) {
+  if (!isConnected && !stellarKeys) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
