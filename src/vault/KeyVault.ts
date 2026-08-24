@@ -409,7 +409,8 @@ export class KeyVault {
       throw new Error(`No keys found in vault for label "${label}"`);
     }
 
-    const { exportRecoveryKit: exportKit, bytesToHex: bToHex } = await import('@/lib/stellar/recoveryKit');
+    const { exportRecoveryKit: exportKit, bytesToHex: bToHex } =
+      await import('@/lib/stellar/recoveryKit');
 
     const viewingScalarHex = keys.viewingKey
       ? typeof keys.viewingKey === 'string'
@@ -436,4 +437,3 @@ export class KeyVault {
     });
   }
 }
-

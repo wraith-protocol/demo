@@ -42,14 +42,20 @@ export default function Settings() {
   // Export State
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [includeSpendingScalar, setIncludeSpendingScalar] = useState(true);
-  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [exportMessage, setExportMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
   // Restore State
   const [restorePassphrase, setRestorePassphrase] = useState('');
   const [selectedFileContent, setSelectedFileContent] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const [restoreMessage, setRestoreMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [restoreMessage, setRestoreMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,8 +114,12 @@ export default function Settings() {
           : bytesToHex(activeKeys.viewingKey)
         : '';
 
-      const viewingPubKeyHex = activeKeys.viewingPubKey ? bytesToHex(activeKeys.viewingPubKey) : undefined;
-      const spendingPubKeyHex = activeKeys.spendingPubKey ? bytesToHex(activeKeys.spendingPubKey) : undefined;
+      const viewingPubKeyHex = activeKeys.viewingPubKey
+        ? bytesToHex(activeKeys.viewingPubKey)
+        : undefined;
+      const spendingPubKeyHex = activeKeys.spendingPubKey
+        ? bytesToHex(activeKeys.spendingPubKey)
+        : undefined;
 
       let spendingScalarHex: string | undefined = undefined;
       if (includeSpendingScalar && activeKeys.spendingScalar) {
@@ -178,7 +188,10 @@ export default function Settings() {
     }
 
     if (!restorePassphrase) {
-      setRestoreMessage({ type: 'error', text: 'Enter the passphrase used when creating the recovery kit.' });
+      setRestoreMessage({
+        type: 'error',
+        text: 'Enter the passphrase used when creating the recovery kit.',
+      });
       return;
     }
 
@@ -251,13 +264,15 @@ export default function Settings() {
           Export Recovery Kit
         </legend>
         <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-          Export an AES-GCM passphrase-encrypted JSON recovery kit containing your stealth viewing scalar,
-          meta-address, active chain, and profile labels. Back it up offline to regain scan access on a fresh browser.
+          Export an AES-GCM passphrase-encrypted JSON recovery kit containing your stealth viewing
+          scalar, meta-address, active chain, and profile labels. Back it up offline to regain scan
+          access on a fresh browser.
         </p>
 
         <div className="border border-outline-variant/60 bg-surface/50 p-3 font-mono text-xs text-on-surface-variant">
           <span className="font-semibold text-on-surface">Security Notice: </span>
-          The kit gives scan access (viewing scalar) and, if included below, spend authority (spending scalar). Keep your passphrase and backup file safe!
+          The kit gives scan access (viewing scalar) and, if included below, spend authority
+          (spending scalar). Keep your passphrase and backup file safe!
         </div>
 
         {activeMetaAddress ? (
@@ -271,7 +286,8 @@ export default function Settings() {
           </div>
         ) : (
           <p className="font-mono text-xs text-amber-400">
-            No active stealth keys found for current chain ({chain}). Connect wallet or derive keys on Receive page to export a kit.
+            No active stealth keys found for current chain ({chain}). Connect wallet or derive keys
+            on Receive page to export a kit.
           </p>
         )}
 
@@ -364,7 +380,8 @@ export default function Settings() {
           Restore Recovery Kit
         </legend>
         <p className="font-body text-xs leading-relaxed text-on-surface-variant">
-          Restore a passphrase-encrypted JSON recovery kit on a fresh browser to unlock receive-only scanning mode without needing the original wallet.
+          Restore a passphrase-encrypted JSON recovery kit on a fresh browser to unlock receive-only
+          scanning mode without needing the original wallet.
         </p>
 
         <input

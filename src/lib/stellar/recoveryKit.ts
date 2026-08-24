@@ -91,13 +91,9 @@ async function deriveKey(
   iterations: number,
 ): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey'],
-  );
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, [
+    'deriveKey',
+  ]);
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
