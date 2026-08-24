@@ -123,49 +123,55 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     const chain = kitData.chain?.toLowerCase() || '';
 
     if (chain === 'stellar' || kitData.metaAddress?.startsWith('st:xlm:')) {
-      const keys: StellarStealthKeys = {
+      const keys: any = {
         viewingKey,
+        viewingScalar: viewingKey,
+        spendingKey: spendingPubKey,
         spendingPubKey,
         viewingPubKey,
-        spendingScalar: spendingScalar as any,
+        spendingScalar,
       };
-      setStellarKeys(keys);
+      setStellarKeys(keys as StellarStealthKeys);
       setStellarMetaAddress(kitData.metaAddress);
     } else if (chain === 'horizen' || kitData.metaAddress?.startsWith('st:eth:')) {
-      const keys: EVMStealthKeys = {
-        viewingKey: kitData.viewingScalarHex as any,
-        spendingPubKey: (kitData.spendingPubKeyHex || '') as any,
-        viewingPubKey: (kitData.viewingPubKeyHex || '') as any,
-        spendingScalar: (kitData.spendingScalarHex || '') as any,
+      const keys: any = {
+        viewingKey: kitData.viewingScalarHex,
+        spendingPubKey: kitData.spendingPubKeyHex || '',
+        viewingPubKey: kitData.viewingPubKeyHex || '',
+        spendingScalar: kitData.spendingScalarHex || '',
       };
-      setEvmKeys(keys);
+      setEvmKeys(keys as EVMStealthKeys);
       setEvmMetaAddress(kitData.metaAddress);
     } else if (chain === 'solana' || kitData.metaAddress?.startsWith('st:sol:')) {
-      const keys: SolanaStealthKeys = {
+      const keys: any = {
         viewingKey,
+        viewingScalar: viewingKey,
+        spendingKey: spendingPubKey,
         spendingPubKey,
         viewingPubKey,
-        spendingScalar: spendingScalar as any,
+        spendingScalar,
       };
-      setSolanaKeys(keys);
+      setSolanaKeys(keys as SolanaStealthKeys);
       setSolanaMetaAddress(kitData.metaAddress);
     } else if (chain === 'ckb' || kitData.metaAddress?.startsWith('st:ckb:')) {
-      const keys: CKBStealthKeys = {
-        viewingKey: kitData.viewingScalarHex as any,
-        spendingPubKey: (kitData.spendingPubKeyHex || '') as any,
-        viewingPubKey: (kitData.viewingPubKeyHex || '') as any,
-        spendingScalar: (kitData.spendingScalarHex || '') as any,
+      const keys: any = {
+        viewingKey: kitData.viewingScalarHex,
+        spendingPubKey: kitData.spendingPubKeyHex || '',
+        viewingPubKey: kitData.viewingPubKeyHex || '',
+        spendingScalar: kitData.spendingScalarHex || '',
       };
-      setCkbKeys(keys);
+      setCkbKeys(keys as CKBStealthKeys);
       setCkbMetaAddress(kitData.metaAddress);
     } else {
-      const keys: StellarStealthKeys = {
+      const keys: any = {
         viewingKey,
+        viewingScalar: viewingKey,
+        spendingKey: spendingPubKey,
         spendingPubKey,
         viewingPubKey,
-        spendingScalar: spendingScalar as any,
+        spendingScalar,
       };
-      setStellarKeys(keys);
+      setStellarKeys(keys as StellarStealthKeys);
       setStellarMetaAddress(kitData.metaAddress);
     }
 

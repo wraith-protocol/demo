@@ -24,7 +24,7 @@ describe('recoveryKit', () => {
   it('generates filename including meta-address prefix', () => {
     const filename = generateRecoveryFilename('st:xlm:0x1234567890abcdef');
     expect(filename).toContain('wraith-recovery-kit-1234567890ab-');
-    expect(filename).endsWith('.json');
+    expect(filename.endsWith('.json')).toBe(true);
   });
 
   it('round-trips export and import encrypted kit', async () => {

@@ -108,25 +108,31 @@ export default function Settings() {
 
     try {
       // Extract viewing and spending scalar hex
-      const viewingScalarHex = activeKeys.viewingKey
-        ? typeof activeKeys.viewingKey === 'string'
-          ? activeKeys.viewingKey
-          : bytesToHex(activeKeys.viewingKey)
+      const viewingKey = (activeKeys as any).viewingKey || (activeKeys as any).viewingScalar;
+      const viewingScalarHex = viewingKey
+        ? typeof viewingKey === 'string'
+          ? viewingKey
+          : bytesToHex(viewingKey as Uint8Array)
         : '';
 
       const viewingPubKeyHex = activeKeys.viewingPubKey
-        ? bytesToHex(activeKeys.viewingPubKey)
+        ? typeof activeKeys.viewingPubKey === 'string'
+          ? activeKeys.viewingPubKey
+          : bytesToHex(activeKeys.viewingPubKey as Uint8Array)
         : undefined;
       const spendingPubKeyHex = activeKeys.spendingPubKey
-        ? bytesToHex(activeKeys.spendingPubKey)
+        ? typeof activeKeys.spendingPubKey === 'string'
+          ? activeKeys.spendingPubKey
+          : bytesToHex(activeKeys.spendingPubKey as Uint8Array)
         : undefined;
 
       let spendingScalarHex: string | undefined = undefined;
-      if (includeSpendingScalar && activeKeys.spendingScalar) {
+      const spendingScalar = (activeKeys as any).spendingScalar;
+      if (includeSpendingScalar && spendingScalar) {
         spendingScalarHex =
-          typeof activeKeys.spendingScalar === 'bigint'
-            ? activeKeys.spendingScalar.toString(16).padStart(64, '0')
-            : String(activeKeys.spendingScalar);
+          typeof spendingScalar === 'bigint'
+            ? spendingScalar.toString(16).padStart(64, '0')
+            : String(spendingScalar);
       }
 
       // Profile labels
