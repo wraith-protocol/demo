@@ -30,6 +30,12 @@ export default defineConfig({
         background_color: '#0e0e0e',
         lang: 'en',
         categories: ['finance', 'utilities'],
+        share_target: {
+          action: '/send',
+          method: 'GET',
+          enctype: 'application/x-www-form-urlencoded',
+          params: { text: 'text' },
+        },
         icons: [
           { src: '/icons/icon-72x72.png', sizes: '72x72', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-96x96.png', sizes: '96x96', type: 'image/png', purpose: 'any' },

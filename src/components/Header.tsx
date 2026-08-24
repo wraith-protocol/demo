@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
@@ -8,12 +8,48 @@ import { NetworkChip } from './NetworkChip';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotificationsStore } from '@/stores/notificationsStore';
 
+const INSTALL_PROMPT_DISMISSED_KEY = 'wraith:pwa-install-dismissed';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
 export function Header() {
   const location = useLocation();
   const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const { theme, toggleTheme } = useTheme();
   const unreadCount = useNotificationsStore((state) => state.unreadCount());
+
+  useEffect(() => {
+    const captureInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      if (localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === 'true') return;
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const hideInstallPrompt = () => setInstallPrompt(null);
+
+    window.addEventListener('beforeinstallprompt', captureInstallPrompt);
+    window.addEventListener('appinstalled', hideInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', captureInstallPrompt);
+      window.removeEventListener('appinstalled', hideInstallPrompt);
+    };
+  }, []);
+
+  const installApp = async () => {
+    if (!installPrompt) return;
+
+    const prompt = installPrompt;
+    setInstallPrompt(null);
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    if (choice.outcome === 'dismissed') {
+      localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true');
+    }
+  };
 
   const navLinks = [
     { to: '/send', label: t('nav.send') },
@@ -60,6 +96,15 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {installPrompt && (
+            <button
+              type="button"
+              onClick={installApp}
+              className="h-8 border border-primary px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-primary hover:text-surface"
+            >
+              Install
+            </button>
+          )}
           <LocaleSwitcher />
           <button
             onClick={toggleTheme}

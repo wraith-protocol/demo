@@ -10,6 +10,14 @@
   "background_color": "#0e0e0e",
   "lang": "en",
   "categories": ["finance", "utilities"],
+  "share_target": {
+    "action": "/send",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "text": "text"
+    }
+  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",

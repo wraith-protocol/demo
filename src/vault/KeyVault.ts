@@ -1,3 +1,5 @@
+import { IdleLock } from '@/lib/idleLock';
+
 type VaultMetadata = {
   id: 'vault-meta';
   salt: Uint8Array;
@@ -67,17 +69,7 @@ export class KeyVault {
   private dbPromise: Promise<IDBDatabase> | null = null;
   private cryptoKey: CryptoKey | null = null;
   private unlocked = false;
-  private idleTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-  private activityListenerAttached = false;
-  private readonly handleActivity = () => this.resetIdleTimer();
-  private readonly handleBlur = () => {
-    if (this.lockOnBlur) void this.lock();
-  };
-  private readonly handleVisibilityChange = () => {
-    if (this.lockOnVisibilityChange && document.visibilityState === 'hidden') {
-      void this.lock();
-    }
-  };
+  private readonly idleLock: IdleLock;
 
   constructor(options: KeyVaultOptions = {}) {
     assertBrowserOnly();
@@ -89,6 +81,12 @@ export class KeyVault {
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.lockOnBlur = options.lockOnBlur ?? true;
     this.lockOnVisibilityChange = options.lockOnVisibilityChange ?? true;
+    this.idleLock = new IdleLock({
+      timeoutMs: this.idleTimeoutMs,
+      lockOnBlur: this.lockOnBlur,
+      lockOnVisibilityChange: this.lockOnVisibilityChange,
+      onIdle: () => void this.lock(),
+    });
   }
 
   get isUnlocked() {
@@ -114,8 +112,7 @@ export class KeyVault {
   }
 
   async lock(): Promise<void> {
-    this.clearIdleTimer();
-    this.detachListeners();
+    this.idleLock.stop();
     this.cryptoKey = null;
     this.unlocked = false;
   }
@@ -344,56 +341,12 @@ export class KeyVault {
   }
 
   private startAutoLock() {
-    this.detachListeners();
-
-    if (this.idleTimeoutMs > 0) {
-      this.activityListenerAttached = true;
-      const events: Array<keyof WindowEventMap> = [
-        'pointerdown',
-        'keydown',
-        'touchstart',
-        'scroll',
-      ];
-      for (const eventName of events) {
-        window.addEventListener(eventName, this.handleActivity, { passive: true });
-      }
-      window.addEventListener('blur', this.handleBlur);
-      document.addEventListener('visibilitychange', this.handleVisibilityChange);
-      this.resetIdleTimer();
-    }
-  }
-
-  private resetIdleTimer() {
-    this.clearIdleTimer();
-    if (!this.unlocked || this.idleTimeoutMs <= 0) return;
-
-    this.idleTimer = globalThis.setTimeout(() => {
-      void this.lock();
-    }, this.idleTimeoutMs);
-  }
-
-  private clearIdleTimer() {
-    if (this.idleTimer !== null) {
-      globalThis.clearTimeout(this.idleTimer);
-      this.idleTimer = null;
-    }
-  }
-
-  private detachListeners() {
-    if (!this.activityListenerAttached) return;
-
-    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
-    for (const eventName of events) {
-      window.removeEventListener(eventName, this.handleActivity);
-    }
-    window.removeEventListener('blur', this.handleBlur);
-    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-    this.activityListenerAttached = false;
+    if (this.unlocked) this.idleLock.start();
   }
 
   private touch() {
     if (this.unlocked) {
-      this.resetIdleTimer();
+      this.idleLock.touch();
     }
   }
 }
