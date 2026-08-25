@@ -15,6 +15,7 @@ import Schedule from '@/pages/Schedule';
 import StellarSplit from '@/pages/StellarSplit';
 import Names from '@/pages/Names';
 import Activity from '@/pages/Activity';
+import Portfolio from '@/pages/Portfolio';
 import Debug from '@/pages/Debug';
 
 export function App() {
@@ -39,6 +40,7 @@ export function App() {
           <Route path="/names" element={<Names />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/history" element={<Activity />} />
+          <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/debug" element={<Debug />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
         </Routes>

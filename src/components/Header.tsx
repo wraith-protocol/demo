@@ -21,6 +21,7 @@ export function Header() {
     { to: '/schedule', label: t('nav.schedule') },
     { to: '/names', label: t('nav.names') },
     { to: '/activity', label: t('nav.activity') },
+    { to: '/portfolio', label: t('nav.portfolio') },
   ];
 
   return (
