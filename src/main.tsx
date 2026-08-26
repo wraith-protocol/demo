@@ -23,6 +23,7 @@ import { ChainProvider } from '@/context/ChainContext';
 import { StealthKeysProvider } from '@/context/StealthKeysContext';
 import { StellarWalletProvider } from '@/context/StellarWalletContext';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { ScanStrategyProvider } from '@/context/ScanStrategyContext';
 import { ContactsProvider } from '@/store/contactsStore';
 import { NameHistoryProvider } from '@/store/nameHistoryStore';
 import { wagmiConfig } from '@/config';
@@ -75,7 +76,9 @@ function Providers({ children }: { children: React.ReactNode }) {
                       <StellarWalletProvider>
                         <ContactsProvider>
                           <NameHistoryProvider>
-                            <StealthKeysProvider>{children}</StealthKeysProvider>
+                            <StealthKeysProvider>
+                              <ScanStrategyProvider>{children}</ScanStrategyProvider>
+                            </StealthKeysProvider>
                           </NameHistoryProvider>
                         </ContactsProvider>
                       </StellarWalletProvider>

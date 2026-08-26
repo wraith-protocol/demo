@@ -18,6 +18,7 @@ export interface StellarReceiveViewProps {
   regHash: string | null;
   isScanning: boolean;
   hasScanned: boolean;
+  scanStrategyLabel?: string;
   matchCount: number;
   matches: ReactNode;
   error: string;
@@ -60,6 +61,7 @@ export function StellarReceiveView({
   regHash,
   isScanning,
   hasScanned,
+  scanStrategyLabel,
   matchCount,
   matches,
   error,
@@ -290,20 +292,27 @@ export function StellarReceiveView({
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <button
-              data-tour="scan-payments"
-              onClick={onScan}
-              disabled={isScanning}
-              className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"
-            >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
-            </button>
-            {hasScanned && (
-              <span className="font-mono text-xs text-on-surface-variant">
-                {matchCount} transfer{matchCount !== 1 ? 's' : ''} found
+          <div className="flex flex-col gap-2">
+            {scanStrategyLabel && (
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                {scanStrategyLabel}
               </span>
             )}
+            <div className="flex items-center justify-between">
+              <button
+                data-tour="scan-payments"
+                onClick={onScan}
+                disabled={isScanning}
+                className="h-12 w-full bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30 sm:w-auto"
+              >
+                {isScanning ? 'Scanning...' : 'Scan for Payments'}
+              </button>
+              {hasScanned && (
+                <span className="font-mono text-xs text-on-surface-variant">
+                  {matchCount} transfer{matchCount !== 1 ? 's' : ''} found
+                </span>
+              )}
+            </div>
           </div>
 
           {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}

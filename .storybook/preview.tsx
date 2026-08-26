@@ -3,6 +3,7 @@ import { Buffer } from 'buffer';
 
 import type { Preview } from '@storybook/react';
 import { initialize, mswLoader } from 'msw-storybook-addon';
+import { ScanStrategyProvider } from '../src/context/ScanStrategyContext';
 import '../src/index.css';
 
 // Start the mock service worker so no story can make a real network request.
@@ -22,7 +23,9 @@ const preview: Preview = {
     (Story) => (
       <div className="dark min-h-screen bg-surface p-6 font-body text-on-surface antialiased">
         <div className="mx-auto w-full max-w-[720px]">
-          <Story />
+          <ScanStrategyProvider>
+            <Story />
+          </ScanStrategyProvider>
         </div>
       </div>
     ),

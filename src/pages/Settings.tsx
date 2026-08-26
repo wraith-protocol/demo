@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTheme, type ThemePreference } from '@/context/ThemeContext';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useChain } from '@/context/ChainContext';
+import { useScanStrategy, SCAN_STRATEGIES, type ScanStrategy } from '@/context/ScanStrategyContext';
 import { getLabels } from '@/lib/stealthLabels';
 import {
   exportRecoveryKit,
@@ -22,7 +24,9 @@ const preferences: Array<{ value: ThemePreference; label: string; description: s
 ];
 
 export default function Settings() {
+  const { t } = useTranslation();
   const { preference, setThemePreference } = useTheme();
+  const { strategy, setStrategy } = useScanStrategy();
   const { chain } = useChain();
   const {
     evmKeys,
@@ -79,6 +83,13 @@ export default function Settings() {
           : ckbKeys;
 
   const passphraseStrength = validatePassphrase(exportPassphrase);
+
+  const scanStrategyOptions: Array<{ value: ScanStrategy; label: string; description: string }> =
+    SCAN_STRATEGIES.map((value) => ({
+      value,
+      label: t(`scanStrategy.${value}Label`),
+      description: t(`scanStrategy.${value}Description`),
+    }));
 
   const handleExportKit = async () => {
     setExportMessage(null);
@@ -442,6 +453,57 @@ export default function Settings() {
             {restoreMessage.text}
           </p>
         )}
+      </fieldset>
+
+      {/* Scanning Strategy */}
+      <fieldset className="flex flex-col gap-3 border border-outline-variant bg-surface-container p-5">
+        <legend className="font-mono text-[10px] uppercase tracking-widest text-on-surface">
+          {t('scanStrategy.title')}
+        </legend>
+        <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+          {t('scanStrategy.description')}
+        </p>
+
+        <div className="group relative inline-flex w-fit items-center gap-1.5">
+          <span
+            tabIndex={0}
+            role="note"
+            aria-label={t('scanStrategy.tooltip')}
+            className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-outline-variant font-mono text-[9px] text-outline"
+          >
+            i
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            Privacy note
+          </span>
+          <div className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 w-72 border border-outline-variant bg-surface-container p-3 font-body text-xs leading-relaxed text-on-surface-variant opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+            {t('scanStrategy.tooltip')}
+          </div>
+        </div>
+
+        {scanStrategyOptions.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-start gap-3 border border-outline-variant p-3 transition-colors hover:bg-surface-bright"
+          >
+            <input
+              type="radio"
+              name="scan-strategy"
+              value={option.value}
+              checked={strategy === option.value}
+              onChange={() => setStrategy(option.value)}
+              className="mt-1 accent-[var(--color-tertiary)]"
+            />
+            <span className="flex flex-col gap-1">
+              <span className="font-heading text-sm font-semibold text-on-surface">
+                {option.label}
+              </span>
+              <span className="font-body text-xs text-on-surface-variant">
+                {option.description}
+              </span>
+            </span>
+          </label>
+        ))}
       </fieldset>
 
       {/* Appearance Preferences */}
