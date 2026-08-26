@@ -1,17 +1,18 @@
 /**
  * src/lib/stellar/passkey.ts
  *
- * Browser-side WebAuthn plumbing for the Passkey smart-account wallet mode.
- * Everything here is pure Web Authentication API + PRF extension handling —
- * it never talks to Horizon, Soroban, or the SDK. `PasskeyAdapter` composes
- * this with `WebAuthnPasskeyStealthSigner` from `@wraith-protocol/sdk/chains/stellar`
- * to do the actual smart-account signing.
+ * Browser-side WebAuthn plumbing for the Passkey wallet mode. Everything
+ * here is pure Web Authentication API + PRF extension handling — it never
+ * talks to Horizon or Soroban. `PasskeyAdapter` uses the secret this module
+ * derives to seed a classic Ed25519 Stellar signing key (see the scope note
+ * at the top of PasskeyAdapter.ts for why it's classic rather than a
+ * Soroban smart account).
  *
  * The PRF extension (https://w3c.github.io/webauthn/#prf-extension) lets a
  * passkey act as a deterministic key-derivation function: evaluating the same
  * salt against the same credential always returns the same 32-byte secret,
  * without ever exposing the authenticator's private key. That secret is what
- * seeds the smart account's signing key.
+ * seeds the account's signing key.
  */
 
 const RP_SALT_LABEL = new TextEncoder().encode('wraith-protocol:stellar:passkey:v1');
@@ -93,7 +94,10 @@ interface PrfExtensionOutput {
   };
 }
 
-interface ExtensionResultsWithPrf extends AuthenticationExtensionsClientOutputs {
+// Deliberately not `extends AuthenticationExtensionsClientOutputs` — lib.dom's
+// AuthenticationExtensionsPRFOutputs requires `results.first` whenever `results`
+// is present, which is stricter than what we want to assert before validating it.
+interface ExtensionResultsWithPrf {
   prf?: PrfExtensionOutput;
 }
 
@@ -208,7 +212,7 @@ export async function createPasskeyCredential(opts: {
 /**
  * Re-authenticates against a previously registered credential and
  * re-derives the same PRF secret (deterministic for a given credential +
- * salt), so the smart-account signing key never needs to be persisted.
+ * salt), so the account's signing key never needs to be persisted.
  */
 export async function getPasskeyAssertion(credentialId: Uint8Array): Promise<Uint8Array> {
   if (typeof navigator === 'undefined' || !navigator.credentials) {
@@ -222,7 +226,7 @@ export async function getPasskeyAssertion(credentialId: Uint8Array): Promise<Uin
     assertion = await navigator.credentials.get({
       publicKey: {
         challenge,
-        allowCredentials: [{ id: credentialId, type: 'public-key' }],
+        allowCredentials: [{ id: credentialId as BufferSource, type: 'public-key' }],
         userVerification: 'required',
         extensions: {
           prf: { eval: { first: RP_SALT_LABEL } },
@@ -247,15 +251,16 @@ export async function getPasskeyAssertion(credentialId: Uint8Array): Promise<Uin
 // ─── Session-key ceiling ─────────────────────────────────────────────────────
 
 /**
- * A derived session key is reused for repeated signs within one browser
- * session instead of re-running the PRF ceremony every time. Both ceilings
- * are enforced together — whichever is hit first ends the session.
+ * The signing key derived from one PRF ceremony is kept resident in memory
+ * and reused for repeated signs within a browser session, instead of
+ * re-running the PRF ceremony (and its biometric prompt) on every send.
+ * Both ceilings are enforced together — whichever is hit first ends the
+ * session and the next sign re-derives the key from a fresh PRF assertion.
  */
 export const SESSION_KEY_TTL_MS = 30 * 60 * 1000; // 30 minutes
 export const SESSION_KEY_MAX_SIGNATURES = 20;
 
 export interface PasskeySession {
-  secret: Uint8Array;
   createdAt: number;
   signatureCount: number;
 }

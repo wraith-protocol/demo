@@ -91,7 +91,6 @@ describe('base64url helpers', () => {
 describe('isSessionValid', () => {
   function makeSession(overrides: Partial<PasskeySession> = {}): PasskeySession {
     return {
-      secret: new Uint8Array(32),
       createdAt: Date.now(),
       signatureCount: 0,
       ...overrides,

@@ -1,19 +1,34 @@
 /**
  * src/wallets/stellar/PasskeyAdapter.ts
  *
- * Passkey smart-account wallet mode. Unlike the other adapters, this one
- * never talks to a browser extension: it drives the WebAuthn PRF ceremony
- * directly (see src/lib/stellar/passkey.ts) and hands the derived secret to
- * the SDK's `WebAuthnPasskeyStealthSigner`, which owns the Soroban smart
- * account (deployment, session-key delegation, and transaction signing).
+ * Passkey wallet mode: no browser extension, no seed phrase. A user's
+ * device passkey deterministically derives a Stellar signing key via the
+ * WebAuthn PRF ceremony in src/lib/stellar/passkey.ts — the same key every
+ * time, for the same passkey, without ever being written to disk.
  *
- * ASSUMPTION (flag during review): the exact constructor/method shape of
- * `WebAuthnPasskeyStealthSigner` below is inferred from the issue's
- * description of `sdk/src/chains/stellar/signer.ts` — it was not possible to
- * inspect the installed package from this environment. `tsc` will catch a
- * mismatch; adjust the call sites to match the real export if it differs.
+ * SCOPE NOTE — read before extending this file: the linked issue (#150)
+ * describes a Soroban *smart* account with on-chain fee sponsorship and a
+ * contract-delegated session key, via an SDK export
+ * (`WebAuthnPasskeyStealthSigner`) referenced in the issue text. That export
+ * does not exist in any version of @wraith-protocol/sdk published to npm —
+ * checked every published version through the current latest, 1.4.5 — and a
+ * real smart-contract account additionally needs a deployed Soroban wallet
+ * contract (Rust/WASM) that doesn't exist anywhere in this repo. Neither is
+ * buildable from this environment.
+ *
+ * This adapter instead ships a fully working, honestly-scoped-down version:
+ * a classic Ed25519 Stellar account whose key is deterministically derived
+ * from the passkey. It satisfies "no extension prompt, funds itself on
+ * testnet, PRF-gated" end to end, using only real `@stellar/stellar-sdk`
+ * APIs. Fee sponsorship and contract-delegated session keys are follow-up
+ * work once a wallet contract exists to target — the "session" implemented
+ * here is a client-side ceiling on how long the derived key stays resident
+ * in memory (see SESSION_KEY_TTL_MS / SESSION_KEY_MAX_SIGNATURES in
+ * passkey.ts), not an on-chain delegation.
  */
 
+import { sha512 } from '@noble/hashes/sha512';
+import { Keypair, Transaction } from '@stellar/stellar-sdk';
 import {
   createPasskeyCredential,
   getPasskeyAssertion,
@@ -40,10 +55,13 @@ export const PASSKEY_ICON =
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23e6e1e5" stroke-width="1.5"><circle cx="8" cy="8" r="4"/><path d="M11 11l9 9M17 14l3-3M14 17l2-2"/></svg>',
   );
 
-interface PasskeySigner {
-  getAddress(): string;
-  signTransaction(xdr: string): Promise<{ signedXdr: string }>;
-  deploySmartAccount?(): Promise<void>;
+/**
+ * Hashes the PRF secret once more before using it as an Ed25519 seed, so the
+ * raw authenticator output is never used verbatim as key material.
+ */
+function deriveKeypairFromPrfSecret(prfSecret: Uint8Array): Keypair {
+  const seed = sha512(prfSecret).slice(0, 32);
+  return Keypair.fromRawEd25519Seed(Buffer.from(seed));
 }
 
 export class PasskeyAdapter implements StellarWallet {
@@ -53,7 +71,7 @@ export class PasskeyAdapter implements StellarWallet {
   readonly installUrl = 'https://passkeys.dev/device-support/';
 
   private session: PasskeySession | null = null;
-  private signer: PasskeySigner | null = null;
+  private keypair: Keypair | null = null;
 
   async isAvailable(): Promise<boolean> {
     try {
@@ -80,9 +98,18 @@ export class PasskeyAdapter implements StellarWallet {
       if (storedCredentialId && storedAddress) {
         const credentialId = base64UrlToBuffer(storedCredentialId);
         const prfSecret = await getPasskeyAssertion(credentialId);
-        this.signer = await this.deriveSigner(credentialId, prfSecret, storedAddress);
-        this.startSession(prfSecret);
+        const keypair = deriveKeypairFromPrfSecret(prfSecret);
 
+        if (keypair.publicKey() !== storedAddress) {
+          throw new WalletError(
+            'The derived key no longer matches the stored account — this passkey may have changed.',
+            'CONNECT_FAILED',
+            'passkey',
+          );
+        }
+
+        this.keypair = keypair;
+        this.startSession();
         return { publicKey: storedAddress, network: STELLAR_NETWORK.name.toLowerCase() };
       }
 
@@ -103,9 +130,9 @@ export class PasskeyAdapter implements StellarWallet {
   }
 
   /**
-   * Create-or-import a smart account: register a fresh passkey, deploy its
-   * Soroban smart account, and fund it via friendbot on testnet so it can
-   * pay its own fees immediately. Never touches a browser extension.
+   * Create-or-import flow: register a fresh passkey, derive its Stellar
+   * keypair from the PRF secret, and fund it via friendbot on testnet so it
+   * can pay its own fees immediately. Never touches a browser extension.
    */
   private async firstRun(): Promise<ConnectResult> {
     const userSuffix = bufferToBase64Url(crypto.getRandomValues(new Uint8Array(6)));
@@ -115,8 +142,8 @@ export class PasskeyAdapter implements StellarWallet {
       userName: `wraith-${userSuffix}`,
     });
 
-    this.signer = await this.deriveSigner(credentialId, prfSecret, null);
-    const address = this.signer.getAddress();
+    const keypair = deriveKeypairFromPrfSecret(prfSecret);
+    const address = keypair.publicKey();
 
     if (STELLAR_NETWORK.name.toLowerCase().includes('testnet')) {
       try {
@@ -130,41 +157,18 @@ export class PasskeyAdapter implements StellarWallet {
 
     localStorage.setItem(STORAGE_KEY_CREDENTIAL_ID, bufferToBase64Url(credentialId));
     localStorage.setItem(STORAGE_KEY_ADDRESS, address);
-    this.startSession(prfSecret);
+    this.keypair = keypair;
+    this.startSession();
 
     return { publicKey: address, network: STELLAR_NETWORK.name.toLowerCase() };
   }
 
-  private async deriveSigner(
-    credentialId: Uint8Array,
-    prfSecret: Uint8Array,
-    knownAddress: string | null,
-  ): Promise<PasskeySigner> {
-    const { WebAuthnPasskeyStealthSigner } = await import(
-      /* webpackChunkName: "passkey-signer" */
-      '@wraith-protocol/sdk/chains/stellar'
-    );
-
-    const signer = new WebAuthnPasskeyStealthSigner({
-      networkPassphrase: STELLAR_NETWORK.networkPassphrase,
-      rpcUrl: STELLAR_NETWORK.rpcUrl,
-      credentialId,
-      prfSecret,
-    }) as unknown as PasskeySigner;
-
-    if (!knownAddress && typeof signer.deploySmartAccount === 'function') {
-      await signer.deploySmartAccount();
-    }
-
-    return signer;
+  private startSession(): void {
+    this.session = { createdAt: Date.now(), signatureCount: 0 };
   }
 
-  private startSession(secret: Uint8Array): void {
-    this.session = { secret, createdAt: Date.now(), signatureCount: 0 };
-  }
-
-  async signTransaction(xdr: string, _opts: SignOpts = {}): Promise<SignResult> {
-    if (!this.signer) {
+  async signTransaction(xdr: string, opts: SignOpts = {}): Promise<SignResult> {
+    if (!this.keypair) {
       throw new WalletError('No passkey session — connect first.', 'SIGN_FAILED', 'passkey');
     }
 
@@ -182,8 +186,8 @@ export class PasskeyAdapter implements StellarWallet {
       try {
         const credentialId = base64UrlToBuffer(storedCredentialId);
         const prfSecret = await getPasskeyAssertion(credentialId);
-        this.signer = await this.deriveSigner(credentialId, prfSecret, storedAddress);
-        this.startSession(prfSecret);
+        this.keypair = deriveKeypairFromPrfSecret(prfSecret);
+        this.startSession();
       } catch (err) {
         if (err instanceof PasskeyError && err.code === 'USER_REJECTED') {
           throw new WalletError(err.message, 'USER_REJECTED', 'passkey');
@@ -197,9 +201,11 @@ export class PasskeyAdapter implements StellarWallet {
     }
 
     try {
-      const result = await this.signer.signTransaction(xdr);
+      const networkPassphrase = opts.networkPassphrase ?? STELLAR_NETWORK.networkPassphrase;
+      const tx = new Transaction(xdr, networkPassphrase);
+      tx.sign(this.keypair);
       if (this.session) this.session.signatureCount += 1;
-      return { signedXdr: result.signedXdr };
+      return { signedXdr: tx.toXDR() };
     } catch (err) {
       throw new WalletError(`Passkey sign failed: ${String(err)}`, 'SIGN_FAILED', 'passkey');
     }
@@ -207,7 +213,7 @@ export class PasskeyAdapter implements StellarWallet {
 
   async disconnect(): Promise<void> {
     this.session = null;
-    this.signer = null;
+    this.keypair = null;
     // Deliberately keeps the persisted credential id / address — the
     // passkey itself lives in the platform authenticator and re-connecting
     // should not force the user through the first-run flow again.
