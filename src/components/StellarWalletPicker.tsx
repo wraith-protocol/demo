@@ -19,6 +19,7 @@ import { useState, useEffect } from 'react';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { WALLET_IDS, WALLET_META, type WalletId } from '@/wallets/stellar';
 import type { StellarWalletState } from '@/hooks/useStellarWallet';
+import { PasskeyUnsupportedCard } from '@/components/PasskeyUnsupportedCard';
 
 interface Props {
   state: StellarWalletState;
@@ -31,12 +32,14 @@ export function StellarWalletPicker({ state }: Props) {
     connect,
     status,
     error,
+    errorCode,
     detecting,
     available,
     setPreconnectedWallet,
   } = state;
 
   const [pending, setPending] = useState<WalletId | null>(null);
+  const [lastAttemptedId, setLastAttemptedId] = useState<WalletId | null>(null);
   const [wcUri, setWcUri] = useState<string | null>(null);
   const [wcConnecting, setWcConnecting] = useState(false);
 
@@ -85,6 +88,7 @@ export function StellarWalletPicker({ state }: Props) {
   async function handleSelect(id: WalletId) {
     if (pending) return;
     setPending(id);
+    setLastAttemptedId(id);
 
     // Special handling for WalletConnect to capture URI
     if (id === 'walletconnect') {
@@ -261,14 +265,19 @@ export function StellarWalletPicker({ state }: Props) {
         </div>
 
         {/* Error message */}
-        {error && status === 'error' && (
-          <p className="text-xs text-[#ee7d77] leading-relaxed">{error}</p>
-        )}
+        {error &&
+          status === 'error' &&
+          (lastAttemptedId === 'passkey' && errorCode === 'NOT_AVAILABLE' ? (
+            <PasskeyUnsupportedCard installUrl={WALLET_META.passkey.installUrl} />
+          ) : (
+            <p className="text-xs text-[#ee7d77] leading-relaxed">{error}</p>
+          ))}
 
         {/* Footer note */}
         <p className="text-[10px] text-[#333333] leading-relaxed pt-1">
           Albedo, LOBSTR, and WalletConnect work in any browser — no extension needed. Freighter and
-          xBull require their browser extension to be installed.
+          xBull require their browser extension to be installed. Passkey needs no extension either —
+          it signs with your device's built-in authenticator or a hardware security key.
         </p>
       </div>
 

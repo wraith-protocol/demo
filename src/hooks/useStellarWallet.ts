@@ -12,7 +12,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getAdapter, WALLET_IDS, type StellarWallet, type WalletId } from '@/wallets/stellar';
+import {
+  getAdapter,
+  WALLET_IDS,
+  WalletError,
+  type StellarWallet,
+  type WalletId,
+  type WalletErrorCode,
+} from '@/wallets/stellar';
 
 const STORAGE_KEY_WALLET = 'wraith:stellar:wallet';
 const STORAGE_KEY_PUBKEY = 'wraith:stellar:pubkey';
@@ -28,6 +35,8 @@ export interface StellarWalletState {
   network: string | null;
   status: WalletStatus;
   error: string | null;
+  /** Machine-readable code for the last connect error, if any. */
+  errorCode: WalletErrorCode | null;
   /** True while availability checks are running on mount. */
   detecting: boolean;
   /** Availability map populated after detection. */
@@ -59,6 +68,7 @@ export function useStellarWallet(): StellarWalletState {
   const [network, setNetwork] = useState<string | null>(null);
   const [status, setStatus] = useState<WalletStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<WalletErrorCode | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [detecting, setDetecting] = useState(true);
   const [available, setAvailable] = useState<Partial<Record<WalletId, boolean>>>({});
@@ -119,6 +129,7 @@ export function useStellarWallet(): StellarWalletState {
     connectingRef.current = true;
     setStatus('connecting');
     setError(null);
+    setErrorCode(null);
 
     try {
       const adapter = getAdapter(id);
@@ -138,6 +149,7 @@ export function useStellarWallet(): StellarWalletState {
     } catch (err) {
       setStatus('error');
       setError(err instanceof Error ? err.message : String(err));
+      setErrorCode(err instanceof WalletError ? err.code : null);
     } finally {
       connectingRef.current = false;
     }
@@ -157,6 +169,7 @@ export function useStellarWallet(): StellarWalletState {
     setNetwork(null);
     setStatus('idle');
     setError(null);
+    setErrorCode(null);
     localStorage.removeItem(STORAGE_KEY_WALLET);
     localStorage.removeItem(STORAGE_KEY_PUBKEY);
     localStorage.removeItem(STORAGE_KEY_NETWORK);
@@ -198,6 +211,7 @@ export function useStellarWallet(): StellarWalletState {
     network,
     status,
     error,
+    errorCode,
     detecting,
     available,
     pickerOpen,
