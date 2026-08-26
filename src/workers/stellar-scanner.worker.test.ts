@@ -54,9 +54,7 @@ function mockGetEventsResponse(events: ReturnType<typeof buildEventEntry>[]) {
       if (body.method !== 'getEvents') {
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }));
       }
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { events } }),
-      );
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { events } }));
     }),
   );
 }
