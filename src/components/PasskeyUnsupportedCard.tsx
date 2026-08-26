@@ -18,16 +18,16 @@ export function PasskeyUnsupportedCard({ installUrl }: PasskeyUnsupportedCardPro
     >
       <p className="text-xs font-semibold text-[#e6e1e5]">Passkey isn&apos;t available here</p>
       <p className="text-[11px] leading-relaxed text-[#c4c7c5]">
-        This browser or device doesn&apos;t support passkeys with the PRF extension, which the
-        smart account needs to derive its signing key. Try a recent Chrome, Safari, or Edge on a
-        device with Touch ID, Face ID, Windows Hello, or a PRF-capable hardware security key (e.g.
-        a YubiKey with firmware 5.2.7+).
+        This browser or device doesn&apos;t support passkeys with the PRF extension, which the smart
+        account needs to derive its signing key. Try a recent Chrome, Safari, or Edge on a device
+        with Touch ID, Face ID, Windows Hello, or a PRF-capable hardware security key (e.g. a
+        YubiKey with firmware 5.2.7+).
       </p>
       <a
         href={installUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-block text-[11px] text-[#767575] underline transition-colors hover:text-[#c4c7c5]"
+        className="inline-block text-[11px] text-[#767575] underline hover:text-[#c4c7c5]"
       >
         Check device support ↗
       </a>
