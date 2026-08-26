@@ -68,7 +68,7 @@ export interface StellarWallet {
 
 // ─── Wallet IDs ───────────────────────────────────────────────────────────────
 
-export type WalletId = 'freighter' | 'albedo' | 'xbull' | 'lobstr' | 'walletconnect';
+export type WalletId = 'freighter' | 'albedo' | 'xbull' | 'lobstr' | 'walletconnect' | 'passkey';
 
 // ─── Error class ─────────────────────────────────────────────────────────────
 
