@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
@@ -12,6 +12,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { useActivityStore } from '@/stores/activityStore';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export interface StellarBatchWithdrawModalProps {
   isOpen: boolean;
@@ -19,6 +20,8 @@ export interface StellarBatchWithdrawModalProps {
   selectedMatches: MatchedAnnouncement[];
   knownBalances: Record<string, string>;
   onBatchSuccess: (txHash: string) => void;
+  /** Ref to the element that triggered this modal — focus returns here on close. */
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function StellarBatchWithdrawModal({
@@ -27,6 +30,7 @@ export function StellarBatchWithdrawModal({
   selectedMatches,
   knownBalances,
   onBatchSuccess,
+  triggerRef,
 }: StellarBatchWithdrawModalProps) {
   const { t } = useTranslation();
   const { address: walletAddress } = useStellarWallet();
@@ -38,6 +42,25 @@ export function StellarBatchWithdrawModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [executionResult, setExecutionResult] = useState<BatchWithdrawResult | null>(null);
+
+  // Refs for focus management
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const headingId = 'batch-withdraw-heading';
+
+  // Focus trap — active when the modal is open
+  useFocusTrap({ isActive: isOpen, containerRef: dialogRef, triggerRef });
+
+  // Escape key closes the modal (only when not submitting)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isSubmitting, onClose]);
 
   // Convert selected matches into BatchWithdrawItems
   const rawItems: BatchWithdrawItem[] = useMemo(() => {
@@ -110,11 +133,20 @@ export function StellarBatchWithdrawModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-[640px] flex-col border border-outline-variant bg-surface p-6 shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        className="flex max-h-[90vh] w-full max-w-[640px] flex-col border border-outline-variant bg-surface p-6 shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-outline-variant pb-4">
           <div>
-            <h2 className="font-heading text-lg font-bold uppercase tracking-wider text-on-surface">
+            <h2
+              id={headingId}
+              className="font-heading text-lg font-bold uppercase tracking-wider text-on-surface"
+            >
               Batch Withdrawal Preview
             </h2>
             <p className="font-mono text-xs text-outline">
@@ -136,10 +168,14 @@ export function StellarBatchWithdrawModal({
         <div className="flex-1 overflow-y-auto py-4 space-y-4">
           {/* Global Destination Input */}
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="batch-withdraw-destination"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               Global Destination Address (G...)
             </label>
             <input
+              id="batch-withdraw-destination"
               type="text"
               value={globalDestination}
               onChange={(e) => setGlobalDestination(e.target.value)}
@@ -196,7 +232,11 @@ export function StellarBatchWithdrawModal({
 
           {/* Submission Status Indicator */}
           {statusMessage && (
-            <div className="flex items-center gap-2 border border-tertiary/30 bg-tertiary/10 p-3">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center gap-2 border border-tertiary/30 bg-tertiary/10 p-3"
+            >
               <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-tertiary"></span>
               <span className="font-mono text-xs text-on-surface">{statusMessage}</span>
             </div>
@@ -205,6 +245,8 @@ export function StellarBatchWithdrawModal({
           {/* Top-Level Execution Result Banner */}
           {executionResult && (
             <div
+              role="status"
+              aria-live="polite"
               className={`p-4 border ${
                 executionResult.success
                   ? 'border-tertiary/40 bg-tertiary/10'
@@ -245,6 +287,22 @@ export function StellarBatchWithdrawModal({
                   (r) => r.stealthAddress === item.match.stealthAddress,
                 );
 
+                // Derive status text for the aria-live badge
+                let statusText: string;
+                let statusClasses: string;
+                if (entryRes) {
+                  if (entryRes.success) {
+                    statusText = 'Success';
+                    statusClasses = 'bg-tertiary/20 text-tertiary';
+                  } else {
+                    statusText = entryRes.error || 'Failed';
+                    statusClasses = 'bg-error/20 text-error';
+                  }
+                } else {
+                  statusText = 'Ready';
+                  statusClasses = 'bg-surface-bright text-tertiary';
+                }
+
                 return (
                   <div
                     key={item.match.stealthAddress}
@@ -266,22 +324,18 @@ export function StellarBatchWithdrawModal({
                       <span className="font-mono font-semibold text-on-surface">
                         {item.sendableAmount} XLM
                       </span>
-
-                      {entryRes ? (
-                        entryRes.success ? (
-                          <span className="bg-tertiary/20 px-2 py-0.5 font-mono text-[9px] uppercase text-tertiary">
-                            Success
-                          </span>
-                        ) : (
-                          <span className="bg-error/20 px-2 py-0.5 font-mono text-[9px] uppercase text-error">
-                            {entryRes.error || 'Failed'}
-                          </span>
-                        )
-                      ) : (
-                        <span className="bg-surface-bright px-2 py-0.5 font-mono text-[9px] text-tertiary">
-                          Ready
-                        </span>
-                      )}
+                      {/*
+                       * aria-live="polite" on each badge so screen readers announce
+                       * status changes (Ready → Success/Failed) without re-reading
+                       * the entire list.
+                       */}
+                      <span
+                        aria-live="polite"
+                        aria-atomic="true"
+                        className={`px-2 py-0.5 font-mono text-[9px] uppercase ${statusClasses}`}
+                      >
+                        {statusText}
+                      </span>
                     </div>
                   </div>
                 );

@@ -1,6 +1,7 @@
 // @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useSearchParams } from 'react-router-dom';
 import { QrReader } from 'react-qr-reader';
 import {
@@ -125,18 +126,39 @@ export function StellarSend() {
   const [isDecodingQrImage, setIsDecodingQrImage] = useState(false);
   const closeScannerRef = useRef<HTMLButtonElement>(null);
   const qrImageInputRef = useRef<HTMLInputElement>(null);
+  // Ref for the "Scan QR" trigger button — focus returns here when scanner closes.
+  const scanQrTriggerRef = useRef<HTMLButtonElement>(null);
+  // Ref for the scanner dialog container — used by the focus trap.
+  const scannerContainerRef = useRef<HTMLDivElement>(null);
 
-  // Focus close button on mount and handle Escape key to close
+  // Focus trap for the QR scanner dialog.
+  useFocusTrap({
+    isActive: isScanningQR,
+    containerRef: scannerContainerRef,
+    initialFocusRef: closeScannerRef,
+    triggerRef: scanQrTriggerRef,
+  });
+
+  // Escape key + Space/U keyboard shortcuts for the QR scanner dialog.
   useEffect(() => {
     if (isScanningQR) {
       setScannerError('');
-      if (closeScannerRef.current) {
-        closeScannerRef.current.focus();
-      }
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           setIsScanningQR(false);
+          return;
+        }
+        // Space toggles camera on/off (prevent default page scroll).
+        if (e.key === ' ' || e.code === 'Space') {
+          e.preventDefault();
+          setCameraUnavailable((prev) => !prev);
+          return;
+        }
+        // U triggers the upload-fallback file picker.
+        if (e.key === 'u' || e.key === 'U') {
+          e.preventDefault();
+          qrImageInputRef.current?.click();
         }
       };
       window.addEventListener('keydown', handleKeyDown);
@@ -776,6 +798,7 @@ export function StellarSend() {
                   {t('common.paste')}
                 </button>
                 <button
+                  ref={scanQrTriggerRef}
                   type="button"
                   onClick={openQrScanner}
                   className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110"
@@ -959,7 +982,10 @@ export function StellarSend() {
           aria-modal="true"
           aria-labelledby="qr-scanner-title"
         >
-          <div className="flex w-full max-w-sm flex-col gap-4 border border-outline-variant bg-surface-container p-5 shadow-xl">
+          <div
+            ref={scannerContainerRef}
+            className="flex w-full max-w-sm flex-col gap-4 border border-outline-variant bg-surface-container p-5 shadow-xl"
+          >
             <div className="flex items-center justify-between">
               <h2
                 id="qr-scanner-title"
@@ -979,7 +1005,11 @@ export function StellarSend() {
             </div>
 
             {!cameraUnavailable && (
-              <div className="overflow-hidden bg-black">
+              <div
+                className="overflow-hidden bg-black"
+                aria-label="Live camera preview for QR scanning"
+                role="img"
+              >
                 <QrReader
                   constraints={{ facingMode: { ideal: 'environment' } }}
                   scanDelay={300}
@@ -1025,6 +1055,11 @@ export function StellarSend() {
             </button>
             <p className="font-body text-[11px] leading-relaxed text-outline">
               QR images are decoded locally in your browser and are never uploaded.
+            </p>
+            <p className="font-body text-[11px] leading-relaxed text-outline">
+              Keyboard: <kbd className="font-mono">Space</kbd> toggles camera ·{' '}
+              <kbd className="font-mono">U</kbd> opens image picker ·{' '}
+              <kbd className="font-mono">Esc</kbd> closes
             </p>
           </div>
         </div>
