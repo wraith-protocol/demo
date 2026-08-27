@@ -13,6 +13,7 @@ const baseEntry: ActivityEntry = {
   status: 'confirmed',
   amount: '25.50',
   recipient: 'GRECIPIENT',
+  profileId: 'default',
   timestamp: Date.UTC(2026, 6, 26, 12, 30),
 };
 

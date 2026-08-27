@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChainSwitcher } from './ChainSwitcher';
@@ -6,15 +6,54 @@ import { WalletConnect } from './WalletConnect';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { NetworkChip } from './NetworkChip';
 import { ProfileSwitcher } from './ProfileSwitcher';
+import { PrivacyPostureChip } from './PrivacyPostureChip';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotificationsStore } from '@/stores/notificationsStore';
+import { useStealthKeys } from '@/context/StealthKeysContext';
+
+const INSTALL_PROMPT_DISMISSED_KEY = 'wraith:pwa-install-dismissed';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 export function Header() {
   const location = useLocation();
   const { t } = useTranslation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const { theme, toggleTheme } = useTheme();
   const unreadCount = useNotificationsStore((state) => state.unreadCount());
+  const { isRecoveryMode } = useStealthKeys();
+
+  useEffect(() => {
+    const captureInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      if (localStorage.getItem(INSTALL_PROMPT_DISMISSED_KEY) === 'true') return;
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const hideInstallPrompt = () => setInstallPrompt(null);
+
+    window.addEventListener('beforeinstallprompt', captureInstallPrompt);
+    window.addEventListener('appinstalled', hideInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', captureInstallPrompt);
+      window.removeEventListener('appinstalled', hideInstallPrompt);
+    };
+  }, []);
+
+  const installApp = async () => {
+    if (!installPrompt) return;
+
+    const prompt = installPrompt;
+    setInstallPrompt(null);
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    if (choice.outcome === 'dismissed') {
+      localStorage.setItem(INSTALL_PROMPT_DISMISSED_KEY, 'true');
+    }
+  };
 
   const navLinks = [
     { to: '/send', label: t('nav.send') },
@@ -37,6 +76,11 @@ export function Header() {
             <span className="bg-surface-bright px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-outline sm:text-[10px]">
               Demo
             </span>
+            {isRecoveryMode && (
+              <span className="border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-400 sm:text-[10px]">
+                Recovery Mode
+              </span>
+            )}
           </Link>
 
           <nav className="hidden gap-0 sm:flex">
@@ -62,6 +106,15 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {installPrompt && (
+            <button
+              type="button"
+              onClick={installApp}
+              className="h-8 border border-primary px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-primary hover:text-surface"
+            >
+              Install
+            </button>
+          )}
           <LocaleSwitcher />
           <button
             onClick={toggleTheme}
@@ -93,6 +146,7 @@ export function Header() {
           </button>
           <div className="hidden sm:flex sm:items-center sm:gap-3">
             <ChainSwitcher />
+            <PrivacyPostureChip />
             <NetworkChip />
             <ProfileSwitcher />
             <WalletConnect />
@@ -161,6 +215,12 @@ export function Header() {
                 Profile
               </span>
               <ProfileSwitcher />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+                Privacy posture
+              </span>
+              <PrivacyPostureChip />
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">

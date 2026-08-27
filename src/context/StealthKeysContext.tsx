@@ -5,10 +5,8 @@ import type { StealthKeys as StellarStealthKeys } from '@wraith-protocol/sdk/cha
 import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chains/solana';
 import type { StealthKeys as CKBStealthKeys } from '@wraith-protocol/sdk/chains/ckb';
 import { useProfilesStore, DEFAULT_PROFILE_ID } from '@/store/profilesStore';
-
-// ---------------------------------------------------------------------------
-// Per-profile key cache shape
-// ---------------------------------------------------------------------------
+import { hexToBytes, type RecoveryKitData } from '@/lib/stellar/recoveryKit';
+import { importLabels } from '@/lib/stealthLabels';
 
 interface ProfileKeySlot {
   evmKeys: EVMStealthKeys | null;
@@ -34,15 +32,7 @@ function emptySlot(): ProfileKeySlot {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Context value interface
-//
-// Public API is identical to before — callers read/write the active profile's
-// keys transparently.  The per-profile storage is internal to the provider.
-// ---------------------------------------------------------------------------
-
 interface StealthKeysContextValue {
-  // Active-profile keys (read-only convenience accessors)
   evmKeys: EVMStealthKeys | null;
   evmMetaAddress: string | null;
   stellarKeys: StellarStealthKeys | null;
@@ -52,7 +42,13 @@ interface StealthKeysContextValue {
   ckbKeys: CKBStealthKeys | null;
   ckbMetaAddress: string | null;
 
-  // Setters (write into the active profile's slot)
+  isRecoveryMode: boolean;
+  isReadOnly: boolean;
+  setIsRecoveryMode: (active: boolean) => void;
+  setIsReadOnly: (readOnly: boolean) => void;
+  restoreFromRecoveryKit: (kitData: RecoveryKitData) => void;
+  exitRecoveryMode: () => void;
+
   setEvmKeys: (keys: EVMStealthKeys) => void;
   setEvmMetaAddress: (metaAddress: string) => void;
   setStellarKeys: (keys: StellarStealthKeys) => void;
@@ -62,23 +58,15 @@ interface StealthKeysContextValue {
   setCkbKeys: (keys: CKBStealthKeys) => void;
   setCkbMetaAddress: (metaAddress: string) => void;
 
-  // Clears scoped to the active profile only
   clearEvm: () => void;
   clearStellar: () => void;
   clearSolana: () => void;
   clearCkb: () => void;
 
-  // Read keys for any profile (used by ProfileSwitcher preview etc.)
   getKeysForProfile: (profileId: string) => ProfileKeySlot;
 }
 
 export const StealthKeysContext = createContext<StealthKeysContextValue | null>(null);
-
-// ---------------------------------------------------------------------------
-// Subscribes clearStellar (for the active profile) to StellarWalletContext's
-// disconnect listener.  Rendered inside StealthKeysProvider so it can consume
-// both contexts.
-// ---------------------------------------------------------------------------
 
 function StealthKeysCleaner({ clearStellar }: { clearStellar: () => void }) {
   const stellar = useContext(StellarWalletContext);
@@ -90,20 +78,16 @@ function StealthKeysCleaner({ clearStellar }: { clearStellar: () => void }) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
-
 export function StealthKeysProvider({ children }: { children: React.ReactNode }) {
-  // Map from profileId → key slot.  We keep this in React state so that
-  // changes to any profile's keys trigger re-renders in subscribers.
   const [keysByProfile, setKeysByProfile] = useState<Map<string, ProfileKeySlot>>(
     () => new Map([[DEFAULT_PROFILE_ID, emptySlot()]]),
   );
 
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
-  // When the active profile changes, ensure the new profile has a slot.
   useEffect(() => {
     setKeysByProfile((prev) => {
       if (prev.has(activeProfileId)) return prev;
@@ -112,10 +96,6 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
       return next;
     });
   }, [activeProfileId]);
-
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
 
   const getSlot = useCallback(
     (profileId: string): ProfileKeySlot => {
@@ -133,16 +113,7 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Active-profile key accessors (stable via useMemo so consumers don't
-  // re-render on every keysByProfile map update)
-  // ---------------------------------------------------------------------------
-
   const activeSlot = useMemo(() => getSlot(activeProfileId), [getSlot, activeProfileId]);
-
-  // ---------------------------------------------------------------------------
-  // Setters — always write into the ACTIVE profile's slot
-  // ---------------------------------------------------------------------------
 
   const setEvmKeys = useCallback(
     (keys: EVMStealthKeys) => patchSlot(activeProfileId, { evmKeys: keys }),
@@ -177,33 +148,134 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     [patchSlot, activeProfileId],
   );
 
-  // ---------------------------------------------------------------------------
-  // Clears — scoped to the active profile only (do NOT wipe other profiles)
-  // ---------------------------------------------------------------------------
+  const clearEvm = useCallback(() => {
+    if (isRecoveryMode) return;
+    patchSlot(activeProfileId, { evmKeys: null, evmMetaAddress: null });
+  }, [isRecoveryMode, patchSlot, activeProfileId]);
 
-  const clearEvm = useCallback(
-    () => patchSlot(activeProfileId, { evmKeys: null, evmMetaAddress: null }),
-    [patchSlot, activeProfileId],
-  );
-  const clearStellar = useCallback(
-    () => patchSlot(activeProfileId, { stellarKeys: null, stellarMetaAddress: null }),
-    [patchSlot, activeProfileId],
-  );
-  const clearSolana = useCallback(
-    () => patchSlot(activeProfileId, { solanaKeys: null, solanaMetaAddress: null }),
-    [patchSlot, activeProfileId],
-  );
-  const clearCkb = useCallback(
-    () => patchSlot(activeProfileId, { ckbKeys: null, ckbMetaAddress: null }),
+  const clearStellar = useCallback(() => {
+    if (isRecoveryMode) return;
+    patchSlot(activeProfileId, { stellarKeys: null, stellarMetaAddress: null });
+  }, [isRecoveryMode, patchSlot, activeProfileId]);
+
+  const clearSolana = useCallback(() => {
+    if (isRecoveryMode) return;
+    patchSlot(activeProfileId, { solanaKeys: null, solanaMetaAddress: null });
+  }, [isRecoveryMode, patchSlot, activeProfileId]);
+
+  const clearCkb = useCallback(() => {
+    if (isRecoveryMode) return;
+    patchSlot(activeProfileId, { ckbKeys: null, ckbMetaAddress: null });
+  }, [isRecoveryMode, patchSlot, activeProfileId]);
+
+  const exitRecoveryMode = useCallback(() => {
+    setIsRecoveryMode(false);
+    setIsReadOnly(false);
+    patchSlot(activeProfileId, emptySlot());
+  }, [patchSlot, activeProfileId]);
+
+  const restoreFromRecoveryKit = useCallback(
+    (kitData: RecoveryKitData) => {
+      setIsRecoveryMode(true);
+      setIsReadOnly(!kitData.spendingScalarHex);
+
+      const viewingKey = kitData.viewingScalarHex
+        ? hexToBytes(kitData.viewingScalarHex)
+        : new Uint8Array(32);
+      const spendingPubKey = kitData.spendingPubKeyHex
+        ? hexToBytes(kitData.spendingPubKeyHex)
+        : new Uint8Array(32);
+      const viewingPubKey = kitData.viewingPubKeyHex
+        ? hexToBytes(kitData.viewingPubKeyHex)
+        : new Uint8Array(32);
+      const spendingScalar = kitData.spendingScalarHex
+        ? BigInt(
+            kitData.spendingScalarHex.startsWith('0x')
+              ? kitData.spendingScalarHex
+              : `0x${kitData.spendingScalarHex}`,
+          )
+        : undefined;
+
+      const chain = kitData.chain?.toLowerCase() || '';
+
+      if (chain === 'stellar' || kitData.metaAddress?.startsWith('st:xlm:')) {
+        const keys: any = {
+          viewingKey,
+          viewingScalar: viewingKey,
+          spendingKey: spendingPubKey,
+          spendingPubKey,
+          viewingPubKey,
+          spendingScalar,
+        };
+        patchSlot(activeProfileId, {
+          stellarKeys: keys as StellarStealthKeys,
+          stellarMetaAddress: kitData.metaAddress,
+        });
+      } else if (chain === 'horizen' || kitData.metaAddress?.startsWith('st:eth:')) {
+        const keys: any = {
+          viewingKey: kitData.viewingScalarHex,
+          spendingPubKey: kitData.spendingPubKeyHex || '',
+          viewingPubKey: kitData.viewingPubKeyHex || '',
+          spendingScalar: kitData.spendingScalarHex || '',
+        };
+        patchSlot(activeProfileId, {
+          evmKeys: keys as EVMStealthKeys,
+          evmMetaAddress: kitData.metaAddress,
+        });
+      } else if (chain === 'solana' || kitData.metaAddress?.startsWith('st:sol:')) {
+        const keys: any = {
+          viewingKey,
+          viewingScalar: viewingKey,
+          spendingKey: spendingPubKey,
+          spendingPubKey,
+          viewingPubKey,
+          spendingScalar,
+        };
+        patchSlot(activeProfileId, {
+          solanaKeys: keys as SolanaStealthKeys,
+          solanaMetaAddress: kitData.metaAddress,
+        });
+      } else if (chain === 'ckb' || kitData.metaAddress?.startsWith('st:ckb:')) {
+        const keys: any = {
+          viewingKey: kitData.viewingScalarHex,
+          spendingPubKey: kitData.spendingPubKeyHex || '',
+          viewingPubKey: kitData.viewingPubKeyHex || '',
+          spendingScalar: kitData.spendingScalarHex || '',
+        };
+        patchSlot(activeProfileId, {
+          ckbKeys: keys as CKBStealthKeys,
+          ckbMetaAddress: kitData.metaAddress,
+        });
+      } else {
+        const keys: any = {
+          viewingKey,
+          viewingScalar: viewingKey,
+          spendingKey: spendingPubKey,
+          spendingPubKey,
+          viewingPubKey,
+          spendingScalar,
+        };
+        patchSlot(activeProfileId, {
+          stellarKeys: keys as StellarStealthKeys,
+          stellarMetaAddress: kitData.metaAddress,
+        });
+      }
+
+      if (kitData.labels) {
+        try {
+          importLabels(kitData.metaAddress, JSON.stringify(kitData.labels), true);
+        } catch {
+          // Labels restore optional
+        }
+      }
+    },
     [patchSlot, activeProfileId],
   );
 
-  // Read keys for any profile (e.g. ProfileSwitcher preview)
   const getKeysForProfile = useCallback((id: string) => getSlot(id), [getSlot]);
 
   const value = useMemo<StealthKeysContextValue>(
     () => ({
-      // Active-profile flat accessors (identical API to the original context)
       evmKeys: activeSlot.evmKeys,
       evmMetaAddress: activeSlot.evmMetaAddress,
       stellarKeys: activeSlot.stellarKeys,
@@ -212,7 +284,12 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
       solanaMetaAddress: activeSlot.solanaMetaAddress,
       ckbKeys: activeSlot.ckbKeys,
       ckbMetaAddress: activeSlot.ckbMetaAddress,
-      // Setters
+      isRecoveryMode,
+      isReadOnly,
+      setIsRecoveryMode,
+      setIsReadOnly,
+      restoreFromRecoveryKit,
+      exitRecoveryMode,
       setEvmKeys,
       setEvmMetaAddress,
       setStellarKeys,
@@ -221,16 +298,18 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
       setSolanaMetaAddress,
       setCkbKeys,
       setCkbMetaAddress,
-      // Clears
       clearEvm,
       clearStellar,
       clearSolana,
       clearCkb,
-      // Cross-profile read
       getKeysForProfile,
     }),
     [
       activeSlot,
+      isRecoveryMode,
+      isReadOnly,
+      restoreFromRecoveryKit,
+      exitRecoveryMode,
       setEvmKeys,
       setEvmMetaAddress,
       setStellarKeys,
