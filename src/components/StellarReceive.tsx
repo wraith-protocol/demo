@@ -42,6 +42,8 @@ import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 import { createStellarQrUri } from '@/utils/qr';
+import { useProfilesStore } from '@/store/profilesStore';
+import { profileSigningMessage } from '@/lib/profileSigningMessage';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -186,6 +188,7 @@ function StellarMatchCardContainer({
   const [dest, setDest] = useState('');
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
@@ -317,6 +320,7 @@ function StellarMatchCardContainer({
           status: 'pending',
           amount: sendableAmount,
           recipient: dest,
+          profileId: activeProfileId,
           timestamp: Date.now(),
         });
 
@@ -368,6 +372,7 @@ function StellarMatchCardContainer({
           status: 'pending',
           amount: withdrawBalance.toFixed(withdrawAssetInfo.decimals),
           recipient: dest,
+          profileId: activeProfileId,
           timestamp: Date.now(),
         });
 
@@ -492,6 +497,7 @@ function StellarMatchCardContainer({
         direction: 'out',
         status: 'pending',
         recipient: dest,
+        profileId: activeProfileId,
         timestamp: Date.now(),
       });
 
@@ -675,6 +681,7 @@ export function StellarReceive() {
     useStealthKeys();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const notifications = useStellarNotifications();
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
@@ -864,7 +871,8 @@ export function StellarReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const signature = await signMessage(STEALTH_SIGNING_MESSAGE);
+      const message = profileSigningMessage(STEALTH_SIGNING_MESSAGE, activeProfileId);
+      const signature = await signMessage(message);
       const derived = deriveStealthKeys(signature);
       setStellarKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
@@ -885,6 +893,7 @@ export function StellarReceive() {
     }
   }, [
     signMessage,
+    activeProfileId,
     setStellarKeys,
     setStellarMetaAddress,
     notifications.state.enabled,
@@ -1135,6 +1144,7 @@ export function StellarReceive() {
         kind: 'name-registration',
         direction: 'out',
         status: 'pending',
+        profileId: activeProfileId,
         timestamp: Date.now(),
       });
 
