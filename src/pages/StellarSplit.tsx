@@ -25,15 +25,29 @@ function StatusBadge({ status }: { status: BatchRow['status'] }) {
   switch (status) {
     case 'valid':
       return (
-        <span className="inline-block h-1.5 w-1.5 bg-tertiary" title="Valid" aria-label="valid" />
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className="inline-block h-1.5 w-1.5 bg-tertiary"
+          title="Valid"
+          aria-label="valid"
+        />
       );
     case 'invalid':
       return (
-        <span className="inline-block h-1.5 w-1.5 bg-error" title="Invalid" aria-label="invalid" />
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className="inline-block h-1.5 w-1.5 bg-error"
+          title="Invalid"
+          aria-label="invalid"
+        />
       );
     case 'pending':
       return (
         <span
+          aria-live="polite"
+          aria-atomic="true"
           className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"
           title="Pending"
           aria-label="pending"
@@ -41,15 +55,29 @@ function StatusBadge({ status }: { status: BatchRow['status'] }) {
       );
     case 'success':
       return (
-        <span className="inline-block h-1.5 w-1.5 bg-tertiary" title="Sent" aria-label="sent" />
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className="inline-block h-1.5 w-1.5 bg-tertiary"
+          title="Sent"
+          aria-label="sent"
+        />
       );
     case 'failed':
       return (
-        <span className="inline-block h-1.5 w-1.5 bg-error" title="Failed" aria-label="failed" />
+        <span
+          aria-live="polite"
+          aria-atomic="true"
+          className="inline-block h-1.5 w-1.5 bg-error"
+          title="Failed"
+          aria-label="failed"
+        />
       );
     default:
       return (
         <span
+          aria-live="polite"
+          aria-atomic="true"
           className="inline-block h-1.5 w-1.5 bg-outline"
           title="Unvalidated"
           aria-label="unvalidated"
@@ -76,7 +104,11 @@ function StatusLabel({ status }: { status: BatchRow['status'] }) {
     failed: 'text-error',
   };
   return (
-    <span className={`font-mono text-[10px] uppercase tracking-widest ${colors[status]}`}>
+    <span
+      aria-live="polite"
+      aria-atomic="true"
+      className={`font-mono text-[10px] uppercase tracking-widest ${colors[status]}`}
+    >
       {labels[status]}
     </span>
   );

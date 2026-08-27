@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CopyButton } from '@/components/CopyButton';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface QRCodeModalProps {
   value: string;
   onClose: () => void;
   title?: string;
   variants?: Array<{ label: string; value: string }>;
+  /** Ref to the element that triggered this modal — focus returns here on close. */
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function QRCodeModal({
@@ -14,24 +17,29 @@ export function QRCodeModal({
   onClose,
   title = 'Stealth Meta-Address',
   variants,
+  triggerRef,
 }: QRCodeModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [selectedVariant, setSelectedVariant] = useState(0);
   const qrVariants = variants?.length ? variants : [{ label: 'Meta-address', value }];
   const activeVariant = qrVariants[Math.min(selectedVariant, qrVariants.length - 1)];
 
-  // Close on Escape key press, and focus close button on mount
-  useEffect(() => {
-    if (closeButtonRef.current) {
-      closeButtonRef.current.focus();
-    }
+  // Focus trap — keeps Tab/Shift+Tab inside the modal; returns focus on close.
+  useFocusTrap({
+    isActive: true,
+    containerRef: dialogRef,
+    initialFocusRef: closeButtonRef,
+    triggerRef,
+  });
 
+  // Escape key closes the modal (existing behaviour, preserved).
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -65,7 +73,10 @@ export function QRCodeModal({
       aria-modal="true"
       aria-labelledby="qr-modal-title"
     >
-      <div className="w-full max-w-sm border border-outline-variant bg-surface-container p-6 shadow-xl">
+      <div
+        ref={dialogRef}
+        className="w-full max-w-sm border border-outline-variant bg-surface-container p-6 shadow-xl"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2
             id="qr-modal-title"
@@ -89,6 +100,7 @@ export function QRCodeModal({
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -121,7 +133,7 @@ export function QRCodeModal({
           )}
 
           <div className="rounded-lg bg-white p-4">
-            <QRCodeSVG value={activeVariant.value} size={200} />
+            <QRCodeSVG value={activeVariant.value} size={200} aria-label={`QR code for ${title}`} />
           </div>
 
           <div className="flex w-full items-center gap-2 rounded bg-surface p-2 border border-outline-variant">
