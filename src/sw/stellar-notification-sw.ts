@@ -60,6 +60,17 @@ interface StoredViewingKey {
   encryptedSpendingScalar: string;
   lastScannedLedger?: number;
   timestamp: number;
+  relayUrl?: string;
+  metaAddressHash?: string;
+  pushSubscription?: PushSubscriptionJSON;
+}
+
+interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
 }
 
 interface NotificationData {
@@ -221,8 +232,31 @@ async function handleSync(_event: ExtendableEvent): Promise<void> {
 
 // ─── push event ───────────────────────────────────────────────────────────────
 
+// Store for deduplication of notifications
+const PROCED_NOTIFICATIONS = new Set<string>();
+
+// Helper to check if notification was already processed
+function isNotificationProcessed(id: string): boolean {
+  if (PROCED_NOTIFICATIONS.has(id)) {
+    return true;
+  }
+  PROCED_NOTIFICATIONS.add(id);
+  // Limit cache size to prevent memory issues
+  if (PROCED_NOTIFICATIONS.size > 1000) {
+    const first = PROCED_NOTIFICATIONS.values().next().value;
+    PROCED_NOTIFICATIONS.delete(first);
+  }
+  return false;
+}
+
 self.addEventListener('push', (event: PushEvent) => {
   const payload = parsePushPayload(event);
+
+  // Deduplicate: skip if we've already processed this notification
+  if (isNotificationProcessed(payload.id)) {
+    console.log(`[wraith-sw] Skipping duplicate notification: ${payload.id}`);
+    return;
+  }
 
   const lines: string[] = [payload.body];
   if (payload.amount && payload.asset) {
@@ -378,6 +412,105 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
   if (type === 'TRIGGER_SCAN') {
     event.waitUntil(handleSync(event as unknown as ExtendableEvent));
+  }
+
+  // Push subscription management
+  if (type === 'REGISTER_PUSH_SUBSCRIPTION') {
+    event.waitUntil(
+      (async () => {
+        try {
+          const { subscription, metaAddressHash, relayUrl } = event.data ?? {};
+          if (!subscription || !metaAddressHash) {
+            throw new Error('Missing subscription or metaAddressHash');
+          }
+
+          // Store subscription info in IndexedDB
+          const db = await openDB();
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+
+          // Update existing entry or create new one
+          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+            const request = store.get(subscription.keys?.p256dh || 'default');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          const entry: StoredViewingKey = existing || {
+            publicKey: subscription.keys?.p256dh || 'default',
+            encryptedViewingKey: '',
+            encryptedSpendingPubKey: '',
+            encryptedSpendingScalar: '',
+            timestamp: Date.now(),
+          };
+
+          // Store relay URL and meta-address hash
+          (entry as any).relayUrl = relayUrl;
+          (entry as any).metaAddressHash = metaAddressHash;
+          (entry as any).pushSubscription = subscription;
+
+          await new Promise<void>((resolve, reject) => {
+            const request = store.put(entry);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve();
+          });
+
+          db.close();
+          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_REGISTERED' });
+        } catch (error) {
+          console.error('[wraith-sw] Failed to register push subscription:', error);
+          (event.source as Client)?.postMessage({
+            type: 'PUSH_SUBSCRIPTION_ERROR',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })(),
+    );
+  }
+
+  if (type === 'UNREGISTER_PUSH_SUBSCRIPTION') {
+    event.waitUntil(
+      (async () => {
+        try {
+          const { subscription, metaAddressHash } = event.data ?? {};
+          if (!subscription) {
+            throw new Error('Missing subscription');
+          }
+
+          const db = await openDB();
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+
+          // Remove push subscription from entry
+          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+            const request = store.get(subscription.keys?.p256dh || 'default');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          if (existing) {
+            delete (existing as any).relayUrl;
+            delete (existing as any).metaAddressHash;
+            delete (existing as any).pushSubscription;
+
+            await new Promise<void>((resolve, reject) => {
+              const request = store.put(existing);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve();
+            });
+          }
+
+          db.close();
+          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_UNREGISTERED' });
+        } catch (error) {
+          console.error('[wraith-sw] Failed to unregister push subscription:', error);
+          (event.source as Client)?.postMessage({
+            type: 'PUSH_SUBSCRIPTION_ERROR',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })(),
+    );
   }
 });
 
