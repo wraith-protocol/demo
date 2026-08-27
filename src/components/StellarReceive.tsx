@@ -14,13 +14,14 @@ import {
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
-  scanAnnouncements,
   signStellarTransaction,
   STEALTH_SIGNING_MESSAGE,
   SCHEME_ID,
+  bytesToHex,
 } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
+import { useScanStrategy } from '@/context/ScanStrategyContext';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
 import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthKeys } from '@/context/StealthKeysContext';
@@ -46,6 +47,11 @@ import { createStellarQrUri } from '@/utils/qr';
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
+// Fetches announcements on the main thread. Only used to support the
+// `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
+// synchronous, main-thread access to the parsed announcements. The real,
+// production scan path fetches and scans off the main thread inside
+// stellar-scanner.worker.ts instead.
 async function fetchAnnouncementEvents(
   rpcUrl: string,
   contractId: string,
@@ -673,6 +679,7 @@ export function StellarReceive() {
     useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
+  const { strategy: scanStrategy } = useScanStrategy();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const notifications = useStellarNotifications();
@@ -1184,35 +1191,80 @@ export function StellarReceive() {
     setIsScanning(true);
     setError('');
 
-    try {
-      const announcements = await fetchAnnouncementEvents(
-        STELLAR_NETWORK.rpcUrl,
-        ANNOUNCER_CONTRACT,
-      );
-      const scanFn = (window as any).scanAnnouncementsMock || scanAnnouncements;
-      const results = scanFn(
-        announcements,
-        stellarKeys.viewingKey,
-        stellarKeys.spendingPubKey,
-        stellarKeys.spendingScalar,
-      );
-      if (workerRef.current) {
-        workerRef.current.terminate();
+    // Test hook: e2e/fixtures.ts injects a mock scan function on `window` so
+    // specs can control match results without real crypto. It runs on the
+    // main thread since a Worker doesn't share `window` with the page.
+    const mockScan = (window as any).scanAnnouncementsMock;
+    if (mockScan) {
+      try {
+        const announcements = await fetchAnnouncementEvents(
+          STELLAR_NETWORK.rpcUrl,
+          ANNOUNCER_CONTRACT,
+        );
+        const results = mockScan(
+          announcements,
+          stellarKeys.viewingKey,
+          stellarKeys.spendingPubKey,
+          stellarKeys.spendingScalar,
+        );
+        setMatched(results);
+        setHasScanned(true);
+        trackEvent('scan_triggered');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('common.scanFailed'));
+      } finally {
+        setIsScanning(false);
       }
-
-      workerRef.current = new Worker(
-        new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
-        { type: 'module' },
-      );
-      setMatched(results);
-      setHasScanned(true);
-      trackEvent('scan_triggered');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.scanFailed'));
-    } finally {
-      setIsScanning(false);
+      return;
     }
-  }, [stellarKeys, t]);
+
+    // Restart cleanly: tear down any in-flight scan before starting a new
+    // one, so a strategy change always takes effect on the next scan without
+    // requiring a page reload.
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
+
+    const worker = new Worker(new URL('../workers/stellar-scanner.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    workerRef.current = worker;
+
+    worker.onmessage = (event: MessageEvent) => {
+      const { type, results, error: workerError } = event.data ?? {};
+      if (type === 'SUCCESS') {
+        setMatched(results ?? []);
+        setHasScanned(true);
+        trackEvent('scan_triggered');
+      } else {
+        setError(workerError || t('common.scanFailed'));
+      }
+      setIsScanning(false);
+      worker.terminate();
+      if (workerRef.current === worker) {
+        workerRef.current = null;
+      }
+    };
+
+    worker.onerror = () => {
+      setError(t('common.scanFailed'));
+      setIsScanning(false);
+      worker.terminate();
+      if (workerRef.current === worker) {
+        workerRef.current = null;
+      }
+    };
+
+    worker.postMessage({
+      rpcUrl: STELLAR_NETWORK.rpcUrl,
+      announcerContract: ANNOUNCER_CONTRACT,
+      viewingKey: stellarKeys.viewingKey,
+      spendingPubKey: stellarKeys.spendingPubKey,
+      spendingScalar: stellarKeys.spendingScalar,
+      strategy: scanStrategy,
+    });
+  }, [stellarKeys, scanStrategy, t]);
 
   const handleToggleNotifications = useCallback(async () => {
     if (notifications.state.enabled) {
@@ -1324,6 +1376,9 @@ export function StellarReceive() {
         regHash={regHash}
         isScanning={isScanning}
         hasScanned={hasScanned}
+        scanStrategyLabel={t('scanStrategy.activeStrategy', {
+          strategy: t(`scanStrategy.${scanStrategy}Label`),
+        })}
         matchCount={matched.length}
         error={error}
         retryStatus={retryStatus}

@@ -113,6 +113,18 @@
     "cellsFound_one": "{{count}} cell found",
     "cellsFound_other": "{{count}} cells found"
   },
+  "scanStrategy": {
+    "title": "Scanning strategy",
+    "description": "Choose how the receive scanner checks incoming announcements against your keys.",
+    "tooltip": "Every stealth payment is tagged on-chain with a one-byte view tag. Checking it locally lets your scanner skip most non-matches quickly, but a passive observer of your RPC requests can use timing and request patterns to learn that one byte of correlation about which announcements you cared about. Ignoring the tag avoids that signal at the cost of a slower scan.",
+    "fastLabel": "Fast (view-tag only)",
+    "fastDescription": "Trusts the view-tag match alone and skips the extra address confirmation. Quickest option on a slow connection.",
+    "balancedLabel": "Balanced",
+    "balancedDescription": "Uses the view tag to skip non-matches, then confirms every candidate against the full stealth address. Default.",
+    "fullLabel": "Full (ignore tag)",
+    "fullDescription": "Ignores the on-chain view tag entirely and checks every announcement in full. Slowest, but can't miss a payment due to an incorrect tag.",
+    "activeStrategy": "Scanning strategy: {{strategy}}"
+  },
   "stellarSplit": {
     "title": "Batch Send",
     "description": "Paste a CSV of stealth meta-addresses and amounts to send in a single Stellar transaction. All rows are processed atomically — if any operation fails, the entire batch is rolled back.",

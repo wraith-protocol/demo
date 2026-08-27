@@ -1,6 +1,7 @@
-import { scanAnnouncements, bytesToHex } from '@wraith-protocol/sdk/chains/stellar';
+import { bytesToHex } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
 import { Address, xdr } from '@stellar/stellar-sdk';
+import { scanWithStrategy, DEFAULT_SCAN_STRATEGY, type ScanStrategy } from './stellarScanDispatch';
 
 async function fetchAnnouncementEvents(
   rpcUrl: string,
@@ -112,11 +113,31 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
 }
 
 self.onmessage = async (e: MessageEvent) => {
-  const { rpcUrl, announcerContract, viewingKey, spendingPubKey, spendingScalar } = e.data;
+  const {
+    rpcUrl,
+    announcerContract,
+    viewingKey,
+    spendingPubKey,
+    spendingScalar,
+    strategy,
+  }: {
+    rpcUrl: string;
+    announcerContract: string;
+    viewingKey: Uint8Array;
+    spendingPubKey: Uint8Array;
+    spendingScalar: bigint;
+    strategy?: ScanStrategy;
+  } = e.data;
 
   try {
-    const announcements = await fetchAnnouncementEvents(rpcUrl, announcerContract);
-    const results = scanAnnouncements(announcements, viewingKey, spendingPubKey, spendingScalar);
+    const announcements: Announcement[] = await fetchAnnouncementEvents(rpcUrl, announcerContract);
+    const results = scanWithStrategy(
+      strategy ?? DEFAULT_SCAN_STRATEGY,
+      announcements,
+      viewingKey,
+      spendingPubKey,
+      spendingScalar,
+    );
     self.postMessage({ type: 'SUCCESS', results });
   } catch (err) {
     self.postMessage({
