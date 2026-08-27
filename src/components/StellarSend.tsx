@@ -39,6 +39,7 @@ import {
 import { useActivityStore } from '@/stores/activityStore';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
+import { useProfilesStore } from '@/store/profilesStore';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
@@ -107,6 +108,7 @@ export function StellarSend() {
   const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
   const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
@@ -596,6 +598,7 @@ export function StellarSend() {
         status: 'pending',
         amount: amountValue,
         recipient: metaAddress,
+        profileId: activeProfileId,
         timestamp: Date.now(),
       });
 

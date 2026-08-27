@@ -5,6 +5,7 @@ import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { NetworkChip } from './NetworkChip';
+import { ProfileSwitcher } from './ProfileSwitcher';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotificationsStore } from '@/stores/notificationsStore';
 
@@ -21,6 +22,7 @@ export function Header() {
     { to: '/schedule', label: t('nav.schedule') },
     { to: '/names', label: t('nav.names') },
     { to: '/activity', label: t('nav.activity') },
+    { to: '/portfolio', label: t('nav.portfolio') },
   ];
 
   return (
@@ -92,6 +94,7 @@ export function Header() {
           <div className="hidden sm:flex sm:items-center sm:gap-3">
             <ChainSwitcher />
             <NetworkChip />
+            <ProfileSwitcher />
             <WalletConnect />
           </div>
           <button
@@ -152,6 +155,12 @@ export function Header() {
                 {t('header.chain')}
               </span>
               <ChainSwitcher />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+                Profile
+              </span>
+              <ProfileSwitcher />
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">

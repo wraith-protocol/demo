@@ -4,7 +4,8 @@
     "receive": "Recibir",
     "schedule": "Programar",
     "names": "Nombres",
-    "activity": "Actividad"
+    "activity": "Actividad",
+    "portfolio": "Portafolio"
   },
   "header": {
     "menuLabel": "Menú",

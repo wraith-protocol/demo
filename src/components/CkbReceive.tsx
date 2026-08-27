@@ -15,6 +15,8 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { EmptyState } from '@/components/EmptyState';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
+import { useProfilesStore } from '@/store/profilesStore';
+import { profileSigningMessage } from '@/lib/profileSigningMessage';
 
 function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
   const { t } = useTranslation();
@@ -88,6 +90,7 @@ export function CkbReceive() {
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const { ckbKeys, ckbMetaAddress, setCkbKeys, setCkbMetaAddress } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -103,7 +106,8 @@ export function CkbReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const sig = await (signer as any).signMessageRaw(STEALTH_SIGNING_MESSAGE);
+      const message = profileSigningMessage(STEALTH_SIGNING_MESSAGE, activeProfileId);
+      const sig = await (signer as any).signMessageRaw(message);
       const sigStr = typeof sig === 'string' ? sig : `0x${Buffer.from(sig).toString('hex')}`;
       const sigHex = sigStr.startsWith('0x') ? sigStr : `0x${sigStr}`;
 
@@ -122,7 +126,7 @@ export function CkbReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signer, setCkbKeys, setCkbMetaAddress, t]);
+  }, [signer, activeProfileId, setCkbKeys, setCkbMetaAddress, t]);
 
   const scanPayments = useCallback(async () => {
     if (!ckbKeys) return;

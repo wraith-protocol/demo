@@ -8,20 +8,24 @@ import {
   type ActivityStatus,
 } from '@/stores/activityStore';
 import { downloadActivityCsv, downloadActivityJson } from '@/utils/activityExport';
+import { useProfilesStore } from '@/store/profilesStore';
 
 type ActivityChain = 'horizen' | 'stellar' | 'solana' | 'ckb';
 
 export default function Activity() {
   const { address } = useStellarWallet();
   const { entries, clearHistory } = useActivityStore();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const [filterChain, setFilterChain] = useState<ActivityChain | 'all'>('all');
   const [filterKind, setFilterKind] = useState<ActivityKind | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<ActivityStatus | 'all'>('all');
 
   const walletEntries = useMemo(() => {
     if (!address) return [];
-    return entries.filter((entry: ActivityEntry) => entry.wallet === address);
-  }, [entries, address]);
+    return entries.filter(
+      (entry: ActivityEntry) => entry.wallet === address && entry.profileId === activeProfileId,
+    );
+  }, [entries, address, activeProfileId]);
 
   const filteredEntries = useMemo(
     () =>
@@ -62,7 +66,9 @@ export default function Activity() {
         </div>
         <button
           type="button"
-          onClick={() => clearHistory(filterChain === 'all' ? 'stellar' : filterChain, address)}
+          onClick={() =>
+            clearHistory(filterChain === 'all' ? 'stellar' : filterChain, address, activeProfileId)
+          }
           className="rounded-lg bg-surface-container px-4 py-2 font-mono text-xs uppercase tracking-widest text-on-surface transition-colors hover:bg-error/20 hover:text-error"
         >
           Clear History

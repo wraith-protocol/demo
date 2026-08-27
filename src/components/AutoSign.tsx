@@ -27,12 +27,15 @@ import type { HexString as CkbHexString } from '@wraith-protocol/sdk/chains/ckb'
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useChain } from '@/context/ChainContext';
+import { useProfilesStore } from '@/store/profilesStore';
+import { profileSigningMessage } from '@/lib/profileSigningMessage';
 
 function HorizenAutoSign() {
   const { isConnected, address, connector } = useAccount();
   const { data: connectorClient } = useConnectorClient();
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, setEvmKeys, setEvmMetaAddress, clearEvm } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const prompted = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
@@ -49,14 +52,16 @@ function HorizenAutoSign() {
     if (!ready || !address) return;
     if (evmKeys) return;
     if (isLoading.current) return;
-    if (prompted.current === address) return;
+    const promptKey = `${address}:${activeProfileId}`;
+    if (prompted.current === promptKey) return;
 
-    prompted.current = address;
+    prompted.current = promptKey;
     isLoading.current = true;
 
     (async () => {
       try {
-        const signature = await signMessageAsync({ message: STEALTH_SIGNING_MESSAGE });
+        const message = profileSigningMessage(STEALTH_SIGNING_MESSAGE, activeProfileId);
+        const signature = await signMessageAsync({ message });
         const keys = deriveStealthKeys(signature as HexString);
         const meta = encodeStealthMetaAddress(keys.spendingPubKey, keys.viewingPubKey);
         setEvmKeys(keys);
@@ -67,7 +72,7 @@ function HorizenAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, address, evmKeys, signMessageAsync, setEvmKeys, setEvmMetaAddress]);
+  }, [ready, address, evmKeys, activeProfileId, signMessageAsync, setEvmKeys, setEvmMetaAddress]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -83,6 +88,7 @@ function HorizenAutoSign() {
 function StellarAutoSign() {
   const { isConnected, address, signMessage } = useStellarWallet();
   const { stellarKeys, setStellarKeys, setStellarMetaAddress, clearStellar } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const prompted = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
@@ -99,14 +105,16 @@ function StellarAutoSign() {
     if (!ready || !address) return;
     if (stellarKeys) return;
     if (isLoading.current) return;
-    if (prompted.current === address) return;
+    const promptKey = `${address}:${activeProfileId}`;
+    if (prompted.current === promptKey) return;
 
-    prompted.current = address;
+    prompted.current = promptKey;
     isLoading.current = true;
 
     (async () => {
       try {
-        const signature = await signMessage(STELLAR_SIGNING_MESSAGE);
+        const message = profileSigningMessage(STELLAR_SIGNING_MESSAGE, activeProfileId);
+        const signature = await signMessage(message);
         const keys = deriveStellarKeys(signature);
         const meta = encodeStellarMeta(keys.spendingPubKey, keys.viewingPubKey);
         setStellarKeys(keys);
@@ -117,7 +125,15 @@ function StellarAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, address, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
+  }, [
+    ready,
+    address,
+    stellarKeys,
+    activeProfileId,
+    signMessage,
+    setStellarKeys,
+    setStellarMetaAddress,
+  ]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -133,6 +149,7 @@ function StellarAutoSign() {
 function SolanaAutoSign() {
   const { connected, publicKey, signMessage } = useWallet();
   const { solanaKeys, setSolanaKeys, setSolanaMetaAddress, clearSolana } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const prompted = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
@@ -150,14 +167,16 @@ function SolanaAutoSign() {
     if (solanaKeys) return;
     if (isLoading.current) return;
     const addr = publicKey.toBase58();
-    if (prompted.current === addr) return;
+    const promptKey = `${addr}:${activeProfileId}`;
+    if (prompted.current === promptKey) return;
 
-    prompted.current = addr;
+    prompted.current = promptKey;
     isLoading.current = true;
 
     (async () => {
       try {
-        const msgBytes = new TextEncoder().encode(SOLANA_SIGNING_MESSAGE);
+        const message = profileSigningMessage(SOLANA_SIGNING_MESSAGE, activeProfileId);
+        const msgBytes = new TextEncoder().encode(message);
         const signature = await signMessage(msgBytes);
         const keys = deriveSolanaKeys(signature);
         const meta = encodeSolanaMeta(keys.spendingPubKey, keys.viewingPubKey);
@@ -169,7 +188,15 @@ function SolanaAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, publicKey, solanaKeys, signMessage, setSolanaKeys, setSolanaMetaAddress]);
+  }, [
+    ready,
+    publicKey,
+    solanaKeys,
+    activeProfileId,
+    signMessage,
+    setSolanaKeys,
+    setSolanaMetaAddress,
+  ]);
 
   useEffect(() => {
     if (!connected) {
@@ -186,7 +213,8 @@ function CkbAutoSign() {
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const { ckbKeys, setCkbKeys, setCkbMetaAddress, clearCkb } = useStealthKeys();
-  const prompted = useRef(false);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const prompted = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
 
@@ -202,14 +230,16 @@ function CkbAutoSign() {
     if (!ready || !signer) return;
     if (ckbKeys) return;
     if (isLoading.current) return;
-    if (prompted.current) return;
+    const promptKey = activeProfileId;
+    if (prompted.current === promptKey) return;
 
-    prompted.current = true;
+    prompted.current = promptKey;
     isLoading.current = true;
 
     (async () => {
       try {
-        const sig = await (signer as any).signMessageRaw(CKB_SIGNING_MESSAGE);
+        const message = profileSigningMessage(CKB_SIGNING_MESSAGE, activeProfileId);
+        const sig = await (signer as any).signMessageRaw(message);
         const sigStr = typeof sig === 'string' ? sig : `0x${Buffer.from(sig).toString('hex')}`;
         const sigHex = sigStr.startsWith('0x') ? sigStr : `0x${sigStr}`;
         const derived = deriveCkbKeys(sigHex as CkbHexString);
@@ -222,11 +252,11 @@ function CkbAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, signer, ckbKeys, setCkbKeys, setCkbMetaAddress]);
+  }, [ready, signer, ckbKeys, activeProfileId, setCkbKeys, setCkbMetaAddress]);
 
   useEffect(() => {
     if (!wallet) {
-      prompted.current = false;
+      prompted.current = null;
       setReady(false);
       clearCkb();
     }

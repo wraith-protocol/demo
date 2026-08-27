@@ -18,6 +18,8 @@ import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
+import { useProfilesStore } from '@/store/profilesStore';
+import { profileSigningMessage } from '@/lib/profileSigningMessage';
 
 function SolanaStealthRow({
   match,
@@ -211,6 +213,7 @@ export function SolanaReceive() {
   const navigate = useNavigate();
   const { connected, signMessage } = useWallet();
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -226,7 +229,8 @@ export function SolanaReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const msgBytes = new TextEncoder().encode(STEALTH_SIGNING_MESSAGE);
+      const message = profileSigningMessage(STEALTH_SIGNING_MESSAGE, activeProfileId);
+      const msgBytes = new TextEncoder().encode(message);
       const signature = await signMessage(msgBytes);
       const derived = deriveStealthKeys(signature);
       setSolanaKeys(derived);
@@ -237,7 +241,7 @@ export function SolanaReceive() {
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setSolanaKeys, setSolanaMetaAddress, t]);
+  }, [signMessage, activeProfileId, setSolanaKeys, setSolanaMetaAddress, t]);
 
   const scanPayments = useCallback(async () => {
     if (!solanaKeys) return;
