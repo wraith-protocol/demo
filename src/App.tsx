@@ -15,6 +15,7 @@ import { useNotificationSW } from '@/hooks/useNotificationSW';
 import Schedule from '@/pages/Schedule';
 import StellarSplit from '@/pages/StellarSplit';
 import Names from '@/pages/Names';
+import NameProfile from '@/pages/NameProfile';
 import NamesAuctions from '@/pages/NamesAuctions';
 import Activity from '@/pages/Activity';
 import Portfolio from '@/pages/Portfolio';
@@ -187,6 +188,7 @@ export function App() {
           <Route path="/stellar/split" element={<StellarSplit />} />
           <Route path="/pay" element={<Send />} />
           <Route path="/names" element={<Names />} />
+          <Route path="/n/:name" element={<NameProfile />} />
           <Route path="/names/auctions" element={<NamesAuctions />} />
           <Route path="/activity" element={<Activity />} />
           <Route path="/history" element={<Activity />} />

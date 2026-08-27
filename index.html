@@ -14,6 +14,39 @@
         document.documentElement.style.visibility = 'visible';
       })();
     </script>
+    <script>
+      (function () {
+        const path = window.location.pathname;
+        const match = path.match(/^\/n\/([^/]+)$/);
+
+        if (match) {
+          const name = decodeURIComponent(match[1]);
+          const title = `${name} — Wraith Name`;
+          const description = `Send payments to ${name} on Wraith Protocol.`;
+          const url = `${window.location.origin}${path}`;
+
+          document.title = title;
+
+          const setMeta = (attribute, key, value) => {
+            let meta = document.head.querySelector(`meta[${attribute}="${key}"]`);
+            if (!meta) {
+              meta = document.createElement('meta');
+              meta.setAttribute(attribute, key);
+              document.head.appendChild(meta);
+            }
+            meta.setAttribute('content', value);
+          };
+
+          setMeta('property', 'og:title', title);
+          setMeta('property', 'og:description', description);
+          setMeta('property', 'og:url', url);
+          setMeta('property', 'og:image', '/og-image.png');
+          setMeta('name', 'twitter:title', title);
+          setMeta('name', 'twitter:description', description);
+          setMeta('name', 'twitter:image', '/og-image.png');
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
