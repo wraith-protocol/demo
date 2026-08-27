@@ -5,6 +5,7 @@ import { ChainSwitcher } from './ChainSwitcher';
 import { WalletConnect } from './WalletConnect';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { NetworkChip } from './NetworkChip';
+import { ProfileSwitcher } from './ProfileSwitcher';
 import { PrivacyPostureChip } from './PrivacyPostureChip';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotificationsStore } from '@/stores/notificationsStore';
@@ -147,6 +148,7 @@ export function Header() {
             <ChainSwitcher />
             <PrivacyPostureChip />
             <NetworkChip />
+            <ProfileSwitcher />
             <WalletConnect />
           </div>
           <button
@@ -207,6 +209,12 @@ export function Header() {
                 {t('header.chain')}
               </span>
               <ChainSwitcher />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-heading text-[10px] uppercase tracking-widest text-outline">
+                Profile
+              </span>
+              <ProfileSwitcher />
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="font-heading text-[10px] uppercase tracking-widest text-outline">

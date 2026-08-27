@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { EmptyState } from '@/components/EmptyState';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useActivityStore } from '@/stores/activityStore';
+import { useProfilesStore } from '@/store/profilesStore';
 import {
   filterByWindow,
   calcAssetTotals,
@@ -194,10 +195,11 @@ export default function Portfolio() {
   const [window, setWindow] = useState<TimeWindow>('30d');
 
   // Wallet-scoped entries only
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const walletEntries = useMemo(() => {
     if (!address) return [];
-    return entries.filter((e) => e.wallet === address);
-  }, [entries, address]);
+    return entries.filter((e) => e.wallet === address && e.profileId === activeProfileId);
+  }, [entries, address, activeProfileId]);
 
   // Time-filtered entries — all derived data flows from this
   const windowEntries = useMemo(

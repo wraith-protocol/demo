@@ -12,6 +12,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { useActivityStore } from '@/stores/activityStore';
 import { useStellarWallet } from '@/context/StellarWalletContext';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export interface StellarBatchWithdrawModalProps {
   isOpen: boolean;
@@ -32,6 +33,7 @@ export function StellarBatchWithdrawModal({
   const { address: walletAddress } = useStellarWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   const [globalDestination, setGlobalDestination] = useState('');
   const [assetKey] = useState<StellarAssetKey>('XLM');
@@ -76,6 +78,7 @@ export function StellarBatchWithdrawModal({
         status: 'pending',
         amount: preview.totalAmountXLM,
         recipient: globalDestination,
+        profileId: activeProfileId,
         timestamp: Date.now(),
       });
 

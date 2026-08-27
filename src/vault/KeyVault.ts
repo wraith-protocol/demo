@@ -1,5 +1,3 @@
-import { IdleLock } from '@/lib/idleLock';
-
 type VaultMetadata = {
   id: 'vault-meta';
   salt: Uint8Array;
@@ -69,7 +67,17 @@ export class KeyVault {
   private dbPromise: Promise<IDBDatabase> | null = null;
   private cryptoKey: CryptoKey | null = null;
   private unlocked = false;
-  private readonly idleLock: IdleLock;
+  private idleTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private activityListenerAttached = false;
+  private readonly handleActivity = () => this.resetIdleTimer();
+  private readonly handleBlur = () => {
+    if (this.lockOnBlur) void this.lock();
+  };
+  private readonly handleVisibilityChange = () => {
+    if (this.lockOnVisibilityChange && document.visibilityState === 'hidden') {
+      void this.lock();
+    }
+  };
 
   constructor(options: KeyVaultOptions = {}) {
     assertBrowserOnly();
@@ -81,12 +89,6 @@ export class KeyVault {
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.lockOnBlur = options.lockOnBlur ?? true;
     this.lockOnVisibilityChange = options.lockOnVisibilityChange ?? true;
-    this.idleLock = new IdleLock({
-      timeoutMs: this.idleTimeoutMs,
-      lockOnBlur: this.lockOnBlur,
-      lockOnVisibilityChange: this.lockOnVisibilityChange,
-      onIdle: () => void this.lock(),
-    });
   }
 
   get isUnlocked() {
@@ -112,7 +114,8 @@ export class KeyVault {
   }
 
   async lock(): Promise<void> {
-    this.idleLock.stop();
+    this.clearIdleTimer();
+    this.detachListeners();
     this.cryptoKey = null;
     this.unlocked = false;
   }
@@ -341,52 +344,56 @@ export class KeyVault {
   }
 
   private startAutoLock() {
-    if (this.unlocked) this.idleLock.start();
+    this.detachListeners();
+
+    if (this.idleTimeoutMs > 0) {
+      this.activityListenerAttached = true;
+      const events: Array<keyof WindowEventMap> = [
+        'pointerdown',
+        'keydown',
+        'touchstart',
+        'scroll',
+      ];
+      for (const eventName of events) {
+        window.addEventListener(eventName, this.handleActivity, { passive: true });
+      }
+      window.addEventListener('blur', this.handleBlur);
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+      this.resetIdleTimer();
+    }
+  }
+
+  private resetIdleTimer() {
+    this.clearIdleTimer();
+    if (!this.unlocked || this.idleTimeoutMs <= 0) return;
+
+    this.idleTimer = globalThis.setTimeout(() => {
+      void this.lock();
+    }, this.idleTimeoutMs);
+  }
+
+  private clearIdleTimer() {
+    if (this.idleTimer !== null) {
+      globalThis.clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
+  private detachListeners() {
+    if (!this.activityListenerAttached) return;
+
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+    for (const eventName of events) {
+      window.removeEventListener(eventName, this.handleActivity);
+    }
+    window.removeEventListener('blur', this.handleBlur);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    this.activityListenerAttached = false;
   }
 
   private touch() {
     if (this.unlocked) {
-      this.idleLock.touch();
+      this.resetIdleTimer();
     }
-  }
-
-  async exportRecoveryKit(
-    label: string,
-    passphrase: string,
-    metaAddress: string,
-    chain = 'stellar',
-    labels?: Record<string, any>,
-  ) {
-    const keys = await this.get<any>(label);
-    if (!keys) {
-      throw new Error(`No keys found in vault for label "${label}"`);
-    }
-
-    const { exportRecoveryKit: exportKit, bytesToHex: bToHex } =
-      await import('@/lib/stellar/recoveryKit');
-
-    const viewingScalarHex = keys.viewingKey
-      ? typeof keys.viewingKey === 'string'
-        ? keys.viewingKey
-        : bToHex(keys.viewingKey)
-      : '';
-    const viewingPubKeyHex = keys.viewingPubKey ? bToHex(keys.viewingPubKey) : undefined;
-    const spendingPubKeyHex = keys.spendingPubKey ? bToHex(keys.spendingPubKey) : undefined;
-    const spendingScalarHex = keys.spendingScalar
-      ? typeof keys.spendingScalar === 'bigint'
-        ? keys.spendingScalar.toString(16).padStart(64, '0')
-        : String(keys.spendingScalar)
-      : undefined;
-
-    return exportKit({
-      passphrase,
-      chain,
-      metaAddress,
-      viewingScalarHex,
-      viewingPubKeyHex,
-      spendingPubKeyHex,
-      spendingScalarHex,
-      labels,
-    });
   }
 }

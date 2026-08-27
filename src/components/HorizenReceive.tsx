@@ -24,6 +24,8 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { trackEvent } from '@/lib/telemetry';
+import { useProfilesStore } from '@/store/profilesStore';
+import { profileSigningMessage } from '@/lib/profileSigningMessage';
 import { CopyButton } from '@/components/CopyButton';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { EmptyState } from '@/components/EmptyState';
@@ -228,6 +230,7 @@ export function HorizenReceive() {
   const { isConnected, address } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -268,7 +271,8 @@ export function HorizenReceive() {
     setIsDerivingKeys(true);
     setError('');
     try {
-      const signature = await signMessageAsync({ message: STEALTH_SIGNING_MESSAGE });
+      const message = profileSigningMessage(STEALTH_SIGNING_MESSAGE, activeProfileId);
+      const signature = await signMessageAsync({ message });
       const derived = deriveStealthKeys(signature as HexString);
       setEvmKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
