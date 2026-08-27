@@ -26,6 +26,7 @@ function makeEntry(overrides: Partial<ActivityEntry>): ActivityEntry {
     amount: '10',
     token: 'XLM',
     recipient: 'ADDR_A',
+    profileId: 'default',
     timestamp: NOW,
     ...overrides,
   };

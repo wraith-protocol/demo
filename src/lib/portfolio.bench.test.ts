@@ -40,6 +40,7 @@ function generateEntries(count: number): ActivityEntry[] {
     amount: String(((i % 500) + 1) * 0.5),
     token: TOKENS[i % TOKENS.length],
     recipient: RECIPIENTS[i % RECIPIENTS.length],
+    profileId: 'default',
     timestamp: NOW - (i / count) * NINETY_DAYS, // spread evenly over 90 days
   }));
 }
