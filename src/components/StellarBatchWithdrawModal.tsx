@@ -13,6 +13,7 @@ import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
 import { useActivityStore } from '@/stores/activityStore';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useProfilesStore } from '@/store/profilesStore';
 
 export interface StellarBatchWithdrawModalProps {
   isOpen: boolean;

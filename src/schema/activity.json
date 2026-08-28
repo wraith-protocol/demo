@@ -42,6 +42,9 @@
         "type": "string"
       },
       "metadata": true,
+      "profileId": {
+        "type": "string"
+      },
       "timestamp": {
         "type": "integer",
         "minimum": 0

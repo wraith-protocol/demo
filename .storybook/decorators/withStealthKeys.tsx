@@ -27,6 +27,16 @@ const baseValue: StealthKeysValue = {
   clearStellar: noop,
   clearSolana: noop,
   clearCkb: noop,
+  getKeysForProfile: () => ({
+    evmKeys: null,
+    evmMetaAddress: null,
+    stellarKeys: null,
+    stellarMetaAddress: null,
+    solanaKeys: null,
+    solanaMetaAddress: null,
+    ckbKeys: null,
+    ckbMetaAddress: null,
+  }),
 };
 
 /**
