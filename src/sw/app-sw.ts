@@ -76,6 +76,17 @@ interface StoredViewingKey {
   encryptedSpendingScalar: string;
   lastScannedLedger?: number;
   timestamp: number;
+  relayUrl?: string;
+  metaAddressHash?: string;
+  pushSubscription?: PushSubscriptionJSON;
+}
+
+interface PushSubscriptionJSON {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
 }
 
 interface NotificationData {
@@ -241,17 +252,22 @@ self.addEventListener('notificationclick', (event) => {
   notification.close();
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.includes('/receive') || client.url.includes('/stellar')) {
-          client.focus();
-          client.postMessage({ type: 'NAVIGATE_TO_MATCH', stealthAddress: data.stealthAddress });
-          return;
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Focus existing Wraith tab and navigate to /notifications
+      const existing = clientList.find((c) => c.url.includes(self.location.origin) && 'focus' in c);
+      if (existing) {
+        (existing as WindowClient).focus();
+        (existing as WindowClient).navigate('/notifications');
+        // Also post match info so the page can pre-highlight it
+        if (data?.stealthAddress) {
+          existing.postMessage({ type: 'NAVIGATE_TO_MATCH', stealthAddress: data.stealthAddress });
         }
+        return;
       }
-      if (clients.openWindow) {
-        return clients.openWindow('/receive?match=' + data.stealthAddress);
-      }
+      const dest = data?.stealthAddress
+        ? `/notifications?match=${data.stealthAddress}`
+        : '/notifications';
+      return self.clients.openWindow(dest);
     }),
   );
 });
@@ -341,12 +357,206 @@ self.addEventListener('message', (event) => {
   if (type === 'TRIGGER_SCAN') {
     event.waitUntil(handleSync());
   }
+
+  // Push subscription management
+  if (type === 'REGISTER_PUSH_SUBSCRIPTION') {
+    event.waitUntil(
+      (async () => {
+        try {
+          const { subscription, metaAddressHash, relayUrl } = event.data ?? {};
+          if (!subscription || !metaAddressHash) {
+            throw new Error('Missing subscription or metaAddressHash');
+          }
+
+          // Store subscription info in IndexedDB
+          const db = await openDB();
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+
+          // Update existing entry or create new one
+          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+            const request = store.get(subscription.keys?.p256dh || 'default');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          const entry: StoredViewingKey = existing || {
+            publicKey: subscription.keys?.p256dh || 'default',
+            encryptedViewingKey: '',
+            encryptedSpendingPubKey: '',
+            encryptedSpendingScalar: '',
+            timestamp: Date.now(),
+          };
+
+          // Store relay URL and meta-address hash
+          (entry as any).relayUrl = relayUrl;
+          (entry as any).metaAddressHash = metaAddressHash;
+          (entry as any).pushSubscription = subscription;
+
+          await new Promise<void>((resolve, reject) => {
+            const request = store.put(entry);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve();
+          });
+
+          db.close();
+          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_REGISTERED' });
+        } catch (error) {
+          console.error('[app-sw] Failed to register push subscription:', error);
+          (event.source as Client)?.postMessage({
+            type: 'PUSH_SUBSCRIPTION_ERROR',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })(),
+    );
+  }
+
+  if (type === 'UNREGISTER_PUSH_SUBSCRIPTION') {
+    event.waitUntil(
+      (async () => {
+        try {
+          const { subscription, metaAddressHash } = event.data ?? {};
+          if (!subscription) {
+            throw new Error('Missing subscription');
+          }
+
+          const db = await openDB();
+          const transaction = db.transaction([STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(STORE_NAME);
+
+          // Remove push subscription from entry
+          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+            const request = store.get(subscription.keys?.p256dh || 'default');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          if (existing) {
+            delete (existing as any).relayUrl;
+            delete (existing as any).metaAddressHash;
+            delete (existing as any).pushSubscription;
+
+            await new Promise<void>((resolve, reject) => {
+              const request = store.put(existing);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve();
+            });
+          }
+
+          db.close();
+          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_UNREGISTERED' });
+        } catch (error) {
+          console.error('[app-sw] Failed to unregister push subscription:', error);
+          (event.source as Client)?.postMessage({
+            type: 'PUSH_SUBSCRIPTION_ERROR',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      })(),
+    );
+  }
 });
 
 // ── Push (future) ──────────────────────────────────────────────────────────────
 
-self.addEventListener('push', (_event) => {
-  // Reserved for future server-sent push notifications.
+interface PushPayload {
+  id: string;
+  title: string;
+  body: string;
+  amount?: string;
+  asset?: string;
+  sender?: string;
+  data?: Record<string, unknown>;
+}
+
+interface NotificationData {
+  stealthAddress: string;
+  amount?: string;
+  timestamp: number;
+}
+
+// Store for deduplication of notifications
+const PROCED_NOTIFICATIONS = new Set<string>();
+
+// Helper to check if notification was already processed
+function isNotificationProcessed(id: string): boolean {
+  if (PROCED_NOTIFICATIONS.has(id)) {
+    return true;
+  }
+  PROCED_NOTIFICATIONS.add(id);
+  // Limit cache size to prevent memory issues
+  if (PROCED_NOTIFICATIONS.size > 1000) {
+    const first = PROCED_NOTIFICATIONS.values().next().value;
+    PROCED_NOTIFICATIONS.delete(first);
+  }
+  return false;
+}
+
+function parsePushPayload(event: PushEvent): PushPayload {
+  try {
+    const json = event.data?.json() as Partial<PushPayload> | undefined;
+    if (json && json.title) {
+      return {
+        id: json.id ?? `sw-${Date.now()}`,
+        title: json.title,
+        body: json.body ?? '',
+        amount: json.amount,
+        asset: json.asset,
+        sender: json.sender,
+        data: json.data,
+      };
+    }
+  } catch {
+    // ignore parse errors — fall through to default
+  }
+  return {
+    id: `sw-${Date.now()}`,
+    title: 'New stealth payment detected',
+    body: 'Open Wraith to view payment details.',
+  };
+}
+
+self.addEventListener('push', (event: PushEvent) => {
+  const payload = parsePushPayload(event);
+
+  // Deduplicate: skip if we've already processed this notification
+  if (isNotificationProcessed(payload.id)) {
+    console.log(`[app-sw] Skipping duplicate notification: ${payload.id}`);
+    return;
+  }
+
+  const lines: string[] = [payload.body];
+  if (payload.amount && payload.asset) {
+    lines.push(`Amount: ${payload.amount} ${payload.asset}`);
+  } else if (payload.amount) {
+    lines.push(`Amount: ${payload.amount}`);
+  }
+  if (payload.sender) {
+    const short =
+      payload.sender.length > 24
+        ? `${payload.sender.slice(0, 10)}…${payload.sender.slice(-10)}`
+        : payload.sender;
+    lines.push(`From: ${short}`);
+  }
+
+  const notificationOptions: NotificationOptions = {
+    body: lines.join('\n'),
+    icon: '/favicon-32x32.png',
+    badge: '/favicon-16x16.png',
+    tag: payload.id,
+    data: {
+      id: payload.id,
+      stealthAddress: payload.sender,
+      amount: payload.amount,
+      asset: payload.asset,
+      sender: payload.sender,
+      timestamp: Date.now(),
+      ...payload.data,
+    } as NotificationData & Record<string, unknown>,
+  };
+
+  event.waitUntil(self.registration.showNotification(payload.title, notificationOptions));
 });
 
 export {};

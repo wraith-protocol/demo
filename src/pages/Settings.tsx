@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme, type ThemePreference } from '@/context/ThemeContext';
 import { useStealthKeys } from '@/context/StealthKeysContext';
@@ -12,6 +12,10 @@ import {
   generateRecoveryFilename,
   bytesToHex,
 } from '@/lib/stellar/recoveryKit';
+import { useNotificationSW } from '@/hooks/useNotificationSW';
+import { DEFAULT_RELAY_URL } from '@/lib/pushRelay';
+
+type ScanningStrategy = 'fast' | 'balanced' | 'full';
 
 const preferences: Array<{ value: ThemePreference; label: string; description: string }> = [
   {
@@ -21,6 +25,32 @@ const preferences: Array<{ value: ThemePreference; label: string; description: s
   },
   { value: 'light', label: 'Light', description: 'Always use the light theme.' },
   { value: 'dark', label: 'Dark', description: 'Always use the dark theme.' },
+];
+
+const scanningStrategies: Array<{
+  value: ScanningStrategy;
+  labelKey: string;
+  descriptionKey: string;
+  tooltipKey: string;
+}> = [
+  {
+    value: 'fast',
+    labelKey: 'stellar.strategyFast',
+    descriptionKey: 'stellar.strategyFastDescription',
+    tooltipKey: 'stellar.strategyFastTooltip',
+  },
+  {
+    value: 'balanced',
+    labelKey: 'stellar.strategyBalanced',
+    descriptionKey: 'stellar.strategyBalancedDescription',
+    tooltipKey: 'stellar.strategyBalancedTooltip',
+  },
+  {
+    value: 'full',
+    labelKey: 'stellar.strategyFull',
+    descriptionKey: 'stellar.strategyFullDescription',
+    tooltipKey: 'stellar.strategyFullTooltip',
+  },
 ];
 
 export default function Settings() {
@@ -43,6 +73,26 @@ export default function Settings() {
     exitRecoveryMode,
   } = useStealthKeys();
 
+  // Web Push Notification State
+  const {
+    state: pushState,
+    requestPermission,
+    subscribe,
+    unsubscribe,
+    testRelay,
+    updateRelayUrl,
+  } = useNotificationSW();
+
+  // Scanning Strategy State
+  const [scanningStrategy, setScanningStrategy] = useState<ScanningStrategy>(() => {
+    const saved = localStorage.getItem('wraith-scanning-strategy');
+    return (saved as ScanningStrategy) || 'balanced';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('wraith-scanning-strategy', scanningStrategy);
+  }, [scanningStrategy]);
+
   // Export State
   const [exportPassphrase, setExportPassphrase] = useState('');
   const [includeSpendingScalar, setIncludeSpendingScalar] = useState(true);
@@ -62,6 +112,16 @@ export default function Settings() {
   } | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Web Push UI State
+  const [relayUrlInput, setRelayUrlInput] = useState(pushState.relayUrl);
+  const [pushMessage, setPushMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [isUnsubscribing, setIsUnsubscribing] = useState(false);
+  const [isTestingRelay, setIsTestingRelay] = useState(false);
 
   // Active meta-address and keys for current chain
   const activeMetaAddress =
@@ -236,6 +296,100 @@ export default function Settings() {
     } finally {
       setIsRestoring(false);
     }
+  };
+
+  // Web Push Handlers
+  const handleSubscribe = async () => {
+    setPushMessage(null);
+
+    if (!activeMetaAddress) {
+      setPushMessage({
+        type: 'error',
+        text: 'No active meta-address. Derive keys on the Receive page first.',
+      });
+      return;
+    }
+
+    setIsSubscribing(true);
+
+    try {
+      await subscribe(activeMetaAddress, relayUrlInput);
+      setPushMessage({
+        type: 'success',
+        text: 'Successfully subscribed to stealth payment alerts via Web Push.',
+      });
+    } catch (err) {
+      setPushMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to subscribe to Web Push.',
+      });
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  const handleUnsubscribe = async () => {
+    setPushMessage(null);
+
+    if (!activeMetaAddress) {
+      setPushMessage({
+        type: 'error',
+        text: 'No active meta-address to unsubscribe.',
+      });
+      return;
+    }
+
+    setIsUnsubscribing(true);
+
+    try {
+      await unsubscribe(activeMetaAddress);
+      setPushMessage({
+        type: 'success',
+        text: 'Successfully unsubscribed from Web Push notifications.',
+      });
+    } catch (err) {
+      setPushMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to unsubscribe from Web Push.',
+      });
+    } finally {
+      setIsUnsubscribing(false);
+    }
+  };
+
+  const handleTestRelay = async () => {
+    setPushMessage(null);
+    setIsTestingRelay(true);
+
+    try {
+      const reachable = await testRelay(relayUrlInput);
+      if (reachable) {
+        setPushMessage({
+          type: 'success',
+          text: 'Relay is reachable and healthy.',
+        });
+      } else {
+        setPushMessage({
+          type: 'error',
+          text: 'Relay is not reachable. Check the URL and try again.',
+        });
+      }
+    } catch (err) {
+      setPushMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to test relay connectivity.',
+      });
+    } finally {
+      setIsTestingRelay(false);
+    }
+  };
+
+  const handleUpdateRelayUrl = () => {
+    updateRelayUrl(relayUrlInput);
+    setPushMessage({
+      type: 'success',
+      text: 'Relay URL updated. Test connectivity to verify.',
+    });
   };
 
   return (
@@ -534,6 +688,164 @@ export default function Settings() {
             </span>
           </label>
         ))}
+      </fieldset>
+
+      {/* Scanning Strategy Preferences */}
+      <fieldset className="flex flex-col gap-3 border border-outline-variant bg-surface-container p-5">
+        <legend className="font-mono text-[10px] uppercase tracking-widest text-on-surface">
+          {t('stellar.scanningStrategy')}
+        </legend>
+        <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+          {t('stellar.scanningStrategyDescription')}
+        </p>
+        {scanningStrategies.map((option) => (
+          <label
+            key={option.value}
+            className="flex cursor-pointer items-start gap-3 border border-outline-variant p-3 transition-colors hover:bg-surface-bright"
+          >
+            <input
+              type="radio"
+              name="scanning-strategy"
+              value={option.value}
+              checked={scanningStrategy === option.value}
+              onChange={() => setScanningStrategy(option.value)}
+              className="mt-1 accent-[var(--color-tertiary)]"
+            />
+            <span className="flex flex-col gap-1">
+              <span className="font-heading text-sm font-semibold text-on-surface">
+                {t(option.labelKey)}
+              </span>
+              <span className="font-body text-xs text-on-surface-variant">
+                {t(option.descriptionKey)}
+              </span>
+              <span className="font-mono text-[10px] text-outline">{t(option.tooltipKey)}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      {/* Web Push Notifications */}
+      <fieldset className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
+        <legend className="font-mono text-[10px] uppercase tracking-widest text-on-surface">
+          {t('stellar.webPush')}
+        </legend>
+        <p className="font-body text-xs leading-relaxed text-on-surface-variant">
+          {t('stellar.webPushDescription')}
+        </p>
+
+        {/* Support Check */}
+        {!pushState.supported && (
+          <div className="border border-error/40 bg-error/10 p-3">
+            <p className="font-mono text-xs text-error">{t('stellar.webPushNotSupported')}</p>
+          </div>
+        )}
+
+        {/* Permission Status */}
+        {pushState.supported && pushState.permission === 'denied' && (
+          <div className="border border-error/40 bg-error/10 p-3">
+            <p className="font-mono text-xs text-error">{t('stellar.webPushPermissionDenied')}</p>
+          </div>
+        )}
+
+        {/* Relay URL Configuration */}
+        {pushState.supported && pushState.permission !== 'denied' && (
+          <div className="flex flex-col gap-2">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              {t('stellar.relayUrl')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={relayUrlInput}
+                onChange={(e) => setRelayUrlInput(e.target.value)}
+                placeholder="https://relay.wraith-protocol.dev/api"
+                className="h-11 flex-1 border border-outline-variant bg-surface px-3.5 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+              />
+              <button
+                onClick={handleUpdateRelayUrl}
+                disabled={relayUrlInput === pushState.relayUrl}
+                className="h-11 border border-outline-variant bg-surface px-4 font-heading text-xs font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+              >
+                {t('common.update')}
+              </button>
+              <button
+                onClick={handleTestRelay}
+                disabled={isTestingRelay}
+                className="h-11 border border-outline-variant bg-surface px-4 font-heading text-xs font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+              >
+                {isTestingRelay ? t('stellar.testing') : t('common.test')}
+              </button>
+            </div>
+            <p className="font-mono text-[10px] text-on-surface-variant">
+              {t('stellar.selfHostableRelay', { defaultUrl: DEFAULT_RELAY_URL })}
+            </p>
+          </div>
+        )}
+
+        {/* Subscription Status */}
+        {pushState.supported && pushState.permission !== 'denied' && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                {t('stellar.status')}
+              </span>
+              <span
+                className={`font-mono text-[10px] font-bold uppercase tracking-wider ${
+                  pushState.subscribed ? 'text-tertiary' : 'text-outline'
+                }`}
+              >
+                {pushState.subscribed ? t('stellar.subscribed') : t('stellar.notSubscribed')}
+              </span>
+            </div>
+            {pushState.subscribed && (
+              <div className="border border-tertiary/40 bg-tertiary/10 p-3">
+                <p className="font-mono text-xs text-tertiary">✓ {t('stellar.subscribedNotice')}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Subscribe/Unsubscribe Buttons */}
+        {pushState.supported && pushState.permission !== 'denied' && (
+          <div className="flex gap-2">
+            {!pushState.subscribed ? (
+              <button
+                onClick={handleSubscribe}
+                disabled={!activeMetaAddress || isSubscribing}
+                className="h-11 flex-1 bg-primary px-5 font-heading text-xs font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+              >
+                {isSubscribing ? t('stellar.subscribing') : t('stellar.subscribeToAlerts')}
+              </button>
+            ) : (
+              <button
+                onClick={handleUnsubscribe}
+                disabled={isUnsubscribing}
+                className="h-11 flex-1 border border-error/40 bg-surface px-5 font-heading text-xs font-semibold uppercase tracking-widest text-error transition-colors hover:bg-error/10 disabled:opacity-30"
+              >
+                {isUnsubscribing ? t('stellar.unsubscribing') : t('stellar.unsubscribe')}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Privacy Notice */}
+        {pushState.supported && pushState.permission !== 'denied' && (
+          <div className="border border-outline-variant/60 bg-surface/50 p-3 font-mono text-xs text-on-surface-variant">
+            <span className="font-semibold text-on-surface">{t('stellar.privacyNotice')}: </span>
+            {t('stellar.privacyNoticeText')}
+          </div>
+        )}
+
+        {/* Push Messages */}
+        {pushMessage && (
+          <p
+            className={`font-mono text-xs ${
+              pushMessage.type === 'success' ? 'text-tertiary' : 'text-error'
+            }`}
+          >
+            {pushMessage.text}
+          </p>
+        )}
       </fieldset>
     </section>
   );
