@@ -77,7 +77,7 @@ function Providers({ children }: { children: React.ReactNode }) {
                       <StellarWalletProvider>
                         <ContactsProvider>
                           <NameHistoryProvider>
-                          <SplitTemplatesProvider>
+                            <SplitTemplatesProvider>
                               <StealthKeysProvider>
                                 <ScanStrategyProvider>{children}</ScanStrategyProvider>
                               </StealthKeysProvider>
