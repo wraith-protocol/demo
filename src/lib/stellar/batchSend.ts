@@ -152,6 +152,34 @@ function isHeaderRow(cols: string[]): boolean {
   );
 }
 
+/** Quote a CSV field if it contains a comma, quote, or newline. */
+function escapeCsvField(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+/**
+ * Serialize rows back into CSV text — the inverse of {@link parseCsvRows}.
+ *
+ * Used to keep the CSV textarea in sync when rows are edited through a
+ * structured UI (e.g. the per-row recipient combobox) instead of pasted
+ * directly, so the existing validate/submit pipeline keeps working unchanged.
+ */
+export function serializeRowsToCsv(
+  rows: Array<Pick<BatchRow, 'metaAddress' | 'amountRaw' | 'memo'>>,
+): string {
+  return rows
+    .map((row) => {
+      const cols = row.memo
+        ? [row.metaAddress, row.amountRaw, row.memo]
+        : [row.metaAddress, row.amountRaw];
+      return cols.map(escapeCsvField).join(',');
+    })
+    .join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------

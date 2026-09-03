@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseCsvRows, validateRow, validateRows, MAX_BATCH_ROWS } from './batchSend';
+import {
+  parseCsvRows,
+  serializeRowsToCsv,
+  validateRow,
+  validateRows,
+  MAX_BATCH_ROWS,
+} from './batchSend';
 import type { BatchRow } from './batchSend';
 
 // ---------------------------------------------------------------------------
@@ -291,6 +297,63 @@ describe('validateRows', () => {
     );
     const result = validateRows(rows, 'XLM');
     expect(result.every((r) => r.status === 'valid')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// serializeRowsToCsv
+// ---------------------------------------------------------------------------
+
+describe('serializeRowsToCsv', () => {
+  it('returns empty string for empty input', () => {
+    expect(serializeRowsToCsv([])).toBe('');
+  });
+
+  it('serializes a two-column row when memo is empty', () => {
+    const csv = serializeRowsToCsv([{ metaAddress: 'st:xlm:AAA', amountRaw: '10', memo: '' }]);
+    expect(csv).toBe('st:xlm:AAA,10');
+  });
+
+  it('serializes a three-column row when memo is present', () => {
+    const csv = serializeRowsToCsv([
+      { metaAddress: 'st:xlm:AAA', amountRaw: '5.5', memo: 'payment-1' },
+    ]);
+    expect(csv).toBe('st:xlm:AAA,5.5,payment-1');
+  });
+
+  it('joins multiple rows with newlines', () => {
+    const csv = serializeRowsToCsv([
+      { metaAddress: 'st:xlm:AAA', amountRaw: '10', memo: '' },
+      { metaAddress: 'st:xlm:BBB', amountRaw: '5.5', memo: 'payment-1' },
+    ]);
+    expect(csv).toBe('st:xlm:AAA,10\nst:xlm:BBB,5.5,payment-1');
+  });
+
+  it('quotes fields containing commas', () => {
+    const csv = serializeRowsToCsv([
+      { metaAddress: 'st:xlm:AAA,extra', amountRaw: '10', memo: '' },
+    ]);
+    expect(csv).toBe('"st:xlm:AAA,extra",10');
+  });
+
+  it('escapes embedded double quotes', () => {
+    const csv = serializeRowsToCsv([{ metaAddress: 'st:xlm:AAA"B', amountRaw: '5', memo: '' }]);
+    expect(csv).toBe('"st:xlm:AAA""B",5');
+  });
+
+  it('round-trips through parseCsvRows', () => {
+    const original = [
+      { metaAddress: 'st:xlm:AAA', amountRaw: '10', memo: '' },
+      { metaAddress: 'st:xlm:BBB', amountRaw: '5.5', memo: 'payment-1' },
+      { metaAddress: 'st:xlm:AAA,extra', amountRaw: '2', memo: 'has "quotes"' },
+    ];
+    const parsed = parseCsvRows(serializeRowsToCsv(original));
+    expect(parsed).toHaveLength(original.length);
+    parsed.forEach((row, i) => {
+      expect(row.metaAddress).toBe(original[i].metaAddress);
+      expect(row.amountRaw).toBe(original[i].amountRaw);
+      expect(row.memo).toBe(original[i].memo);
+    });
   });
 });
 
