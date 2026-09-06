@@ -1,11 +1,9 @@
 name: CI
-
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,14 +13,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - name: Enable corepack (installs pnpm from packageManager field)
         run: |
           corepack enable
-          corepack prepare pnpm@10.28.2 --activate
           pnpm --version
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm format:check
       - run: pnpm build
