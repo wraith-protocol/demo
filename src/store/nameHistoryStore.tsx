@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  isBoundedString,
+  isFiniteTimestamp,
+  readVersionedCollection,
+  writeVersioned,
+} from '../lib/versionedStorage';
 
-interface NameHistoryEntry {
+export interface NameHistoryEntry {
   address: string;
   name?: string;
   lastUsed: number;
@@ -16,16 +22,24 @@ const NameHistoryContext = createContext<NameHistoryContextValue | null>(null);
 
 const STORAGE_KEY = 'wraith-name-history';
 
+function isNameHistoryEntry(value: unknown): value is NameHistoryEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    isBoundedString(entry.address, 512) &&
+    entry.address.length > 0 &&
+    (entry.name === undefined || isBoundedString(entry.name, 200)) &&
+    isFiniteTimestamp(entry.lastUsed)
+  );
+}
+
 export function NameHistoryProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<NameHistoryEntry[]>([]);
 
   // Load history from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      }
+      setHistory(readVersionedCollection(localStorage, STORAGE_KEY, isNameHistoryEntry));
     } catch {
       // Ignore parse errors
     }
@@ -33,7 +47,7 @@ export function NameHistoryProvider({ children }: { children: ReactNode }) {
 
   // Save history to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+    writeVersioned(localStorage, STORAGE_KEY, history);
   }, [history]);
 
   const addToHistory = (address: string, name?: string) => {

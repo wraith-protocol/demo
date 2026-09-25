@@ -63,4 +63,22 @@ describe('name auction watchlist', () => {
       revealed: false,
     });
   });
+
+  it('recovers from corrupt and unknown-version persisted data', async () => {
+    localStorage.setItem('wraith-name-auction-watchlist', '{not-json');
+    const { useNameWatchlistStore } = await import('./nameWatchlistStore');
+    await useNameWatchlistStore.persist.rehydrate();
+    expect(useNameWatchlistStore.getState().watchedAuctions).toEqual([]);
+    expect(useNameWatchlistStore.getState().bids).toEqual({});
+
+    localStorage.setItem(
+      'wraith-name-auction-watchlist',
+      JSON.stringify({
+        version: 99,
+        state: { watchedAuctions: [{ name: 'future', endsAt: 1 }], bids: {} },
+      }),
+    );
+    await useNameWatchlistStore.persist.rehydrate();
+    expect(useNameWatchlistStore.getState().watchedAuctions).toEqual([]);
+  });
 });

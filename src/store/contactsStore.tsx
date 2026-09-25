@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  isBoundedString,
+  isFiniteTimestamp,
+  readVersionedCollection,
+  writeVersioned,
+} from '../lib/versionedStorage';
 
-interface Contact {
+export interface Contact {
   address: string;
   name: string;
   addedAt: number;
@@ -18,16 +24,24 @@ const ContactsContext = createContext<ContactsContextValue | null>(null);
 
 const STORAGE_KEY = 'wraith-contacts';
 
+function isContact(value: unknown): value is Contact {
+  if (typeof value !== 'object' || value === null) return false;
+  const contact = value as Record<string, unknown>;
+  return (
+    isBoundedString(contact.address, 512) &&
+    contact.address.length > 0 &&
+    isBoundedString(contact.name, 200) &&
+    isFiniteTimestamp(contact.addedAt)
+  );
+}
+
 export function ContactsProvider({ children }: { children: ReactNode }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
 
   // Load contacts from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setContacts(JSON.parse(stored));
-      }
+      setContacts(readVersionedCollection(localStorage, STORAGE_KEY, isContact));
     } catch {
       // Ignore parse errors
     }
@@ -35,7 +49,7 @@ export function ContactsProvider({ children }: { children: ReactNode }) {
 
   // Save contacts to localStorage when they change
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
+    writeVersioned(localStorage, STORAGE_KEY, contacts);
   }, [contacts]);
 
   const addContact = (address: string, name: string) => {
