@@ -17,6 +17,12 @@
 
 const RP_SALT_LABEL = new TextEncoder().encode('wraith-protocol:stellar:passkey:v1');
 
+export const PASSKEY_CREDENTIAL_ID_STORAGE_KEY = 'wraith:passkey:credentialId';
+export const PASSKEY_ADDRESS_STORAGE_KEY = 'wraith:passkey:address';
+export const PASSKEY_PUBLIC_KEY_STORAGE_KEY = 'wraith:passkey:publicKey';
+export const PASSKEY_PUBLIC_KEY_ALGORITHM_STORAGE_KEY = 'wraith:passkey:publicKeyAlgorithm';
+export const PASSKEY_SIGN_COUNT_STORAGE_KEY = 'wraith:passkey:signCount';
+
 export type PasskeyErrorCode =
   | 'PRF_UNSUPPORTED'
   | 'NO_CREDENTIAL'
@@ -150,6 +156,8 @@ export function parsePrfExtensionResult(
 export interface CreatePasskeyResult {
   credentialId: Uint8Array;
   prfSecret: Uint8Array;
+  publicKeySpki: Uint8Array;
+  publicKeyAlgorithm: number;
 }
 
 /**
@@ -201,12 +209,148 @@ export async function createPasskeyCredential(opts: {
   }
 
   const publicKeyCredential = credential as PublicKeyCredential;
+  const attestation = publicKeyCredential.response as AuthenticatorAttestationResponse;
+  const publicKey = attestation.getPublicKey?.();
+  const publicKeyAlgorithm = attestation.getPublicKeyAlgorithm?.();
+  if (!publicKey || typeof publicKeyAlgorithm !== 'number') {
+    throw new PasskeyError(
+      'The authenticator did not return a verifiable public key.',
+      'CREATE_FAILED',
+    );
+  }
   const prfSecret = parsePrfExtensionResult(publicKeyCredential.getClientExtensionResults());
 
   return {
     credentialId: new Uint8Array(publicKeyCredential.rawId),
     prfSecret,
+    publicKeySpki: new Uint8Array(publicKey),
+    publicKeyAlgorithm,
   };
+}
+
+function derSignatureToP1363(signature: Uint8Array): Uint8Array {
+  if (signature.length === 64) return signature;
+  if (signature[0] !== 0x30) throw new Error('Invalid ECDSA signature encoding.');
+  let offset = 2;
+  if (signature[1] & 0x80) offset += signature[1] & 0x7f;
+  if (signature[offset++] !== 0x02) throw new Error('Invalid ECDSA signature r value.');
+  const rLength = signature[offset++];
+  const r = signature.slice(offset, offset + rLength);
+  offset += rLength;
+  if (signature[offset++] !== 0x02) throw new Error('Invalid ECDSA signature s value.');
+  const sLength = signature[offset++];
+  const s = signature.slice(offset, offset + sLength);
+  if (r.length > 33 || s.length > 33) throw new Error('Invalid ECDSA signature length.');
+  const result = new Uint8Array(64);
+  result.set(r.slice(r.length > 32 ? 1 : 0), 32 - Math.min(32, r.length));
+  result.set(s.slice(s.length > 32 ? 1 : 0), 64 - Math.min(32, s.length));
+  return result;
+}
+
+export interface PasskeyAssertionVerificationOptions {
+  assertion: PublicKeyCredential;
+  expectedCredentialId: Uint8Array;
+  expectedChallenge: Uint8Array;
+  expectedRpId: string;
+  expectedOrigin: string;
+  publicKeySpki: Uint8Array;
+  publicKeyAlgorithm: number;
+  previousSignCount: number;
+}
+
+/** Verify the complete WebAuthn assertion envelope before using its PRF output. */
+export async function verifyPasskeyAssertion(
+  options: PasskeyAssertionVerificationOptions,
+): Promise<number> {
+  const { assertion } = options;
+  const response = assertion.response as AuthenticatorAssertionResponse;
+  if (
+    !response ||
+    bufferToBase64Url(assertion.rawId) !== bufferToBase64Url(options.expectedCredentialId)
+  ) {
+    throw new PasskeyError('The returned passkey does not match this account.', 'GET_FAILED');
+  }
+
+  let clientData: { type?: unknown; challenge?: unknown; origin?: unknown };
+  try {
+    clientData = JSON.parse(new TextDecoder().decode(response.clientDataJSON)) as typeof clientData;
+  } catch {
+    throw new PasskeyError('The passkey returned malformed client data.', 'GET_FAILED');
+  }
+
+  if (
+    clientData.type !== 'webauthn.get' ||
+    clientData.origin !== options.expectedOrigin ||
+    clientData.challenge !== bufferToBase64Url(options.expectedChallenge)
+  ) {
+    throw new PasskeyError('The passkey assertion was not issued for this request.', 'GET_FAILED');
+  }
+
+  const authenticatorData = new Uint8Array(response.authenticatorData);
+  if (authenticatorData.length < 37) {
+    throw new PasskeyError('The passkey returned incomplete authenticator data.', 'GET_FAILED');
+  }
+  const expectedRpHash = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(options.expectedRpId)),
+  );
+  if (!expectedRpHash.every((byte, index) => byte === authenticatorData[index])) {
+    throw new PasskeyError(
+      'The passkey assertion belongs to a different relying party.',
+      'GET_FAILED',
+    );
+  }
+
+  const flags = authenticatorData[32];
+  if ((flags & 0x01) === 0 || (flags & 0x04) === 0) {
+    throw new PasskeyError(
+      'The passkey did not perform the required user verification.',
+      'GET_FAILED',
+    );
+  }
+  const signCount = new DataView(
+    authenticatorData.buffer,
+    authenticatorData.byteOffset + 33,
+    4,
+  ).getUint32(0);
+  if (options.previousSignCount > 0 && signCount > 0 && signCount <= options.previousSignCount) {
+    throw new PasskeyError('This passkey assertion has already been used.', 'GET_FAILED');
+  }
+
+  const clientDataHash = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', response.clientDataJSON),
+  );
+  const signedData = new Uint8Array(authenticatorData.length + clientDataHash.length);
+  signedData.set(authenticatorData);
+  signedData.set(clientDataHash, authenticatorData.length);
+  const keyAlgorithm =
+    options.publicKeyAlgorithm === -7
+      ? { name: 'ECDSA', namedCurve: 'P-256' }
+      : options.publicKeyAlgorithm === -257
+        ? { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+        : null;
+  if (!keyAlgorithm)
+    throw new PasskeyError('The passkey uses an unsupported key algorithm.', 'GET_FAILED');
+
+  const publicKey = await crypto.subtle.importKey(
+    'spki',
+    options.publicKeySpki as unknown as BufferSource,
+    keyAlgorithm,
+    false,
+    ['verify'],
+  );
+  const signature = (options.publicKeyAlgorithm === -7
+    ? derSignatureToP1363(new Uint8Array(response.signature))
+    : response.signature) as unknown as BufferSource;
+  const valid = await crypto.subtle.verify(
+    options.publicKeyAlgorithm === -7
+      ? { name: 'ECDSA', hash: 'SHA-256' }
+      : { name: 'RSASSA-PKCS1-v1_5' },
+    publicKey,
+    signature,
+    signedData as unknown as BufferSource,
+  );
+  if (!valid) throw new PasskeyError('The passkey assertion signature is invalid.', 'GET_FAILED');
+  return signCount;
 }
 
 /**
@@ -225,6 +369,7 @@ export async function getPasskeyAssertion(credentialId: Uint8Array): Promise<Uin
   try {
     assertion = await navigator.credentials.get({
       publicKey: {
+        rpId: window.location.hostname,
         challenge,
         allowCredentials: [{ id: credentialId as BufferSource, type: 'public-key' }],
         userVerification: 'required',
@@ -245,6 +390,25 @@ export async function getPasskeyAssertion(credentialId: Uint8Array): Promise<Uin
   }
 
   const publicKeyCredential = assertion as PublicKeyCredential;
+  const publicKeySpki = localStorage.getItem(PASSKEY_PUBLIC_KEY_STORAGE_KEY);
+  const publicKeyAlgorithm = Number(localStorage.getItem(PASSKEY_PUBLIC_KEY_ALGORITHM_STORAGE_KEY));
+  if (!publicKeySpki || !Number.isInteger(publicKeyAlgorithm)) {
+    throw new PasskeyError(
+      'This passkey was registered without verification metadata.',
+      'GET_FAILED',
+    );
+  }
+  const signCount = await verifyPasskeyAssertion({
+    assertion: publicKeyCredential,
+    expectedCredentialId: credentialId,
+    expectedChallenge: challenge,
+    expectedRpId: window.location.hostname,
+    expectedOrigin: window.location.origin,
+    publicKeySpki: base64UrlToBuffer(publicKeySpki),
+    publicKeyAlgorithm,
+    previousSignCount: Number(localStorage.getItem(PASSKEY_SIGN_COUNT_STORAGE_KEY) ?? '0'),
+  });
+  localStorage.setItem(PASSKEY_SIGN_COUNT_STORAGE_KEY, String(signCount));
   return parsePrfExtensionResult(publicKeyCredential.getClientExtensionResults());
 }
 

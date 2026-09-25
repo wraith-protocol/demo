@@ -107,14 +107,12 @@ export function isPasskeySupported() {
 
 export async function authenticateWithPasskey(): Promise<void> {
   if (!isPasskeySupported()) throw new Error('Passkeys are not supported on this device.');
+  const credentialId = localStorage.getItem('wraith:passkey:credentialId');
+  const address = localStorage.getItem('wraith:passkey:address');
+  if (!credentialId || !address) throw new Error('No passkey is available for Wraith.');
 
-  const credential = await navigator.credentials.get({
-    publicKey: {
-      challenge: globalThis.crypto.getRandomValues(new Uint8Array(32)),
-      timeout: 60_000,
-      userVerification: 'required',
-    },
-  });
-
-  if (!credential) throw new Error('No passkey is available for Wraith.');
+  // PasskeyAdapter performs the complete assertion verification and confirms
+  // that the PRF-derived public key is still the expected account.
+  const { PasskeyAdapter } = await import('@/wallets/stellar/PasskeyAdapter');
+  await new PasskeyAdapter().connect();
 }

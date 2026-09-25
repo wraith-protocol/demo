@@ -38,13 +38,16 @@ import {
   PasskeyError,
   bufferToBase64Url,
   base64UrlToBuffer,
+  PASSKEY_ADDRESS_STORAGE_KEY,
+  PASSKEY_CREDENTIAL_ID_STORAGE_KEY,
+  PASSKEY_PUBLIC_KEY_ALGORITHM_STORAGE_KEY,
+  PASSKEY_PUBLIC_KEY_STORAGE_KEY,
+  PASSKEY_SIGN_COUNT_STORAGE_KEY,
 } from '@/lib/stellar/passkey';
 import { STELLAR_NETWORK } from '@/config';
 import type { StellarWallet, ConnectResult, SignResult, SignOpts } from './types';
 import { WalletError } from './types';
 
-const STORAGE_KEY_CREDENTIAL_ID = 'wraith:passkey:credentialId';
-const STORAGE_KEY_ADDRESS = 'wraith:passkey:address';
 const RP_NAME = 'Wraith Demo';
 const FRIENDBOT_URL = 'https://friendbot.stellar.org';
 
@@ -91,8 +94,8 @@ export class PasskeyAdapter implements StellarWallet {
       );
     }
 
-    const storedCredentialId = localStorage.getItem(STORAGE_KEY_CREDENTIAL_ID);
-    const storedAddress = localStorage.getItem(STORAGE_KEY_ADDRESS);
+    const storedCredentialId = localStorage.getItem(PASSKEY_CREDENTIAL_ID_STORAGE_KEY);
+    const storedAddress = localStorage.getItem(PASSKEY_ADDRESS_STORAGE_KEY);
 
     try {
       if (storedCredentialId && storedAddress) {
@@ -136,11 +139,12 @@ export class PasskeyAdapter implements StellarWallet {
    */
   private async firstRun(): Promise<ConnectResult> {
     const userSuffix = bufferToBase64Url(crypto.getRandomValues(new Uint8Array(6)));
-    const { credentialId, prfSecret } = await createPasskeyCredential({
-      rpId: window.location.hostname,
-      rpName: RP_NAME,
-      userName: `wraith-${userSuffix}`,
-    });
+    const { credentialId, prfSecret, publicKeySpki, publicKeyAlgorithm } =
+      await createPasskeyCredential({
+        rpId: window.location.hostname,
+        rpName: RP_NAME,
+        userName: `wraith-${userSuffix}`,
+      });
 
     const keypair = deriveKeypairFromPrfSecret(prfSecret);
     const address = keypair.publicKey();
@@ -155,8 +159,11 @@ export class PasskeyAdapter implements StellarWallet {
       }
     }
 
-    localStorage.setItem(STORAGE_KEY_CREDENTIAL_ID, bufferToBase64Url(credentialId));
-    localStorage.setItem(STORAGE_KEY_ADDRESS, address);
+    localStorage.setItem(PASSKEY_CREDENTIAL_ID_STORAGE_KEY, bufferToBase64Url(credentialId));
+    localStorage.setItem(PASSKEY_ADDRESS_STORAGE_KEY, address);
+    localStorage.setItem(PASSKEY_PUBLIC_KEY_STORAGE_KEY, bufferToBase64Url(publicKeySpki));
+    localStorage.setItem(PASSKEY_PUBLIC_KEY_ALGORITHM_STORAGE_KEY, String(publicKeyAlgorithm));
+    localStorage.setItem(PASSKEY_SIGN_COUNT_STORAGE_KEY, '0');
     this.keypair = keypair;
     this.startSession();
 
@@ -173,8 +180,8 @@ export class PasskeyAdapter implements StellarWallet {
     }
 
     if (!isSessionValid(this.session)) {
-      const storedCredentialId = localStorage.getItem(STORAGE_KEY_CREDENTIAL_ID);
-      const storedAddress = localStorage.getItem(STORAGE_KEY_ADDRESS);
+      const storedCredentialId = localStorage.getItem(PASSKEY_CREDENTIAL_ID_STORAGE_KEY);
+      const storedAddress = localStorage.getItem(PASSKEY_ADDRESS_STORAGE_KEY);
       if (!storedCredentialId || !storedAddress) {
         throw new WalletError(
           'Passkey session expired and no stored credential was found.',
