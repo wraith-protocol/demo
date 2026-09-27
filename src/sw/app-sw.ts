@@ -69,6 +69,11 @@ const STORE_NAME = 'viewing-keys';
 const SYNC_TAG = 'stellar-payment-scan';
 const SYNC_INTERVAL_MINUTES = 15;
 
+// Wave 9 (#184): tag the page registers when it enqueues offline work.
+// The SW can't read the page's localStorage queue, so it just nudges every
+// client to run reconciliation itself.
+const QUEUE_SYNC_TAG = 'wraith-offline-queue';
+
 interface StoredViewingKey {
   publicKey: string;
   encryptedViewingKey: string;
@@ -241,6 +246,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('sync', (event) => {
   if (event.tag === SYNC_TAG) {
     event.waitUntil(handleSync());
+    return;
+  }
+  if (event.tag === QUEUE_SYNC_TAG) {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          client.postMessage({ type: 'OFFLINE_QUEUE_FLUSH' });
+        }
+      }),
+    );
   }
 });
 

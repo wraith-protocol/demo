@@ -12,6 +12,7 @@ import { HelpButton } from '@/components/HelpButton';
 import Vault from '@/pages/Vault';
 import Notifications from '@/pages/Notifications';
 import { useNotificationSW } from '@/hooks/useNotificationSW';
+import { useOfflineReconcile } from '@/hooks/useOfflineReconcile';
 import Schedule from '@/pages/Schedule';
 import StellarSplit from '@/pages/StellarSplit';
 import Names from '@/pages/Names';
@@ -30,6 +31,7 @@ import {
   isPasskeySupported,
 } from '@/lib/idleLock';
 import { parseStellarQrPayload } from '@/utils/qr';
+import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
 
 function SessionLock({ onUnlock }: { onUnlock: () => void }) {
   const [passphrase, setPassphrase] = useState('');
@@ -131,6 +133,8 @@ function SessionLock({ onUnlock }: { onUnlock: () => void }) {
 
 export function App() {
   useNotificationSW();
+  // Wave 9 (#184): reconcile the explicit offline queue on reconnect.
+  useOfflineReconcile();
   const location = useLocation();
   const navigate = useNavigate();
   const { setChain } = useChain();
@@ -156,6 +160,26 @@ export function App() {
     if (location.pathname !== '/send') return;
     const sharedText = new URLSearchParams(location.search).get('text');
     if (!sharedText) return;
+
+    // Wave 9 (#184): persist shared-text scans captured while offline so the
+    // intent survives reloads; reconciliation revalidates it on reconnect.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        const offlinePayload = parseStellarQrPayload(sharedText);
+        useOfflineQueueStore.getState().enqueueScanSession({
+          source: 'shared-text',
+          rawText: sharedText,
+          parsed: {
+            metaAddress: offlinePayload.metaAddress,
+            ...(offlinePayload.amount ? { amount: offlinePayload.amount } : {}),
+            ...(offlinePayload.memo ? { memo: offlinePayload.memo } : {}),
+          },
+          capturedAt: Date.now(),
+        });
+      } catch {
+        // Unparseable text is still applied below for manual correction.
+      }
+    }
 
     try {
       const payload = parseStellarQrPayload(sharedText);
