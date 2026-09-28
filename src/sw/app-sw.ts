@@ -5,6 +5,14 @@ import { registerRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import {
+  registerViewingKey,
+  openViewingKeyDb,
+  VIEWING_KEY_STORE_NAME,
+  type StoredViewingKey,
+} from '../lib/stellar/backgroundKeys';
+import { runBackgroundScan } from './backgroundScan';
+import { idbScanStore } from './idbScanStore';
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -63,31 +71,9 @@ registerRoute(
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_RPC_URL = 'https://soroban-testnet.stellar.org';
-const DB_NAME = 'wraith-stellar-notifications';
-const DB_VERSION = 1;
-const STORE_NAME = 'viewing-keys';
+const STORE_NAME = VIEWING_KEY_STORE_NAME;
 const SYNC_TAG = 'stellar-payment-scan';
 const SYNC_INTERVAL_MINUTES = 15;
-
-interface StoredViewingKey {
-  publicKey: string;
-  encryptedViewingKey: string;
-  encryptedSpendingPubKey: string;
-  encryptedSpendingScalar: string;
-  lastScannedLedger?: number;
-  timestamp: number;
-  relayUrl?: string;
-  metaAddressHash?: string;
-  pushSubscription?: PushSubscriptionJSON;
-}
-
-interface PushSubscriptionJSON {
-  endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
-}
 
 interface NotificationData {
   stealthAddress: string;
@@ -97,111 +83,33 @@ interface NotificationData {
 
 // ── IndexedDB helpers ──────────────────────────────────────────────────────────
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'publicKey' });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
-  });
-}
-
-async function updateLastScannedLedger(
-  db: IDBDatabase,
-  publicKey: string,
-  ledger: number,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(publicKey);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      const data = request.result as StoredViewingKey;
-      if (data) {
-        data.lastScannedLedger = ledger;
-        data.timestamp = Date.now();
-        const updateRequest = store.put(data);
-        updateRequest.onerror = () => reject(updateRequest.error);
-        updateRequest.onsuccess = () => resolve();
-      } else {
-        resolve();
-      }
-    };
-  });
-}
-
-// ── Stellar RPC helpers ────────────────────────────────────────────────────────
-
-async function fetchLatestLedger(): Promise<number> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }),
-  });
-  const data = await response.json();
-  return data.result?.sequence || 0;
-}
-
-async function fetchAnnouncementEvents(
-  startLedger: number,
-  contractId: string = ANNOUNCER_CONTRACT,
-): Promise<{ events: unknown[]; latestLedger: number }> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'getEvents',
-      params: {
-        startLedger,
-        filters: [{ type: 'contract', contractIds: [contractId] }],
-        pagination: { limit: 1000 },
-      },
-    }),
-  });
-  const data = await response.json();
-  const events = data.result?.events || [];
-  const latestLedger = await fetchLatestLedger();
-  return { events, latestLedger };
-}
+const openDB = openViewingKeyDb;
 
 // ── Background sync handler ────────────────────────────────────────────────────
 
 async function handleSync(): Promise<void> {
-  try {
-    const db = await openDB();
-    const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], 'readonly');
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.getAll();
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result || []);
-    });
+  const outcomes = await runBackgroundScan({
+    store: idbScanStore,
+    rpcUrl: STELLAR_RPC_URL,
+    contractId: ANNOUNCER_CONTRACT,
+  });
 
-    for (const storedKey of allKeys) {
-      const startLedger = storedKey.lastScannedLedger || 1;
-      const { events, latestLedger } = await fetchAnnouncementEvents(startLedger);
-
-      if (events.length > 0) {
-        console.log(`Found ${events.length} events for ${storedKey.publicKey}`);
-        // TODO: decrypt and scan with Wraith SDK when bundled in SW context
+  let transient = 0;
+  for (const outcome of outcomes) {
+    if (outcome.status === 'ok') {
+      if (outcome.newMatches.length > 0) {
+        console.log(`[app-sw] ${outcome.newMatches.length} new stealth payment(s) detected`);
       }
-
-      await updateLastScannedLedger(db, storedKey.publicKey, latestLedger);
+      continue;
     }
-
-    db.close();
-  } catch (error) {
-    console.error('Background sync error:', error);
+    console.error(`[app-sw] Background scan failed (${outcome.status}): ${outcome.message}`);
+    if (outcome.status === 'error') transient++;
   }
+
+  // Rejecting lets the browser retry a one-off Background Sync; cursors of
+  // failed keys were left untouched, so the retry rescans the same range. A key
+  // error can't fix itself on retry, so it is logged but doesn't reject.
+  if (transient > 0) throw new Error(`Background scan failed for ${transient} viewing key(s)`);
 }
 
 // ── SW lifecycle ───────────────────────────────────────────────────────────────
@@ -275,8 +183,14 @@ self.addEventListener('notificationclick', (event) => {
 // ── Message handler ────────────────────────────────────────────────────────────
 
 self.addEventListener('message', (event) => {
-  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
-    event.data;
+  const {
+    type,
+    publicKey,
+    encryptedViewingKey,
+    encryptedSpendingPubKey,
+    encryptedSpendingScalar,
+    wrappingKey,
+  } = event.data;
 
   if (type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -287,22 +201,13 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       (async () => {
         try {
-          const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-          const data: StoredViewingKey = {
+          await registerViewingKey({
             publicKey,
             encryptedViewingKey,
             encryptedSpendingPubKey,
             encryptedSpendingScalar,
-            timestamp: Date.now(),
-          };
-          await new Promise<void>((resolve, reject) => {
-            const request = store.put(data);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
+            wrappingKey,
           });
-          db.close();
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
         } catch (error) {
           console.error('[app-sw] Failed to register viewing key:', error);
@@ -355,7 +260,7 @@ self.addEventListener('message', (event) => {
   }
 
   if (type === 'TRIGGER_SCAN') {
-    event.waitUntil(handleSync());
+    event.waitUntil(handleSync().catch((error) => console.error('[app-sw] Manual scan:', error)));
   }
 
   // Push subscription management

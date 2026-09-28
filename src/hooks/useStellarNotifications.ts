@@ -11,6 +11,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { StealthKeys } from '@wraith-protocol/sdk/chains/stellar';
+import {
+  createWrappingKey,
+  registerViewingKey as storeViewingKey,
+  sealViewingMaterial,
+} from '@/lib/stellar/backgroundKeys';
 
 const SW_PATH = '/sw/stellar-notification-sw.js';
 const STORAGE_KEY_OPT_IN = 'wraith:stellar:notifications-opt-in';
@@ -49,15 +54,6 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
   });
 
   const swRef = useRef<ServiceWorkerRegistration | null>(null);
-
-  // Helper function to convert hex string to Uint8Array
-  const hexToBytes = useCallback((hex: string): Uint8Array => {
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-    }
-    return bytes;
-  }, []);
 
   // Check browser support
   useEffect(() => {
@@ -124,49 +120,6 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
     };
   }, [state.supported, state.enabled]);
 
-  // Encrypt data using Web Crypto API
-  const encryptData = useCallback(async (data: Uint8Array, key: CryptoKey): Promise<string> => {
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      data.buffer as ArrayBuffer,
-    );
-
-    const combined = new Uint8Array(iv.length + encrypted.byteLength);
-    combined.set(iv, 0);
-    combined.set(new Uint8Array(encrypted), iv.length);
-
-    return Array.from(combined)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }, []);
-
-  // Derive encryption key from wallet signature
-  const deriveEncryptionKey = useCallback(async (signature: string): Promise<CryptoKey> => {
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(signature),
-      'PBKDF2',
-      false,
-      ['deriveKey'],
-    );
-
-    return crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: encoder.encode('wraith-stellar-notifications'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt'],
-    );
-  }, []);
-
   // Request notification permission
   const requestPermission = useCallback(async (): Promise<boolean> => {
     if (!state.supported) return false;
@@ -216,66 +169,24 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
       }
 
       try {
-        // Derive encryption key from spending scalar (this is wallet-derived)
-        const scalarHex = stealthKeys.spendingScalar.toString(16).padStart(64, '0');
-        const encryptionKey = await deriveEncryptionKey(scalarHex);
-
-        // Encrypt the viewing key components
-        const viewingKeyBytes =
-          typeof stealthKeys.viewingKey === 'string'
-            ? new TextEncoder().encode(stealthKeys.viewingKey)
-            : (stealthKeys.viewingKey as Uint8Array);
-        const spendingPubKeyBytes = stealthKeys.spendingPubKey;
-        const spendingScalarBytes = hexToBytes(scalarHex);
-
-        const encryptedViewingKey = await encryptData(viewingKeyBytes, encryptionKey);
-        const encryptedSpendingPubKey = await encryptData(spendingPubKeyBytes, encryptionKey);
-        const encryptedSpendingScalar = await encryptData(spendingScalarBytes, encryptionKey);
-
-        // Send to service worker
-        swRef.current.active?.postMessage({
-          type: 'REGISTER_VIEWING_KEY',
-          publicKey,
-          encryptedViewingKey,
-          encryptedSpendingPubKey,
-          encryptedSpendingScalar,
+        // A fresh non-extractable key seals the viewing material; the service
+        // worker can use it to decrypt but nothing can read it back out.
+        const wrappingKey = await createWrappingKey();
+        const sealed = await sealViewingMaterial(wrappingKey, {
+          viewingKey: stealthKeys.viewingKey,
+          spendingPubKey: stealthKeys.spendingPubKey,
+          spendingScalar: stealthKeys.spendingScalar,
         });
+        const entry = { publicKey, ...sealed, wrappingKey };
 
-        // Also store in IndexedDB for backup
-        const db = await new Promise<IDBDatabase>((resolve, reject) => {
-          const request = indexedDB.open(DB_NAME, DB_VERSION);
-          request.onerror = () => reject(request.error);
-          request.onsuccess = () => resolve(request.result);
-          request.onupgradeneeded = (event) => {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-              db.createObjectStore(STORE_NAME, { keyPath: 'publicKey' });
-            }
-          };
-        });
-
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        store.put({
-          publicKey,
-          encryptedViewingKey,
-          encryptedSpendingPubKey,
-          encryptedSpendingScalar,
-          timestamp: Date.now(),
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          transaction.oncomplete = () => resolve();
-          transaction.onerror = () => reject(transaction.error);
-        });
-
-        db.close();
+        await storeViewingKey(entry);
+        swRef.current.active?.postMessage({ type: 'REGISTER_VIEWING_KEY', ...entry });
       } catch (error) {
         console.error('Failed to register viewing key:', error);
         throw error;
       }
     },
-    [state.enabled, deriveEncryptionKey, encryptData],
+    [state.enabled],
   );
 
   // Unregister viewing key

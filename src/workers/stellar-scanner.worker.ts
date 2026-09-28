@@ -1,6 +1,5 @@
-import { bytesToHex } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
-import { Address, xdr } from '@stellar/stellar-sdk';
+import { parseAnnouncementEvent } from '../lib/stellar/announcementEvent';
 import { scanWithStrategy, DEFAULT_SCAN_STRATEGY, type ScanStrategy } from './stellarScanDispatch';
 
 async function fetchAnnouncementEvents(
@@ -83,33 +82,6 @@ async function fetchAnnouncementEvents(
   }
 
   return all;
-}
-
-function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
-  if (!topics || topics.length < 3) return null;
-
-  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
-  const schemeId = schemeIdScVal.u32();
-
-  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
-  const stealthScAddress = stealthScVal.address();
-  const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
-
-  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
-  const valueVec = valueScVal.vec();
-  if (!valueVec || valueVec.length < 3) return null;
-
-  const callerScAddress = valueVec[0].address();
-  const caller = Address.fromScAddress(callerScAddress).toString();
-
-  const ephBytes = valueVec[1].bytes();
-  const ephemeralPubKey = bytesToHex(new Uint8Array(ephBytes));
-
-  const metaBytes = valueVec[2].bytes();
-  const metadata = bytesToHex(new Uint8Array(metaBytes));
-
-  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
 self.onmessage = async (e: MessageEvent) => {

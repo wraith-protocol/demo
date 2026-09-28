@@ -43,6 +43,7 @@ import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 import { createStellarQrUri } from '@/utils/qr';
+import { parseAnnouncementEvent } from '@/lib/stellar/announcementEvent';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
@@ -132,33 +133,6 @@ async function fetchAnnouncementEvents(
   }
 
   return all;
-}
-
-function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
-  if (!topics || topics.length < 3) return null;
-
-  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
-  const schemeId = schemeIdScVal.u32();
-
-  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
-  const stealthScAddress = stealthScVal.address();
-  const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
-
-  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
-  const valueVec = valueScVal.vec();
-  if (!valueVec || valueVec.length < 3) return null;
-
-  const callerScAddress = valueVec[0].address();
-  const caller = Address.fromScAddress(callerScAddress).toString();
-
-  const ephBytes = valueVec[1].bytes();
-  const ephemeralPubKey = bytesToHex(new Uint8Array(ephBytes));
-
-  const metaBytes = valueVec[2].bytes();
-  const metadata = bytesToHex(new Uint8Array(metaBytes));
-
-  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
 function StellarMatchCardContainer({
