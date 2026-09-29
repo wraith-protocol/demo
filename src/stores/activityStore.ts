@@ -67,14 +67,16 @@ export const useActivityStore = create<ActivityState>()(
                 updateStatus(tx.id, 'failed');
               }
             } else if (res.status === 404) {
-              // If it's older than 5 minutes and still 404, mark as failed
-              if (Date.now() - tx.timestamp > 5 * 60 * 1000) {
+              // A 404 from Horizon is NOT an immediate final failure — the tx may still
+              // be propagating.  Only mark failed if the tx is older than 30 minutes
+              // (well past Stellar's ~30 s ledger close window) AND still 404.
+              if (Date.now() - tx.timestamp > 30 * 60 * 1000) {
                 updateStatus(tx.id, 'failed');
               }
-            } else {
-              // Some other error, maybe Horizon is down, don't change status
+              // Otherwise keep pending and retry on the next poll cycle.
             }
-          } catch (e) {
+            // Network errors and non-404 HTTP errors: keep pending so we retry.
+          } catch {
             // Ignore fetch errors to keep polling next time
           }
         }

@@ -22,6 +22,9 @@ import {
 } from '@/store/splitTemplatesStore';
 import { ContactCombobox, type ContactOption } from '@/components/ContactCombobox';
 import { TemplateImportConflictModal } from '@/components/TemplateImportConflictModal';
+import { useActivityStore } from '@/stores/activityStore';
+import { useIdempotentTransaction } from '@/hooks/useIdempotentTransaction';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 
 // ---------------------------------------------------------------------------
 // CSV placeholder
@@ -355,6 +358,14 @@ const ASSET_KEY: StellarAssetKey = 'XLM';
 export default function StellarSplit() {
   const { t } = useTranslation();
   const { address, isConnected, signTransaction } = useStellarWallet();
+  const addActivity = useActivityStore((s) => s.addEntry);
+  const updateActivity = useActivityStore((s) => s.updateStatus);
+
+  const { submit: submitIdempotent, reset: resetIdempotent } = useIdempotentTransaction({
+    chain: 'stellar',
+    wallet: address || '',
+    action: 'batch-send',
+  });
 
   // Phase: idle | validated | submitting | done
   type Phase = 'idle' | 'validated' | 'submitting' | 'done';
@@ -453,34 +464,74 @@ export default function StellarSplit() {
     // Snapshot the valid rows before async work
     const rowsSnapshot = [...rows];
 
-    // Progress callback — update individual row statuses
+    // Progress callback — update individual row statuses and persist to activity
     const handleProgress = (rowIndex: number, status: BatchRow['status'], errMsg?: string) => {
       setRows((prev) =>
-        prev.map((r) =>
-          r.index === rowIndex
-            ? { ...r, status, error: errMsg ?? (status === 'failed' ? r.error : '') }
-            : r,
-        ),
+        prev.map((r) => {
+          if (r.index !== rowIndex) return r;
+          // When a row transitions to pending (signed, about to submit), record it
+          if (status === 'pending' && r.stealthAddress) {
+            // row txHash not available from onProgress — activity recorded in submit phase
+          }
+          return { ...r, status, error: errMsg ?? (status === 'failed' ? r.error : '') };
+        }),
       );
     };
 
-    try {
-      const batchResult = await sendBatch({
-        senderAddress: address,
-        rows: rowsSnapshot,
-        assetKey: ASSET_KEY,
-        signTransaction,
-        onProgress: handleProgress,
-      });
+    await submitIdempotent(
+      {
+        // Batch-send doesn't have a single pre-sign phase; the build phase
+        // just validates and returns a stable batchId so the intent is recorded.
+        build: async () => {
+          const batchId = `batch-${Date.now()}-${address.slice(0, 6)}`;
+          return { txHash: batchId, signedTx: { rowsSnapshot } };
+        },
 
-      setResult(batchResult);
-      setPhase('done');
-      trackEvent('batch_sent');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
-      setPhase('validated');
-    }
-  }, [address, rows, signTransaction, t]);
+        submit: async () => {
+          const batchResult = await sendBatch({
+            senderAddress: address,
+            rows: rowsSnapshot,
+            assetKey: ASSET_KEY,
+            signTransaction,
+            onProgress: (rowIndex, status, errMsg) => {
+              handleProgress(rowIndex, status, errMsg);
+              // Persist each successfully-submitted row to the activity store
+              const row = rowsSnapshot.find((r) => r.index === rowIndex);
+              if (status === 'success' && row?.stealthAddress) {
+                // batchSend doesn't expose per-row txHash through onProgress,
+                // so we record a composite id keyed by stealth address
+                const rowId = `split-${row.stealthAddress.slice(0, 16)}-${Date.now()}`;
+                addActivity({
+                  id: rowId,
+                  chain: 'stellar',
+                  wallet: address,
+                  kind: 'stealth-send',
+                  direction: 'out',
+                  status: 'confirmed',
+                  amount: row.amountRaw,
+                  recipient: row.metaAddress,
+                  timestamp: Date.now(),
+                });
+              }
+            },
+          });
+
+          setResult(batchResult);
+          setPhase('done');
+          trackEvent('batch_sent');
+          return batchResult;
+        },
+      },
+      {
+        onSuccess: () => {},
+        onError: (err) => {
+          setError(err.message || t('common.transactionFailed'));
+          setPhase('validated');
+        },
+        reconcile: reconcileStellarTransaction,
+      },
+    );
+  }, [address, rows, signTransaction, t, submitIdempotent, addActivity]);
 
   const handleReset = useCallback(() => {
     setCsvText('');
@@ -488,7 +539,8 @@ export default function StellarSplit() {
     setError('');
     setResult(null);
     setPhase('idle');
-  }, []);
+    resetIdempotent();
+  }, [resetIdempotent]);
 
   // Re-run validation whenever CSV text changes after a first validation
   useEffect(() => {

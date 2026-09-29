@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   deriveStealthKeys,
   encodeStealthMetaAddress,
@@ -8,7 +8,6 @@ import { CopyButton } from '@/components/CopyButton';
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useStealthKeys } from '@/context/StealthKeysContext';
-import { useActivityStore } from '@/stores/activityStore';
 import { StellarLink } from '@/components/StellarLink';
 import { STELLAR_VAULT_CONTRACT_ID } from '@/config';
 import {
@@ -17,14 +16,24 @@ import {
   formatVaultAmount,
   type ClaimableVaultDeposit,
 } from '@/lib/stellar/vaultClaim';
+import { useIdempotentTransaction } from '@/hooks/useIdempotentTransaction';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
 export function StellarVaultClaim() {
   const { address, signMessage, signTransaction, isNetworkMismatch } = useStellarWallet();
   const { stellarKeys, setStellarKeys, setStellarMetaAddress } = useStealthKeys();
-  const addActivity = useActivityStore((state) => state.addEntry);
-  const updateActivity = useActivityStore((state) => state.updateStatus);
+
+  // Per-deposit idempotent hook — we keep a ref map so each deposit gets its
+  // own intent.  The hook is called at component level but parameterised at
+  // claim time via the depositId stored in metadata.
+  const claimIntentRef = useRef<string | null>(null);
+  const { submit: submitIdempotent } = useIdempotentTransaction({
+    chain: 'stellar',
+    wallet: address || '',
+    action: 'vault-claim',
+  });
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>('idle');
@@ -89,38 +98,42 @@ export function StellarVaultClaim() {
       setClaimingId(deposit.depositId);
       setClaimError('');
 
-      try {
-        const result = await submitVaultClaim({
-          vaultContractId: STELLAR_VAULT_CONTRACT_ID,
-          sourceAddress: address,
-          deposit,
-          signWalletTransaction: signTransaction,
-        });
+      await submitIdempotent(
+        {
+          // Phase 1: build a stable intent key before any network call
+          build: async () => {
+            const intentKey = `vault-claim-${deposit.depositId}-${address}`;
+            claimIntentRef.current = intentKey;
+            return { txHash: intentKey, signedTx: { deposit } };
+          },
 
-        addActivity({
-          id: result.txHash,
-          chain: 'stellar',
-          wallet: address,
-          kind: 'vault-claim',
-          direction: 'in',
-          status: 'pending',
-          amount: formatVaultAmount(deposit.amount, deposit.assetDecimals),
-          token: deposit.assetLabel,
-          timestamp: Date.now(),
-        });
-        updateActivity(result.txHash, 'confirmed');
+          // Phase 2: submit the claim on-chain
+          submit: async () => {
+            const result = await submitVaultClaim({
+              vaultContractId: STELLAR_VAULT_CONTRACT_ID,
+              sourceAddress: address,
+              deposit,
+              signWalletTransaction: signTransaction,
+            });
 
-        setClaimedHashes((prev) => ({ ...prev, [deposit.depositId]: result.txHash }));
-        setDeposits((prev) => prev.filter((d) => d.depositId !== deposit.depositId));
-      } catch (err) {
-        setClaimError(err instanceof Error ? err.message : 'Claim failed');
-        // The deposit may have been claimed or refunded elsewhere in the meantime.
-        await loadDeposits();
-      } finally {
-        setClaimingId(null);
-      }
+            setClaimedHashes((prev) => ({ ...prev, [deposit.depositId]: result.txHash }));
+            setDeposits((prev) => prev.filter((d) => d.depositId !== deposit.depositId));
+            return result;
+          },
+        },
+        {
+          onError: async (err) => {
+            setClaimError(err.message || 'Claim failed');
+            // Refresh — the deposit may have been claimed or refunded elsewhere
+            await loadDeposits();
+          },
+          reconcile: reconcileStellarTransaction,
+        },
+      );
+
+      setClaimingId(null);
     },
-    [address, isNetworkMismatch, signTransaction, addActivity, updateActivity, loadDeposits],
+    [address, isNetworkMismatch, signTransaction, submitIdempotent, loadDeposits],
   );
 
   if (!address) {

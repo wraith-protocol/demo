@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useScheduleStore, type CreateScheduleInput } from '@/stores/scheduleStore';
 import { nextRunAt, type Schedule, type ScheduleInterval } from '@/lib/schedule';
+import { useActivityStore } from '@/stores/activityStore';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 
 const INTERVALS: ScheduleInterval[] = ['daily', 'weekly', 'monthly'];
 const ASSETS = ['XLM', 'USDC'];
@@ -13,6 +15,8 @@ export default function SchedulePage() {
   const resumeSchedule = useScheduleStore((s) => s.resumeSchedule);
   const cancelSchedule = useScheduleStore((s) => s.cancelSchedule);
   const tick = useScheduleStore((s) => s.tick);
+  const addActivity = useActivityStore((s) => s.addEntry);
+  const { address } = useStellarWallet();
 
   // The mock executor advances any active schedule whose next-run time has
   // elapsed. The production path is Spectre's scheduled-payments API; this
@@ -20,10 +24,41 @@ export default function SchedulePage() {
   // requiring an on-chain transaction every interval. Coarse on purpose:
   // the UI shows minute-level granularity at best.
   useEffect(() => {
-    tick(Date.now());
-    const id = setInterval(() => tick(Date.now()), TICK_INTERVAL_MS);
+    const runTick = () => {
+      const now = Date.now();
+      const firedIds = tick(now);
+
+      // Record a pending activity entry for each schedule that fired.
+      // In production this would be replaced by the real tx hash from Spectre.
+      if (firedIds.length > 0 && address) {
+        const allSchedules = schedules;
+        for (const id of firedIds) {
+          const sched = allSchedules.find((s) => s.id === id);
+          if (!sched) continue;
+          const activityId = `schedule-${id}-${now}`;
+          addActivity({
+            id: activityId,
+            chain: 'stellar',
+            wallet: address,
+            kind: 'stealth-send',
+            direction: 'out',
+            // Demo: mark as confirmed immediately since no real tx is submitted yet.
+            // Production: set 'pending' and reconcile against the Spectre response.
+            status: 'confirmed',
+            amount: sched.amount,
+            recipient: sched.recipient,
+            timestamp: now,
+            metadata: { scheduleId: id },
+          });
+        }
+      }
+    };
+
+    runTick();
+    const id = setInterval(runTick, TICK_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [tick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, addActivity, address]);
 
   return (
     <div className="flex flex-col gap-8">

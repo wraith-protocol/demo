@@ -40,36 +40,31 @@ import {
 import { useActivityStore } from '@/stores/activityStore';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
-
+import { useIdempotentTransaction } from '@/hooks/useIdempotentTransaction';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
 const STELLAR_BASE_RESERVE_XLM = 1;
-
 function getMinAmount(assetKey: StellarAssetKey): number {
   return assetKey === 'XLM' ? 0.0000001 : 0.0000001;
 }
-
 type HorizonBalance = {
   asset_type: string;
   asset_code?: string;
   asset_issuer?: string;
   balance: string;
 };
-
 type HorizonAccount = {
   sequence: string;
   balances?: HorizonBalance[];
 };
-
 function formatAsset(value: number, assetKey: StellarAssetKey) {
   const assetInfo = getAssetByKey(assetKey);
   return value.toFixed(assetInfo.decimals).replace(/\.?0+$/, '');
 }
-
 function validateMetaAddress(value: string) {
   if (!value) return 'Recipient meta-address is required';
   if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
-
   try {
     decodeStealthMetaAddress(value);
     return '';
@@ -77,26 +72,21 @@ function validateMetaAddress(value: string) {
     return 'Not a valid Stellar stealth meta-address';
   }
 }
-
 function validateAmount(value: string, assetKey: StellarAssetKey) {
   if (!value) return 'Amount is required';
   if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return `Enter a valid ${assetKey} amount`;
-
   const assetInfo = getAssetByKey(assetKey);
   const decimalPart = value.split('.')[1];
   if (decimalPart && decimalPart.length > assetInfo.decimals) {
     return `${assetKey} supports up to ${assetInfo.decimals} decimals`;
   }
-
   const parsed = Number(value);
   const minAmount = getMinAmount(assetKey);
   if (!Number.isFinite(parsed) || parsed <= minAmount) {
     return `Amount must be greater than ${minAmount} ${assetKey}`;
   }
-
   return '';
 }
-
 export function StellarSend() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -104,10 +94,23 @@ export function StellarSend() {
   const paramAmount = searchParams.get('amount');
   const paramMemo = searchParams.get('memo');
   const paramExp = searchParams.get('exp');
-
   const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
-  const addActivity = useActivityStore((state) => state.addEntry);
-  const updateActivity = useActivityStore((state) => state.updateStatus);
+
+  // Idempotent transaction submission
+  const {
+    isSubmitting: isIdempotentSubmitting,
+    submit: submitIdempotent,
+    reset: resetIdempotent,
+  } = useIdempotentTransaction({
+    chain: 'stellar',
+    wallet: address || '',
+    action: 'send',
+    metadata: {
+      recipient: metaAddress,
+      amount: amountValue,
+      asset: assetKey,
+    },
+  });
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
   const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
@@ -119,18 +122,16 @@ export function StellarSend() {
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [, setTouched] = useState({ recipient: false, amount: false });
   const [, setSubmitAttempted] = useState(false);
-
   const [isScanningQR, setIsScanningQR] = useState(false);
   const [scannerError, setScannerError] = useState('');
   const [cameraUnavailable, setCameraUnavailable] = useState(false);
   const [isDecodingQrImage, setIsDecodingQrImage] = useState(false);
   const closeScannerRef = useRef<HTMLButtonElement>(null);
   const qrImageInputRef = useRef<HTMLInputElement>(null);
-  // Ref for the "Scan QR" trigger button — focus returns here when scanner closes.
+  // Ref for the "Scan QR" trigger button ΓÇö focus returns here when scanner closes.
   const scanQrTriggerRef = useRef<HTMLButtonElement>(null);
-  // Ref for the scanner dialog container — used by the focus trap.
+  // Ref for the scanner dialog container ΓÇö used by the focus trap.
   const scannerContainerRef = useRef<HTMLDivElement>(null);
-
   // Focus trap for the QR scanner dialog.
   useFocusTrap({
     isActive: isScanningQR,
@@ -138,12 +139,10 @@ export function StellarSend() {
     initialFocusRef: closeScannerRef,
     triggerRef: scanQrTriggerRef,
   });
-
   // Escape key + Space/U keyboard shortcuts for the QR scanner dialog.
   useEffect(() => {
     if (isScanningQR) {
       setScannerError('');
-
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           setIsScanningQR(false);
@@ -167,7 +166,6 @@ export function StellarSend() {
       };
     }
   }, [isScanningQR]);
-
   const applyQrPayload = useCallback((text: string) => {
     try {
       const payload = parseStellarQrPayload(text);
@@ -183,7 +181,6 @@ export function StellarSend() {
       );
     }
   }, []);
-
   const handleScanResult = useCallback(
     (result: any, scanError: any) => {
       const text = result?.getText?.() ?? result?.text;
@@ -191,7 +188,6 @@ export function StellarSend() {
         applyQrPayload(text);
         return;
       }
-
       if (isCameraUnavailableError(scanError)) {
         setCameraUnavailable(true);
         setScannerError('Camera access is unavailable. Choose a saved QR image to continue.');
@@ -199,17 +195,14 @@ export function StellarSend() {
     },
     [applyQrPayload],
   );
-
   const openQrScanner = () => {
     setScannerError('');
     setCameraUnavailable(false);
     setIsScanningQR(true);
   };
-
   const handleQrImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setIsDecodingQrImage(true);
     setScannerError('');
     try {
@@ -223,7 +216,6 @@ export function StellarSend() {
       event.target.value = '';
     }
   };
-
   const [sourceBalance, setSourceBalance] = useState<number | null>(null);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
   const [balanceLookupError, setBalanceLookupError] = useState('');
@@ -231,7 +223,6 @@ export function StellarSend() {
   const [isExpired, setIsExpired] = useState(false);
   const [, setRetryStatus] = useState('');
   const [, setSimulation] = useState<StellarSendSimulationState>(emptyStellarSendSimulation());
-
   useEffect(() => {
     if (paramExp) {
       const expSecs = parseInt(paramExp, 10);
@@ -241,7 +232,6 @@ export function StellarSend() {
       }
     }
   }, [paramExp]);
-
   const [showUnknownWarning, setShowUnknownWarning] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [contactName, setContactName] = useState('');
@@ -253,13 +243,10 @@ export function StellarSend() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const simulationTimeoutRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-
   const [trustlineMissing, setTrustlineMissing] = useState(false);
   const [trustlineCheckDone, setTrustlineCheckDone] = useState(false);
-
   const metaAddress = recipient.trim();
   const amountValue = amount.trim();
-
   const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
   const amountError = useMemo(() => validateAmount(amountValue, assetKey), [amountValue, assetKey]);
   const parsedAmount = amountError ? null : Number(amountValue);
@@ -334,19 +321,15 @@ export function StellarSend() {
     !isBalanceLoading &&
     !isPending &&
     !isExpired;
-
   useEffect(() => {
     if (simulationTimeoutRef.current) {
       globalThis.clearTimeout(simulationTimeoutRef.current);
     }
-
     if (!address || !metaAddress || validationError || isPending || isExpired) {
       setSimulation(emptyStellarSendSimulation());
       return;
     }
-
     setSimulation({ status: 'loading', error: '', fee: null, returnValue: null, events: [] });
-
     simulationTimeoutRef.current = globalThis.setTimeout(async () => {
       try {
         const result = await simulateStellarSendAnnouncement(
@@ -354,7 +337,7 @@ export function StellarSend() {
           {
             onRetry: (attempt: number, _: unknown, err: unknown) => {
               const msg = err instanceof Error ? err.message : '';
-              setRetryStatus(`Retrying (${attempt}/3)…${msg ? ` (${msg})` : ''}`);
+              setRetryStatus(`Retrying (${attempt}/3)ΓÇª${msg ? ` (${msg})` : ''}`);
             },
           },
         );
@@ -378,42 +361,35 @@ export function StellarSend() {
         });
       }
     }, 500);
-
     return () => {
       if (simulationTimeoutRef.current) {
         globalThis.clearTimeout(simulationTimeoutRef.current);
       }
     };
   }, [address, metaAddress, validationError, isPending, isExpired]);
-
   useEffect(() => {
     setSourceBalance(null);
     setBalanceLookupError('');
-
     if (!address || amountError || !amountValue) {
       setIsBalanceLoading(false);
       return;
     }
-
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       setIsBalanceLoading(true);
-
       try {
         const accountRes = await fetchWithRetry(
           `${STELLAR_NETWORK.horizonUrl}/accounts/${address}`,
           { signal: controller.signal },
           {
             signal: controller.signal,
-            onRetry: (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`),
+            onRetry: (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)ΓÇª`),
           },
         );
         setRetryStatus('');
         if (!accountRes.ok) throw new Error('Failed to load sender account');
-
         const accountData = (await accountRes.json()) as HorizonAccount;
         const balances = accountData.balances || [];
-
         // Build all-balances map for the asset picker
         const balanceMap: Record<string, string> = {};
         for (const b of balances) {
@@ -424,7 +400,6 @@ export function StellarSend() {
           }
         }
         setAllBalances(balanceMap);
-
         // Single-asset balance for validation
         const assetInfo = getAssetByKey(assetKey);
         let parsedBalance: number;
@@ -440,7 +415,6 @@ export function StellarSend() {
           parsedBalance = Number(assetBalance?.balance || 0);
         }
         if (!Number.isFinite(parsedBalance)) throw new Error(`Failed to read ${assetKey} balance`);
-
         setSourceBalance(parsedBalance);
       } catch (err) {
         setRetryStatus('');
@@ -459,26 +433,21 @@ export function StellarSend() {
         }
       }
     }, 500);
-
     return () => {
       controller.abort();
       globalThis.clearTimeout(timeout);
     };
   }, [address, amountError, amountValue, assetKey]);
-
   const assetInfo = getAssetByKey(assetKey);
-
   useEffect(() => {
     setTrustlineMissing(false);
     setTrustlineCheckDone(false);
-
     if (!metaAddress || recipientError || assetKey === 'XLM') {
       if (assetKey === 'XLM') {
         setTrustlineCheckDone(true);
       }
       return;
     }
-
     const controller = new AbortController();
     const timeout = window.setTimeout(async () => {
       try {
@@ -495,215 +464,224 @@ export function StellarSend() {
         }
       }
     }, 800);
-
     return () => {
       controller.abort();
       globalThis.clearTimeout(timeout);
     };
   }, [metaAddress, assetKey, recipientError]);
-
   // Check if recipient is known when it changes
   const isUnknownRecipient =
     recipient && !isKnownAddress(recipient) && !isKnownRecipient(recipient);
-
   const handleSend = useCallback(async () => {
     setSubmitAttempted(true);
     setTouched({ recipient: true, amount: true });
-
     if (!address) {
       setError(t('common.walletNotConnected'));
       return;
     }
-
     if (isNetworkMismatch) {
       setShowNetworkModal(true);
       return;
     }
-
     if (!canSubmit) {
       setError(validationError || 'Enter valid send details');
       return;
     }
-
     setError('');
     setIsPending(true);
     setRetryStatus('');
-    let txHashHex = '';
-
-    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
-
-    try {
-      const metaAddress = recipient;
-      if (!metaAddress.startsWith('st:xlm:')) {
-        setError(t('stellar.validMetaAddressError'));
-        setIsPending(false);
-        return;
-      }
-
-      const decoded = decodeStealthMetaAddress(metaAddress);
-      const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
-      setStealthResult(result);
-      trackEvent('send_submitted');
-
-      const horizonUrl = STELLAR_NETWORK.horizonUrl;
-      const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
-      const currentAssetInfo = getAssetByKey(assetKey);
-      const sendAsset = currentAssetInfo.toAsset();
-
-      const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
-      setRetryStatus('');
-      if (!accountRes.ok) throw new Error('Failed to load sender account');
-      const accountData = (await accountRes.json()) as HorizonAccount;
-      const sourceAccount = new Account(address, accountData.sequence);
-
-      let stealthExists = false;
-      try {
-        const stealthCheckRes = await fetchWithRetry(
-          `${horizonUrl}/accounts/${result.stealthAddress}`,
-          {},
-          { onRetry },
-        );
-        stealthExists = stealthCheckRes.ok;
-      } catch {
-        // Transient network error on existence check — assume not created yet
-      } finally {
-        setRetryStatus('');
-      }
-
-      let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
-
-      if (stealthExists) {
-        builder = builder.addOperation(
-          Operation.payment({
-            destination: result.stealthAddress,
-            asset: sendAsset,
-            amount: amountValue,
-          }),
-        );
-      } else if (currentAssetInfo.isNative) {
-        builder = builder.addOperation(
-          Operation.createAccount({
-            destination: result.stealthAddress,
-            startingBalance: amountValue,
-          }),
-        );
-      } else {
-        builder = builder.addOperation(
-          Operation.payment({
-            destination: result.stealthAddress,
-            asset: sendAsset,
-            amount: amountValue,
-          }),
-        );
-      }
-
-      builder = builder.setTimeout(30);
-
-      if (memo) {
-        builder = builder.addMemo(Memo.text(memo));
-      }
-
-      const classicTx = builder.build();
-
-      const signedXdr = await signTransaction(classicTx.toXDR());
-      txHashHex = classicTx.hash().toString('hex');
-      setTxHash(txHashHex);
-
-      addActivity({
-        id: txHashHex,
-        chain: 'stellar',
-        wallet: address,
-        kind: 'stealth-send',
-        direction: 'out',
-        status: 'pending',
-        amount: amountValue,
-        recipient: metaAddress,
-        timestamp: Date.now(),
-      });
-
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(signedXdr)}`,
-      });
-
-      const submitData = await submitRes.json();
-      if (!submitRes.ok) {
-        throw new Error(
-          submitData.extras?.result_codes?.transaction ||
-            submitData.title ||
-            t('common.transactionFailed'),
-        );
-      }
-
-      setTxHash(submitData.hash);
-
-      // Add recipient to history after successful send
-      addToHistory(recipient);
-
-      // Announce via Soroban (best-effort)
-      try {
-        const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban =
-          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
-        const announcerContract = new Contract(ANNOUNCER_CONTRACT);
-
-        const freshRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
-        setRetryStatus('');
-        const freshData = await freshRes.json();
-        const freshAccount = new Account(address, freshData.sequence);
-
-        const announceTx = new TransactionBuilder(freshAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            announcerContract.call(
-              'announce',
-              nativeToScVal(SCHEME_ID, { type: 'u32' }),
-              new Address(result.stealthAddress).toScVal(),
-              xdr.ScVal.scvBytes(Buffer.from(result.ephemeralPubKey)),
-              xdr.ScVal.scvBytes(Buffer.from([result.viewTag])),
-            ),
-          )
-          .setTimeout(30)
-          .build();
-
-        const simulated: unknown = await withRetry(() => soroban.simulateTransaction(announceTx), {
-          onRetry,
-        });
-        setRetryStatus('');
-        if (
-          simulated &&
-          typeof simulated === 'object' &&
-          !('error' in (simulated as Record<string, unknown>))
-        ) {
-          const assembled = rpcMod
-            .assembleTransaction(
-              announceTx,
-              simulated as Parameters<typeof rpcMod.assembleTransaction>[1],
-            )
-            .build();
-
-          const signedAnnounce = await signTransaction(assembled.toXDR());
-          await soroban.sendTransaction(
-            TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase),
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)ΓÇª`);
+    await submitIdempotent(
+      {
+        // ── Phase 1: build & sign locally, no network ──────────────────────
+        build: async () => {
+          const metaAddress = recipient;
+          if (!metaAddress.startsWith('st:xlm:')) {
+            throw new Error(t('stellar.validMetaAddressError'));
+          }
+          const decoded = decodeStealthMetaAddress(metaAddress);
+          const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+          setStealthResult(result);
+          trackEvent('send_submitted');
+          const horizonUrl = STELLAR_NETWORK.horizonUrl;
+          const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+          const currentAssetInfo = getAssetByKey(assetKey);
+          const sendAsset = currentAssetInfo.toAsset();
+          const accountRes = await fetchWithRetry(
+            `${horizonUrl}/accounts/${address}`,
+            {},
+            { onRetry },
           );
-        }
-      } catch {
-        // Announcement is best-effort — payment already succeeded
-      } finally {
-        setRetryStatus('');
-      }
+          setRetryStatus('');
+          if (!accountRes.ok) throw new Error('Failed to load sender account');
+          const accountData = (await accountRes.json()) as HorizonAccount;
+          const sourceAccount = new Account(address, accountData.sequence);
+          let stealthExists = false;
+          try {
+            const stealthCheckRes = await fetchWithRetry(
+              `${horizonUrl}/accounts/${result.stealthAddress}`,
+              {},
+              { onRetry },
+            );
+            stealthExists = stealthCheckRes.ok;
+          } catch {
+            // Transient network error on existence check — assume not created yet
+          } finally {
+            setRetryStatus('');
+          }
+          let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
+          if (stealthExists) {
+            builder = builder.addOperation(
+              Operation.payment({
+                destination: result.stealthAddress,
+                asset: sendAsset,
+                amount: amountValue,
+              }),
+            );
+          } else if (currentAssetInfo.isNative) {
+            builder = builder.addOperation(
+              Operation.createAccount({
+                destination: result.stealthAddress,
+                startingBalance: amountValue,
+              }),
+            );
+          } else {
+            builder = builder.addOperation(
+              Operation.payment({
+                destination: result.stealthAddress,
+                asset: sendAsset,
+                amount: amountValue,
+              }),
+            );
+          }
+          builder = builder.setTimeout(30);
+          if (memo) {
+            builder = builder.addMemo(Memo.text(memo));
+          }
+          const classicTx = builder.build();
+          const signedXdr = await signTransaction(classicTx.toXDR());
+          // txHash is deterministic and known before any network call
+          const txHashHex = classicTx.hash().toString('hex');
+          setTxHash(txHashHex);
+          return {
+            txHash: txHashHex,
+            signedTx: { signedXdr, stealthResult: result, horizonUrl, networkPassphrase },
+          };
+        },
 
-      setIsSuccess(true);
-      updateActivity(txHashHex, 'confirmed');
-    } catch (err) {
-      setRetryStatus('');
-      if (txHashHex) updateActivity(txHashHex, 'failed');
-      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
-    } finally {
-      setIsPending(false);
-    }
-  }, [address, recipient, amount, assetKey, signTransaction, t]);
-
+        // ── Phase 2: broadcast (hook has already persisted the hash) ────────
+        submit: async (signedTx) => {
+          const { signedXdr, stealthResult, horizonUrl, networkPassphrase } = signedTx as {
+            signedXdr: string;
+            stealthResult: ReturnType<typeof generateStealthAddress>;
+            horizonUrl: string;
+            networkPassphrase: string;
+          };
+          const submitRes = await fetch(`${horizonUrl}/transactions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `tx=${encodeURIComponent(signedXdr)}`,
+          });
+          const submitData = await submitRes.json();
+          if (!submitRes.ok) {
+            throw new Error(
+              submitData.extras?.result_codes?.transaction ||
+                submitData.title ||
+                t('common.transactionFailed'),
+            );
+          }
+          setTxHash(submitData.hash);
+          addToHistory(recipient);
+          // Announce via Soroban (best-effort)
+          try {
+            const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
+            const soroban =
+              (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+            const announcerContract = new Contract(ANNOUNCER_CONTRACT);
+            const freshRes = await fetchWithRetry(
+              `${horizonUrl}/accounts/${address}`,
+              {},
+              { onRetry },
+            );
+            setRetryStatus('');
+            const freshData = await freshRes.json();
+            const freshAccount = new Account(address, freshData.sequence);
+            const announceTx = new TransactionBuilder(freshAccount, {
+              fee: '100',
+              networkPassphrase,
+            })
+              .addOperation(
+                announcerContract.call(
+                  'announce',
+                  nativeToScVal(SCHEME_ID, { type: 'u32' }),
+                  new Address(stealthResult.stealthAddress).toScVal(),
+                  xdr.ScVal.scvBytes(Buffer.from(stealthResult.ephemeralPubKey)),
+                  xdr.ScVal.scvBytes(Buffer.from([stealthResult.viewTag])),
+                ),
+              )
+              .setTimeout(30)
+              .build();
+            const simulated: unknown = await withRetry(
+              () => soroban.simulateTransaction(announceTx),
+              { onRetry },
+            );
+            setRetryStatus('');
+            if (
+              simulated &&
+              typeof simulated === 'object' &&
+              !('error' in (simulated as Record<string, unknown>))
+            ) {
+              const assembled = rpcMod
+                .assembleTransaction(
+                  announceTx,
+                  simulated as Parameters<typeof rpcMod.assembleTransaction>[1],
+                )
+                .build();
+              const signedAnnounce = await signTransaction(assembled.toXDR());
+              await soroban.sendTransaction(
+                TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase),
+              );
+            }
+          } catch {
+            // Announcement is best-effort — payment already succeeded
+          } finally {
+            setRetryStatus('');
+          }
+          return {
+            success: true,
+            stealthAddress: stealthResult.stealthAddress,
+            horizonHash: submitData.hash,
+          };
+        },
+      },
+      {
+        onSuccess: () => {
+          setIsSuccess(true);
+        },
+        onError: (error) => {
+          setRetryStatus('');
+          setError(error.message);
+        },
+        reconcile: reconcileStellarTransaction,
+      },
+    );
+    setIsPending(false);
+  }, [
+    address,
+    recipient,
+    amount,
+    assetKey,
+    memo,
+    signTransaction,
+    t,
+    submitIdempotent,
+    canSubmit,
+    validationError,
+    isNetworkMismatch,
+    addToHistory,
+    metaAddress,
+    amountValue,
+  ]);
   const reset = () => {
     setRecipient(paramTo || '');
     setAmount(paramAmount || '');
@@ -723,8 +701,8 @@ export function StellarSend() {
     setShowUnknownWarning(false);
     setShowSaveDialog(false);
     setContactName('');
+    resetIdempotent();
   };
-
   const handleSaveContact = () => {
     if (contactName.trim() && recipient) {
       addContact(recipient, contactName.trim());
@@ -732,7 +710,6 @@ export function StellarSend() {
       setContactName('');
     }
   };
-
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -742,7 +719,6 @@ export function StellarSend() {
       // Clipboard access denied
     }
   };
-
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
@@ -758,11 +734,9 @@ export function StellarSend() {
       </section>
     );
   }
-
   return (
     <section className="flex flex-col gap-8">
       <ExpiringNamesBanner />
-
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
           {t('stellar.network')}
@@ -774,7 +748,6 @@ export function StellarSend() {
           {t('stellar.sendDescription')}
         </p>
       </div>
-
       {!stealthResult && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
@@ -808,7 +781,6 @@ export function StellarSend() {
               </div>
             </div>
           </div>
-
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
               {t('common.amount')}
@@ -832,7 +804,6 @@ export function StellarSend() {
               />
             </div>
           </div>
-
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -851,13 +822,11 @@ export function StellarSend() {
               </span>
             </div>
           </div>
-
           {error && <p className="text-sm text-error">{error}</p>}
-
           {isUnknownRecipient && (
             <div className="flex flex-col gap-3 rounded border border-outline-variant/50 bg-surface-container p-4">
               <div className="flex items-start gap-2">
-                <span className="text-lg">⚠️</span>
+                <span className="text-lg">ΓÜá∩╕Å</span>
                 <div className="flex flex-col gap-1">
                   <p className="text-sm font-medium text-on-surface">
                     You haven't paid this recipient before
@@ -876,7 +845,6 @@ export function StellarSend() {
               </button>
             </div>
           )}
-
           {showSaveDialog && (
             <div className="flex flex-col gap-3 rounded border border-outline-variant bg-surface-container p-4">
               <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -907,17 +875,15 @@ export function StellarSend() {
               </div>
             </div>
           )}
-
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || isIdempotentSubmitting}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
-
       {stealthResult && (
         <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
           <div className="flex items-center gap-2">
@@ -930,7 +896,6 @@ export function StellarSend() {
               {isSuccess ? t('common.transferComplete') : t('common.pending')}
             </span>
           </div>
-
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -945,7 +910,6 @@ export function StellarSend() {
                 />
               </div>
             </div>
-
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -962,7 +926,6 @@ export function StellarSend() {
               </div>
             )}
           </div>
-
           {isSuccess && (
             <button
               onClick={reset}
@@ -974,7 +937,6 @@ export function StellarSend() {
         </div>
       )}
       {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
-
       {isScanningQR && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -1000,10 +962,9 @@ export function StellarSend() {
                 aria-label="Close QR scanner"
                 className="p-1 text-outline transition-colors hover:text-primary"
               >
-                ×
+                ├ù
               </button>
             </div>
-
             {!cameraUnavailable && (
               <div
                 className="overflow-hidden bg-black"
@@ -1019,7 +980,6 @@ export function StellarSend() {
                 />
               </div>
             )}
-
             {cameraUnavailable && (
               <div className="border border-error/40 bg-error/10 p-3">
                 <p className="font-body text-sm text-error">
@@ -1030,13 +990,11 @@ export function StellarSend() {
                 </p>
               </div>
             )}
-
             {scannerError && !cameraUnavailable && (
               <p role="alert" className="font-body text-sm text-error">
                 {scannerError}
               </p>
             )}
-
             <input
               ref={qrImageInputRef}
               type="file"
@@ -1057,8 +1015,8 @@ export function StellarSend() {
               QR images are decoded locally in your browser and are never uploaded.
             </p>
             <p className="font-body text-[11px] leading-relaxed text-outline">
-              Keyboard: <kbd className="font-mono">Space</kbd> toggles camera ·{' '}
-              <kbd className="font-mono">U</kbd> opens image picker ·{' '}
+              Keyboard: <kbd className="font-mono">Space</kbd> toggles camera ┬╖{' '}
+              <kbd className="font-mono">U</kbd> opens image picker ┬╖{' '}
               <kbd className="font-mono">Esc</kbd> closes
             </p>
           </div>

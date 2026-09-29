@@ -31,6 +31,9 @@ import {
   isPasskeySupported,
 } from '@/lib/idleLock';
 import { parseStellarQrPayload } from '@/utils/qr';
+import { useTransactionIntentStore } from '@/stores/transactionIntentStore';
+import { useActivityStore } from '@/stores/activityStore';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 
 function SessionLock({ onUnlock }: { onUnlock: () => void }) {
   const [passphrase, setPassphrase] = useState('');
@@ -133,6 +136,17 @@ function SessionLock({ onUnlock }: { onUnlock: () => void }) {
 export function App() {
   useNotificationSW();
   const location = useLocation();
+
+  // Reconcile any intents that were in-flight when the page was last closed.
+  // Runs once on mount, after the persisted stores have rehydrated.
+  const reconcilePendingOnMount = useTransactionIntentStore((s) => s.reconcilePendingOnMount);
+  const updateActivityStatus = useActivityStore((s) => s.updateStatus);
+  useEffect(() => {
+    reconcilePendingOnMount(reconcileStellarTransaction, updateActivityStatus).catch(() => {
+      // Best-effort — do not surface reconciliation errors to the user
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const navigate = useNavigate();
   const { setChain } = useChain();
   const { clearEvm, clearStellar, clearSolana, clearCkb } = useStealthKeys();

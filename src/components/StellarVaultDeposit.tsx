@@ -8,6 +8,8 @@ import {
   submitVaultDeposit,
   type VaultDepositProgress,
 } from '@/lib/stellar/vaultDeposit';
+import { useIdempotentTransaction } from '@/hooks/useIdempotentTransaction';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 
 const MIN_XLM_AMOUNT = 0.0000001;
 
@@ -60,6 +62,12 @@ function validateRefundWindow(value: string) {
 
 export function StellarVaultDeposit() {
   const { address, signTransaction, isNetworkMismatch } = useStellarWallet();
+
+  const { submit: submitIdempotent, reset: resetIdempotent } = useIdempotentTransaction({
+    chain: 'stellar',
+    wallet: address || '',
+    action: 'vault-deposit',
+  });
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [unlockLedger, setUnlockLedger] = useState('');
@@ -130,25 +138,50 @@ export function StellarVaultDeposit() {
     setError('');
     setDepositState('simulating');
 
-    try {
-      const deposit = await submitVaultDeposit({
-        sender: address,
-        metaAddress,
-        amount: amountValue,
-        unlockLedger: Number(unlockLedgerValue),
-        refundWindow: Number(refundWindowValue),
-        signTransaction,
-        onProgress: (progress: VaultDepositProgress) => {
-          setDepositState(progress.status);
-          if (progress.status === 'signing') setSimulationFee(progress.fee);
-          if ('txHash' in progress) setTxHash(progress.txHash);
+    // Track the txHash set by onProgress so we can pass it to the idempotent hook
+    let capturedTxHash: string | undefined;
+
+    await submitIdempotent(
+      {
+        // Phase 1: simulate + sign (no final broadcast yet)
+        // submitVaultDeposit drives all phases via onProgress; we run it fully
+        // inside submit so the intent hash is captured before any network call.
+        build: async () => {
+          // Pre-generate a stable intent key before signing starts
+          const intentKey = `vault-deposit-${address}-${metaAddress}-${amountValue}`;
+          return { txHash: intentKey, signedTx: null };
         },
-      });
-      setDepositId(deposit.depositId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Deposit failed');
-      setDepositState('failure');
-    }
+
+        // Phase 2: the real vault submission
+        submit: async () => {
+          const deposit = await submitVaultDeposit({
+            sender: address,
+            metaAddress,
+            amount: amountValue,
+            unlockLedger: Number(unlockLedgerValue),
+            refundWindow: Number(refundWindowValue),
+            signTransaction,
+            onProgress: (progress: VaultDepositProgress) => {
+              setDepositState(progress.status);
+              if (progress.status === 'signing') setSimulationFee(progress.fee);
+              if ('txHash' in progress && progress.txHash) {
+                capturedTxHash = progress.txHash;
+                setTxHash(progress.txHash);
+              }
+            },
+          });
+          setDepositId(deposit.depositId);
+          return deposit;
+        },
+      },
+      {
+        onError: (err) => {
+          setError(err.message || 'Deposit failed');
+          setDepositState('failure');
+        },
+        reconcile: capturedTxHash ? () => reconcileStellarTransaction(capturedTxHash!) : undefined,
+      },
+    );
   }, [
     address,
     metaAddress,
@@ -159,6 +192,7 @@ export function StellarVaultDeposit() {
     validationError,
     isNetworkMismatch,
     signTransaction,
+    submitIdempotent,
   ]);
 
   const reset = () => {
@@ -173,6 +207,7 @@ export function StellarVaultDeposit() {
     setSimulationFee(null);
     setTouched({ recipient: false, amount: false, unlockLedger: false, refundWindow: false });
     setSubmitAttempted(false);
+    resetIdempotent();
   };
 
   return (

@@ -10,9 +10,10 @@ import {
 import type { BatchWithdrawItem, BatchWithdrawResult } from '@/lib/stellar/withdraw';
 import { CopyButton } from '@/components/CopyButton';
 import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
-import { useActivityStore } from '@/stores/activityStore';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useIdempotentTransaction } from '@/hooks/useIdempotentTransaction';
+import { reconcileStellarTransaction } from '@/lib/stellar/reconcileTransaction';
 
 export interface StellarBatchWithdrawModalProps {
   isOpen: boolean;
@@ -34,12 +35,19 @@ export function StellarBatchWithdrawModal({
 }: StellarBatchWithdrawModalProps) {
   const { t } = useTranslation();
   const { address: walletAddress } = useStellarWallet();
-  const addActivity = useActivityStore((state) => state.addEntry);
-  const updateActivity = useActivityStore((state) => state.updateStatus);
+
+  const {
+    isSubmitting,
+    submit: submitIdempotent,
+    reset: resetIdempotent,
+  } = useIdempotentTransaction({
+    chain: 'stellar',
+    wallet: walletAddress || '',
+    action: 'batch-withdraw',
+  });
 
   const [globalDestination, setGlobalDestination] = useState('');
   const [assetKey] = useState<StellarAssetKey>('XLM');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [executionResult, setExecutionResult] = useState<BatchWithdrawResult | null>(null);
 
@@ -81,54 +89,55 @@ export function StellarBatchWithdrawModal({
   const handleConfirm = async () => {
     if (preview.validItems.length === 0 || isSubmitting) return;
 
-    setIsSubmitting(true);
     setExecutionResult(null);
     setStatusMessage('Building atomic multi-operation transaction…');
 
-    try {
-      // Step 1: Build atomic multi-operation transaction
-      const { txXdr, txHash } = await buildBatchWithdrawTx(preview.validItems);
+    await submitIdempotent(
+      {
+        // ── Phase 1: build & sign (no broadcast) ──────────────────────────
+        build: async () => {
+          const { txXdr, txHash } = await buildBatchWithdrawTx(preview.validItems);
+          return {
+            txHash,
+            signedTx: { txXdr, txHash },
+          };
+        },
 
-      // Record activity item in pending state
-      addActivity({
-        id: txHash,
-        chain: 'stellar',
-        wallet: walletAddress || '',
-        kind: 'withdrawal',
-        direction: 'out',
-        status: 'pending',
-        amount: preview.totalAmountXLM,
-        recipient: globalDestination,
-        timestamp: Date.now(),
-      });
+        // ── Phase 2: broadcast ─────────────────────────────────────────────
+        submit: async (signedTx) => {
+          const { txXdr } = signedTx as { txXdr: string; txHash: string };
+          setStatusMessage('Submitting batch to Stellar Horizon network…');
 
-      setStatusMessage('Submitting batch to Stellar Horizon network…');
+          const result = await submitBatchWithdrawal(txXdr, preview.validItems);
+          setExecutionResult(result);
 
-      // Step 2: Submit to network
-      const result = await submitBatchWithdrawal(txXdr, preview.validItems);
-      setExecutionResult(result);
+          if (!result.success) {
+            throw new Error(result.error || 'Batch withdrawal failed');
+          }
 
-      if (result.success && result.txHash) {
-        updateActivity(result.txHash, 'confirmed');
-        onBatchSuccess(result.txHash);
-      } else {
-        updateActivity(txHash, 'failed');
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Batch withdrawal failed';
-      setExecutionResult({
-        success: false,
-        error: msg,
-        entryResults: preview.validItems.map((item) => ({
-          stealthAddress: item.match.stealthAddress,
-          success: false,
-          error: msg,
-        })),
-      });
-    } finally {
-      setIsSubmitting(false);
-      setStatusMessage('');
-    }
+          return result;
+        },
+      },
+      {
+        onSuccess: (result) => {
+          setStatusMessage('');
+          if (result.txHash) onBatchSuccess(result.txHash);
+        },
+        onError: (err) => {
+          setStatusMessage('');
+          setExecutionResult({
+            success: false,
+            error: err.message,
+            entryResults: preview.validItems.map((item) => ({
+              stealthAddress: item.match.stealthAddress,
+              success: false,
+              error: err.message,
+            })),
+          });
+        },
+        reconcile: reconcileStellarTransaction,
+      },
+    );
   };
 
   return (
@@ -155,7 +164,10 @@ export function StellarBatchWithdrawModal({
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              resetIdempotent();
+              onClose();
+            }}
             disabled={isSubmitting}
             className="flex h-8 w-8 items-center justify-center text-outline hover:text-on-surface disabled:opacity-30"
             aria-label="Close modal"
@@ -368,7 +380,10 @@ export function StellarBatchWithdrawModal({
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-outline-variant pt-4">
           <button
-            onClick={onClose}
+            onClick={() => {
+              resetIdempotent();
+              onClose();
+            }}
             disabled={isSubmitting}
             className="h-10 border border-outline-variant px-4 font-heading text-[10px] uppercase tracking-widest text-on-surface-variant transition-colors hover:bg-surface-bright disabled:opacity-30"
           >
