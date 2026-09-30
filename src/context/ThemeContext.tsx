@@ -55,6 +55,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       localStorage.setItem(THEME_STORAGE_KEY, preference);
     }
+
+    // Wave 9 (#184): index.html hides <body> until the theme is applied to
+    // avoid a flash of unstyled content. Reveal it now that the theme is set
+    // — nothing else removes the inline style, so without this the app stays
+    // blank (and no Playwright test can interact with the page).
+    document.body.style.visibility = 'visible';
   }, [theme, preference]);
 
   const toggleTheme = () => {

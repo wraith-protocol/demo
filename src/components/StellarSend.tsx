@@ -38,6 +38,7 @@ import {
   simulateStellarSendAnnouncement,
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
+import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
@@ -116,6 +117,8 @@ export function StellarSend() {
   const { isKnownAddress, addContact } = useContacts();
   const { isKnownRecipient, addToHistory } = useNameHistory();
   const [error, setError] = useState('');
+  // Wave 9 (#184): confirmation that the send was queued while offline.
+  const [queuedOffline, setQueuedOffline] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [, setTouched] = useState({ recipient: false, amount: false });
   const [, setSubmitAttempted] = useState(false);
@@ -168,7 +171,7 @@ export function StellarSend() {
     }
   }, [isScanningQR]);
 
-  const applyQrPayload = useCallback((text: string) => {
+  const applyQrPayload = useCallback((text: string, source: 'camera' | 'image' = 'camera') => {
     try {
       const payload = parseStellarQrPayload(text);
       setRecipient(payload.metaAddress);
@@ -177,6 +180,25 @@ export function StellarSend() {
       setTouched((previous) => ({ ...previous, recipient: true }));
       setScannerError('');
       setIsScanningQR(false);
+      // Wave 9 (#184): persist scans captured while offline so the intent
+      // survives reloads; reconciliation revalidates it on reconnect.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const queued = useOfflineQueueStore.getState().enqueueScanSession({
+          source,
+          rawText: text,
+          parsed: {
+            metaAddress: payload.metaAddress,
+            ...(payload.amount ? { amount: payload.amount } : {}),
+            ...(payload.memo ? { memo: payload.memo } : {}),
+          },
+          capturedAt: Date.now(),
+        });
+        if (!queued) {
+          setScannerError(
+            'Offline queue is full — reconnect or discard queued items to save new scans.',
+          );
+        }
+      }
     } catch (scanError) {
       setScannerError(
         scanError instanceof Error ? scanError.message : 'This QR code could not be read.',
@@ -213,7 +235,7 @@ export function StellarSend() {
     setIsDecodingQrImage(true);
     setScannerError('');
     try {
-      applyQrPayload(await decodeQrImage(file));
+      applyQrPayload(await decodeQrImage(file), 'image');
     } catch (scanError) {
       setScannerError(
         scanError instanceof Error ? scanError.message : 'This QR image could not be read.',
@@ -241,6 +263,27 @@ export function StellarSend() {
       }
     }
   }, [paramExp]);
+
+  // Wave 9 (#184): a payment link opened while offline is a scan captured
+  // offline — persist it once so the intent survives reloads.
+  const paymentLinkQueuedRef = useRef(false);
+  useEffect(() => {
+    if (paymentLinkQueuedRef.current) return;
+    if (!paramTo) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      paymentLinkQueuedRef.current = true;
+      useOfflineQueueStore.getState().enqueueScanSession({
+        source: 'payment-link',
+        rawText: typeof window !== 'undefined' ? window.location.href : `?to=${paramTo}`,
+        parsed: {
+          metaAddress: paramTo,
+          ...(paramAmount ? { amount: paramAmount } : {}),
+          ...(paramMemo ? { memo: paramMemo } : {}),
+        },
+        capturedAt: Date.now(),
+      });
+    }
+  }, [paramTo, paramAmount, paramMemo]);
 
   const [showUnknownWarning, setShowUnknownWarning] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -519,6 +562,38 @@ export function StellarSend() {
       setShowNetworkModal(true);
       return;
     }
+
+    // Wave 9 (#184): offline sends become persisted payment intents instead
+    // of failed network calls. Local format checks still apply; balance and
+    // trustline checks need a connection and run at review time. Signing
+    // stays an explicit user action after reconnect.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const offlineRecipientError = validateMetaAddress(recipient.trim());
+      const offlineAmountError = validateAmount(amount.trim(), assetKey);
+      if (offlineRecipientError || offlineAmountError) {
+        setError(offlineRecipientError || offlineAmountError || 'Enter valid send details');
+        return;
+      }
+      const expSecs = paramExp ? parseInt(paramExp, 10) : NaN;
+      const queued = useOfflineQueueStore.getState().enqueuePaymentIntent({
+        chain: 'stellar',
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+        asset: assetKey,
+        ...(memo.trim() ? { memo: memo.trim() } : {}),
+        ...(Number.isFinite(expSecs) ? { expiresAt: expSecs * 1000 } : {}),
+        source: paramTo ? 'payment-link' : 'form',
+      });
+      if (!queued) {
+        // Queue full of actionable work: say so instead of dropping the intent.
+        setError('Offline queue is full — reconnect or discard queued items, then try again.');
+        return;
+      }
+      setError('');
+      setQueuedOffline(true);
+      return;
+    }
+    setQueuedOffline(false);
 
     if (!canSubmit) {
       setError(validationError || 'Enter valid send details');
@@ -853,6 +928,13 @@ export function StellarSend() {
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+
+          {queuedOffline && !error && (
+            <p role="status" className="text-sm text-on-surface-variant">
+              You&apos;re offline — this send was queued. Review and sign it from the offline queue
+              after you reconnect.
+            </p>
+          )}
 
           {isUnknownRecipient && (
             <div className="flex flex-col gap-3 rounded border border-outline-variant/50 bg-surface-container p-4">
