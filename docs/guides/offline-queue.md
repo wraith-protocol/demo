@@ -32,7 +32,14 @@ broadcast stay explicit user actions.
 
 Entries persist in `localStorage` under `wraith-offline-queue` using the
 versioned, validated, bounded envelope from `src/lib/versionedStorage.ts`
-(max 50 entries; corrupt or oversized state is discarded, never trusted).
+(max 50 entries; corrupt state is discarded, never trusted).
+
+Cap policy — actionable work is never dropped silently: adds evict the
+oldest _terminal_ entries to make room, and when all 50 entries are still
+actionable the add is explicitly rejected (`accepted: false`, input
+untouched). Callers surface this: the Send form errors, and the panel shows
+a "queue full" notice until you reconnect or discard items. Oversized
+loaded state is capped with the same prune-oldest-terminal-first rule.
 
 Captured at the source, while offline:
 

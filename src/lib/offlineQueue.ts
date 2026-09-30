@@ -32,7 +32,17 @@ import {
 
 export const OFFLINE_QUEUE_STORAGE_KEY = 'wraith-offline-queue';
 
-/** Hard cap on persisted entries; oldest terminal entries are pruned first. */
+/**
+ * Hard cap on queue entries.
+ *
+ * Cap policy (no silent drops of actionable work):
+ * - `addEntry` evicts oldest *terminal* entries to make room, and
+ *   explicitly rejects (`accepted: false`, input untouched) when the queue
+ *   is full of actionable work — the caller must tell the user.
+ * - `enforceQueueCap` applies the same rule to oversized loaded state.
+ * - `saveOfflineQueue` persists exactly what it is given; every producer
+ *   above enforces the cap, so the save path never truncates.
+ */
 export const MAX_OFFLINE_QUEUE_ITEMS = 50;
 
 /** Signed envelopes older than this are treated as stale on reconcile. */
@@ -276,7 +286,10 @@ export function loadOfflineQueue(storage: StorageLike): OfflineQueueEntry[] {
 }
 
 export function saveOfflineQueue(storage: StorageLike, entries: OfflineQueueEntry[]): void {
-  writeVersioned(storage, OFFLINE_QUEUE_STORAGE_KEY, entries.slice(0, MAX_OFFLINE_QUEUE_ITEMS));
+  // Intentionally no truncation here: `addEntry` / `enforceQueueCap` own the
+  // cap, and silently dropping the tail (usually the newest entry) is exactly
+  // the data-loss bug this policy exists to prevent.
+  writeVersioned(storage, OFFLINE_QUEUE_STORAGE_KEY, entries);
 }
 
 /** Entries still awaiting reconciliation, oldest first. */
@@ -289,15 +302,39 @@ export function actionableEntries(entries: OfflineQueueEntry[]): OfflineQueueEnt
   return entries.filter((e) => e.status === 'needs-review' || e.status === 'conflict');
 }
 
+export interface AddEntryResult {
+  entries: OfflineQueueEntry[];
+  /**
+   * False when the queue is full of actionable work: nothing was added,
+   * nothing was dropped — `entries` is the untouched input. The caller must
+   * surface this (e.g. "queue full, reconnect or discard items").
+   */
+  accepted: boolean;
+  /** Terminal entries evicted to make room (0 when nothing was pruned). */
+  evicted: number;
+}
+
+/** Oldest terminal entries first — the only entries ever pruned silently. */
+function oldestTerminalIds(entries: OfflineQueueEntry[], count: number): Set<string> {
+  return new Set(
+    entries
+      .filter((e) => isTerminalStatus(e.status))
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .slice(0, count)
+      .map((e) => e.id),
+  );
+}
+
 /**
  * Adds an entry, enforcing dedupe (by id, and by txHash for signed
- * envelopes) and the collection cap. Returns the new list.
+ * envelopes) and the collection cap.
+ *
+ * Full-but-actionable queues reject explicitly instead of dropping work:
+ * with 50 actionable entries, the 51st returns `{ accepted: false }` and the
+ * input list untouched — never 51 items, never a silent tail-drop at save.
  */
-export function addEntry(
-  entries: OfflineQueueEntry[],
-  entry: OfflineQueueEntry,
-): OfflineQueueEntry[] {
-  if (entries.some((e) => e.id === entry.id)) return entries;
+export function addEntry(entries: OfflineQueueEntry[], entry: OfflineQueueEntry): AddEntryResult {
+  if (entries.some((e) => e.id === entry.id)) return { entries, accepted: true, evicted: 0 };
   if (
     entry.kind === 'signed-submit' &&
     entries.some(
@@ -306,20 +343,44 @@ export function addEntry(
         (e.payload as SignedSubmitPayload).txHash === (entry.payload as SignedSubmitPayload).txHash,
     )
   ) {
-    return entries;
+    return { entries, accepted: true, evicted: 0 };
   }
   const next = [...entries, entry];
-  if (next.length <= MAX_OFFLINE_QUEUE_ITEMS) return next;
-  // Prune oldest terminal entries first; never drop actionable work silently
-  // while terminal entries remain.
-  const terminal = next.filter((e) => isTerminalStatus(e.status));
   const overflow = next.length - MAX_OFFLINE_QUEUE_ITEMS;
-  const dropIds = new Set(
-    terminal
-      .sort((a, b) => a.updatedAt - b.updatedAt)
-      .slice(0, overflow)
-      .map((e) => e.id),
-  );
-  const pruned = next.filter((e) => dropIds.has(e.id) === false);
-  return pruned.slice(-MAX_OFFLINE_QUEUE_ITEMS);
+  if (overflow <= 0) return { entries: next, accepted: true, evicted: 0 };
+  const dropIds = oldestTerminalIds(next, overflow);
+  const pruned = next.filter((e) => !dropIds.has(e.id));
+  if (pruned.length <= MAX_OFFLINE_QUEUE_ITEMS) {
+    return { entries: pruned, accepted: true, evicted: dropIds.size };
+  }
+  // No room even after pruning every terminal entry: the queue is full of
+  // actionable work. Reject without mutating anything.
+  return { entries, accepted: false, evicted: 0 };
+}
+
+export interface EnforceCapResult {
+  entries: OfflineQueueEntry[];
+  droppedTerminal: number;
+  /** Only nonzero for corrupt oversized state with no terminals to prune. */
+  droppedNewest: number;
+}
+
+/**
+ * Caps loaded (possibly corrupt/legacy oversized) state using the same rule:
+ * oldest terminal first; if actionable entries alone still exceed the cap,
+ * keep the oldest (mirrors `readVersionedCollection`) and report the drop.
+ */
+export function enforceQueueCap(entries: OfflineQueueEntry[]): EnforceCapResult {
+  const overflow = entries.length - MAX_OFFLINE_QUEUE_ITEMS;
+  if (overflow <= 0) return { entries, droppedTerminal: 0, droppedNewest: 0 };
+  const dropIds = oldestTerminalIds(entries, overflow);
+  const pruned = entries.filter((e) => !dropIds.has(e.id));
+  if (pruned.length <= MAX_OFFLINE_QUEUE_ITEMS) {
+    return { entries: pruned, droppedTerminal: dropIds.size, droppedNewest: 0 };
+  }
+  return {
+    entries: pruned.slice(0, MAX_OFFLINE_QUEUE_ITEMS),
+    droppedTerminal: dropIds.size,
+    droppedNewest: pruned.length - MAX_OFFLINE_QUEUE_ITEMS,
+  };
 }

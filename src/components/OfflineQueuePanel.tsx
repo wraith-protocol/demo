@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   actionableEntries,
   isTerminalStatus,
+  MAX_OFFLINE_QUEUE_ITEMS,
   type OfflineConflictReason,
   type OfflineQueueEntry,
   type PaymentIntentPayload,
@@ -172,6 +173,7 @@ export function OfflineQueuePanel() {
 
   const actionable = actionableEntries(entries);
   const terminalCount = entries.filter((e) => isTerminalStatus(e.status)).length;
+  const isFull = entries.length >= MAX_OFFLINE_QUEUE_ITEMS;
 
   return (
     <section
@@ -195,6 +197,13 @@ export function OfflineQueuePanel() {
           )
         )}
       </div>
+
+      {isFull && (
+        <p role="status" className="mt-2 font-body text-xs text-warning">
+          Queue is full ({MAX_OFFLINE_QUEUE_ITEMS} items) — new offline work will be refused until
+          you reconnect or discard items. Nothing is dropped silently.
+        </p>
+      )}
 
       <ul className="mt-3 space-y-3">
         {entries.map((entry) => {

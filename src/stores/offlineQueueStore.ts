@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   addEntry,
   createOfflineEntry,
+  enforceQueueCap,
   isOfflineEntry,
   loadOfflineQueue,
   saveOfflineQueue,
@@ -26,10 +27,14 @@ interface OfflineQueueState {
   /** Payload of the most recently reconciled scan (for UI follow-ups). */
   lastAppliedScan: { metaAddress: string; amount?: string; memo?: string } | null;
 
-  enqueue: (kind: OfflineWorkKind, payload: OfflineEntryPayload) => OfflineQueueEntry;
-  enqueuePaymentIntent: (payload: PaymentIntentPayload) => OfflineQueueEntry;
-  enqueueScanSession: (payload: ScanSessionPayload) => OfflineQueueEntry;
-  enqueueSignedSubmit: (payload: SignedSubmitPayload) => OfflineQueueEntry;
+  /**
+   * Returns the entry, or null when the queue is full of actionable work.
+   * Callers must handle null explicitly (tell the user — never drop it).
+   */
+  enqueue: (kind: OfflineWorkKind, payload: OfflineEntryPayload) => OfflineQueueEntry | null;
+  enqueuePaymentIntent: (payload: PaymentIntentPayload) => OfflineQueueEntry | null;
+  enqueueScanSession: (payload: ScanSessionPayload) => OfflineQueueEntry | null;
+  enqueueSignedSubmit: (payload: SignedSubmitPayload) => OfflineQueueEntry | null;
   remove: (id: string) => void;
   clearResolved: () => void;
   /** Runs reconnect reconciliation; safe to call any time (no-op offline). */
@@ -56,8 +61,9 @@ function readStoredEntries(): OfflineQueueEntry[] {
   try {
     const entries = loadOfflineQueue(storage);
     // Belt-and-braces: the loader already validates, but never let a bad
-    // entry shape reach the store.
-    return entries.filter(isOfflineEntry);
+    // entry shape reach the store. Cap oversized (corrupt/legacy) state with
+    // the same prune-oldest-terminal-first rule as live adds.
+    return enforceQueueCap(entries.filter(isOfflineEntry)).entries;
   } catch {
     return [];
   }
@@ -98,11 +104,10 @@ export const useOfflineQueueStore = create<OfflineQueueState>()((set, get) => ({
 
   enqueue: (kind, payload) => {
     const entry = createOfflineEntry(kind, payload);
-    set((state) => {
-      const entries = addEntry(state.entries, entry);
-      persistEntries(entries);
-      return { entries };
-    });
+    const result = addEntry(get().entries, entry);
+    if (!result.accepted) return null;
+    persistEntries(result.entries);
+    set({ entries: result.entries });
     requestQueueSync();
     return entry;
   },

@@ -183,7 +183,7 @@ export function StellarSend() {
       // Wave 9 (#184): persist scans captured while offline so the intent
       // survives reloads; reconciliation revalidates it on reconnect.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        useOfflineQueueStore.getState().enqueueScanSession({
+        const queued = useOfflineQueueStore.getState().enqueueScanSession({
           source,
           rawText: text,
           parsed: {
@@ -193,6 +193,11 @@ export function StellarSend() {
           },
           capturedAt: Date.now(),
         });
+        if (!queued) {
+          setScannerError(
+            'Offline queue is full — reconnect or discard queued items to save new scans.',
+          );
+        }
       }
     } catch (scanError) {
       setScannerError(
@@ -570,7 +575,7 @@ export function StellarSend() {
         return;
       }
       const expSecs = paramExp ? parseInt(paramExp, 10) : NaN;
-      useOfflineQueueStore.getState().enqueuePaymentIntent({
+      const queued = useOfflineQueueStore.getState().enqueuePaymentIntent({
         chain: 'stellar',
         recipient: recipient.trim(),
         amount: amount.trim(),
@@ -579,6 +584,11 @@ export function StellarSend() {
         ...(Number.isFinite(expSecs) ? { expiresAt: expSecs * 1000 } : {}),
         source: paramTo ? 'payment-link' : 'form',
       });
+      if (!queued) {
+        // Queue full of actionable work: say so instead of dropping the intent.
+        setError('Offline queue is full — reconnect or discard queued items, then try again.');
+        return;
+      }
       setError('');
       setQueuedOffline(true);
       return;
