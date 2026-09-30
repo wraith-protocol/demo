@@ -154,7 +154,22 @@ export function App() {
     if (sessionLocked) return;
     const idleLock = new IdleLock({ timeoutMs: APP_IDLE_TIMEOUT_MS, onIdle: relockSession });
     idleLock.start();
-    return () => idleLock.stop();
+
+    // Playwright hook: lets the e2e failure-matrix fire the session lock
+    // deterministically instead of waiting APP_IDLE_TIMEOUT_MS. Vite's
+    // dead-code elimination drops the block from production builds so the
+    // hook never ships.
+    if (!import.meta.env.PROD) {
+      (window as unknown as { __wraithForceIdleLock?: () => void }).__wraithForceIdleLock =
+        relockSession;
+    }
+
+    return () => {
+      idleLock.stop();
+      if (!import.meta.env.PROD) {
+        delete (window as unknown as { __wraithForceIdleLock?: () => void }).__wraithForceIdleLock;
+      }
+    };
   }, [relockSession, sessionLocked]);
 
   useEffect(() => {

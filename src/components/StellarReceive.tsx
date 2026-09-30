@@ -808,6 +808,10 @@ export function StellarReceive() {
     });
   }, [matched, labels, showHidden, searchQuery, activeTag]);
 
+  const hiddenCount = useMemo(() => {
+    return matched.filter((m) => labels[m.stealthAddress]?.hiddenAt).length;
+  }, [matched, labels]);
+
   const toggleSelectAll = useCallback(() => {
     setSelectedAddresses((prev) => {
       if (prev.size === filteredMatched.length && filteredMatched.length > 0) {
@@ -816,10 +820,6 @@ export function StellarReceive() {
       return new Set(filteredMatched.map((m) => m.stealthAddress));
     });
   }, [filteredMatched]);
-
-  const hiddenCount = useMemo(() => {
-    return matched.filter((m) => labels[m.stealthAddress]?.hiddenAt).length;
-  }, [matched, labels]);
 
   // Check if already registered on-chain
   useEffect(() => {

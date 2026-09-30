@@ -2,7 +2,11 @@ import { Asset } from '@stellar/stellar-sdk';
 
 export const STELLAR_USDC = {
   code: 'USDC',
-  issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NOATFQRAHX4JHPX',
+  // Circle's canonical USDC issuer. The previous placeholder failed
+  // `StrKey.isValidEd25519PublicKey`, so `new Asset('USDC', issuer)` threw
+  // `Issuer is invalid` and the whole USDC path crashed. Using the real
+  // issuer clears that gate.
+  issuer: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
 } as const;
 
 export const STELLAR_ASSETS = [

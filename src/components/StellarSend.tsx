@@ -353,7 +353,12 @@ export function StellarSend() {
         const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
         const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
         if (!knownAssetKeys.has(code)) continue;
-        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+        // Store the entry under the short `code` (e.g. "USDC") rather than
+        // the `${code}:${issuer}` combo. AssetPicker emits `entry.key` on
+        // select and downstream code passes that straight into
+        // `getAssetByKey`, which only knows the short form and otherwise
+        // throws `Unknown Stellar asset: USDC:<issuer>` and crashes the tree.
+        entries.push({ key: code, code, issuer, balance: bal, isKnown: true, isNative: false });
       }
     }
     if (!hasXlm) {
@@ -773,11 +778,34 @@ export function StellarSend() {
     } catch (err) {
       setRetryStatus('');
       if (txHashHex) updateActivity(txHashHex, 'failed');
+      // Clear the stealth-result preview so the failure surface (error text +
+      // re-usable form) is reachable; without this, a rejection or submit-time
+      // network error leaves the user on a permanent "PENDING" panel with no
+      // way to retry, because the error paragraph only renders inside
+      // `{!stealthResult && ...}`.
+      setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, assetKey, signTransaction, t]);
+    // `canSubmit`, `validationError`, `isNetworkMismatch`, and `memo` are
+    // captured from the render, so leaving them out of the dep array pins
+    // `handleSend` to the closure from the last keystroke, well before the
+    // debounced balance fetch and trustline check have settled. That makes
+    // every submit read stale values and fall through to the generic
+    // `Enter valid send details` string. Including them lets the check work.
+  }, [
+    address,
+    recipient,
+    amount,
+    assetKey,
+    signTransaction,
+    t,
+    canSubmit,
+    validationError,
+    isNetworkMismatch,
+    memo,
+  ]);
 
   const reset = () => {
     setRecipient(paramTo || '');

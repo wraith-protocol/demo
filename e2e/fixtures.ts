@@ -10,6 +10,14 @@ export interface FreighterMockConfig {
   shouldFailSignMessage?: boolean;
   shouldFailSignTx?: boolean;
   autoConnect?: boolean;
+  network?: 'PUBLIC' | 'TESTNET' | 'FUTURENET';
+  networkPassphrase?: string;
+}
+
+export interface SenderTrustline {
+  asset_code: string;
+  asset_issuer: string;
+  balance: string;
 }
 
 export interface HorizonMockConfig {
@@ -29,7 +37,17 @@ export interface HorizonMockConfig {
   sorobanSimulateError?: string;
   sorobanTxStatus?: string;
   address?: string;
+  // Sender-only `/accounts/*` overrides. When set to a retryable status
+  // (503/502/504/429/408) the fetch retries until `withRetry` exhausts and the
+  // UI surfaces `RetryExhaustedError`; this is how the failure matrix drives
+  // the "RPC exhausted" axis without simulating clock drift.
+  accountFetchStatus?: number;
+  // Extra trustlines to attach to the sender payload; required so a non-XLM
+  // asset like USDC becomes selectable in the AssetPicker.
+  senderTrustlines?: SenderTrustline[];
 }
+
+const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 
 const DEFAULT_WALLET_ADDRESS = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
 
@@ -39,6 +57,12 @@ export const test = base.extend<{
   };
   horizon: {
     mock: (config: Partial<HorizonMockConfig>) => Promise<void>;
+  };
+  session: {
+    // Deterministically fires the App's IdleLock so a spec does not have to
+    // wait APP_IDLE_TIMEOUT_MS. Wired via a dev/test-only window hook in
+    // App.tsx; the hook is stripped from production builds by Vite.
+    expire: () => Promise<void>;
   };
 }>({
   freighter: async ({ page }, use) => {
@@ -84,6 +108,25 @@ export const test = base.extend<{
             return {
               signedTxXdr: cfg.signedTxXdr || xdrString,
             };
+          },
+          // The wallet context calls getNetworkDetails from both the mount
+          // watcher and the connect callback; the previous mock omitted it, so
+          // freighterPassphrase never populated and the wrong-network path
+          // could not be exercised.
+          getNetworkDetails: async () => ({
+            network: cfg.network ?? 'TESTNET',
+            networkPassphrase: cfg.networkPassphrase ?? 'Test SDF Network ; September 2015',
+          }),
+          // Reject silent session restore so specs always drive the wallet
+          // through the explicit "Connect Freighter" click (matches the
+          // existing spec pattern).
+          isAllowed: async () => ({ isAllowed: false }),
+          // No-op watcher: specs drive state transitions directly, so a real
+          // 3s polling loop would just add flake.
+          WatchWalletChanges: class {
+            constructor(_intervalMs: number) {}
+            watch(_cb: unknown) {}
+            stop() {}
           },
         };
       }, config);
@@ -176,14 +219,55 @@ export const test = base.extend<{
 
         const isSender = address === DEFAULT_WALLET_ADDRESS || address === config.address;
 
+        // Retryable-status branch for the "RPC exhausted" failure axis. Only
+        // applies to the sender lookup; checkAssetTrustline hits the stealth
+        // address and must resolve normally so trustline-missing stays
+        // observable regardless of this override.
+        if (
+          isSender &&
+          typeof mergedConfig.accountFetchStatus === 'number' &&
+          mergedConfig.accountFetchStatus >= 400
+        ) {
+          await route.fulfill({
+            status: mergedConfig.accountFetchStatus,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              title: 'Service Unavailable',
+              status: mergedConfig.accountFetchStatus,
+            }),
+          });
+          return;
+        }
+
         if (isSender || mergedConfig.accountExists) {
+          const balances: Array<{
+            asset_type: string;
+            asset_code?: string;
+            asset_issuer?: string;
+            balance: string;
+          }> = [{ asset_type: 'native', balance: mergedConfig.accountBalance }];
+
+          // Extra trustlines only apply to the sender payload; stealth-address
+          // lookups intentionally stay native-only so `checkAssetTrustline`
+          // sees the "no trustline for this asset" state.
+          if (isSender && mergedConfig.senderTrustlines) {
+            for (const tl of mergedConfig.senderTrustlines) {
+              balances.push({
+                asset_type: 'credit_alphanum4',
+                asset_code: tl.asset_code,
+                asset_issuer: tl.asset_issuer,
+                balance: tl.balance,
+              });
+            }
+          }
+
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify({
               id: address,
               sequence: '1',
-              balances: [{ asset_type: 'native', balance: mergedConfig.accountBalance }],
+              balances,
               subentry_count: 0,
             }),
           });
@@ -285,6 +369,25 @@ export const test = base.extend<{
 
     await use({ mock });
   },
+
+  session: async ({ page }, use) => {
+    await use({
+      expire: async () => {
+        // Falls back to a no-op when the hook is absent (e.g. production
+        // build) so a mis-configured spec fails on its next assertion with
+        // an actionable message rather than a cryptic evaluate-time error.
+        await page.evaluate(() => {
+          const hook = (window as unknown as { __wraithForceIdleLock?: () => void })
+            .__wraithForceIdleLock;
+          if (typeof hook === 'function') hook();
+        });
+      },
+    });
+  },
 });
+
+// TESTNET_PASSPHRASE is exported so specs can construct wrong-network scenarios
+// against the canonical value the app compares against.
+export { TESTNET_PASSPHRASE };
 
 export { expect } from '@playwright/test';
