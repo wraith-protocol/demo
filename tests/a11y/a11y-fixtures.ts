@@ -1,22 +1,15 @@
 import { test as base } from '@playwright/test';
 
-const MOCK_ADDRESS = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
-
 export const test = base.extend({});
 
-export async function mockConnectedWallet(page: import('@playwright/test').Page) {
-  await page.addInitScript((address) => {
-    (window as any).freighter = {
-      isConnected: async () => ({ isConnected: true }),
-      isAllowed: async () => ({ isAllowed: true }),
-      getUserInfo: async () => ({ publicKey: address }),
-      getPublicKey: async () => address,
-      getAddress: async () => ({ address }),
-      requestAccess: async () => {},
-      signMessage: async () => new Uint8Array(64).fill(1),
-      signTransaction: async () => 'mock-tx',
-    };
-  }, MOCK_ADDRESS);
-}
+/**
+ * Install a connected Freighter mock.
+ *
+ * Re-exported from `tests/fixtures` so every spec shares one mock. The app reads
+ * `window.freighterMock` (`StellarWalletContext#getFreighter`); the real
+ * `@stellar/freighter-api` package only treats `window.freighter` as a boolean
+ * "is installed" flag, so mocking `window.freighter` with an object mocks nothing.
+ */
+export { mockConnectedWallet } from '../fixtures';
 
 export { expect } from '@playwright/test';

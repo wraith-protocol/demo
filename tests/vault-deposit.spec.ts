@@ -1,38 +1,43 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, setupStellarWallet, gotoStellar } from './fixtures';
 
 test.describe('Vault Deposit Flow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/vault');
+    // `/vault` only renders the Stellar vault once the wallet is connected and
+    // the Stellar chain is selected.
+    await setupStellarWallet(page);
+    await gotoStellar(page, '/vault');
   });
 
+  // The tab strip and the submit button share the "Create Deposit" label, so the
+  // tab is `.first()` in DOM order and the submit button is `.nth(1)`.
+  const depositTab = (page: import('@playwright/test').Page) =>
+    page.getByRole('button', { name: 'Create Deposit' }).first();
+  const depositSubmit = (page: import('@playwright/test').Page) =>
+    page.getByRole('button', { name: 'Create Deposit' }).nth(1);
+  // Substring matching would also hit "e.g., 100000", so match exactly.
+  const refundWindowInput = (page: import('@playwright/test').Page) =>
+    page.getByPlaceholder('e.g., 10000', { exact: true });
+
   test('displays deposit form when connected', async ({ page }) => {
-    // Note: This test assumes wallet is connected
-    // In a real test environment, you would need to mock the wallet connection
     await expect(page.locator('h1')).toContainText('Stealth Vault');
-    await expect(page.getByText('Create Deposit')).toBeVisible();
+    await expect(depositTab(page)).toBeVisible();
+    await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible();
   });
 
   test('validates recipient meta-address', async ({ page }) => {
-    await page.goto('/vault');
+    await depositTab(page).click();
 
-    // Click on Create Deposit tab
-    await page.getByText('Create Deposit').click();
-
-    // Try to submit without recipient
     const recipientInput = page.getByPlaceholder('st:xlm:...');
     await recipientInput.fill('');
     await recipientInput.blur();
 
-    // Should show validation error
     await expect(page.locator('#vault-recipient-error')).toContainText(
       'Recipient meta-address is required',
     );
   });
 
   test('validates amount field', async ({ page }) => {
-    await page.goto('/vault');
-
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('');
@@ -42,9 +47,7 @@ test.describe('Vault Deposit Flow', () => {
   });
 
   test('validates unlock ledger field', async ({ page }) => {
-    await page.goto('/vault');
-
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
     const unlockInput = page.getByPlaceholder('e.g., 100000');
     await unlockInput.fill('');
@@ -54,11 +57,9 @@ test.describe('Vault Deposit Flow', () => {
   });
 
   test('validates refund window field', async ({ page }) => {
-    await page.goto('/vault');
+    await depositTab(page).click();
 
-    await page.getByText('Create Deposit').click();
-
-    const refundInput = page.getByPlaceholder('e.g., 10000');
+    const refundInput = refundWindowInput(page);
     await refundInput.fill('');
     await refundInput.blur();
 
@@ -66,49 +67,39 @@ test.describe('Vault Deposit Flow', () => {
   });
 
   test('shows contract coming soon notice', async ({ page }) => {
-    await page.goto('/vault');
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
     await expect(page.getByText('Stealth Vault (Coming Soon)')).toBeVisible();
   });
 
   test('disables submit button when form is invalid', async ({ page }) => {
-    await page.goto('/vault');
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
-    const submitButton = page.getByText('Create Deposit').filter({ hasText: 'Create Deposit' });
-    await expect(submitButton).toBeDisabled();
+    await expect(depositSubmit(page)).toBeDisabled();
   });
 
   test('enables submit button when form is valid', async ({ page }) => {
-    await page.goto('/vault');
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
-    // Fill in valid form data
     await page.getByPlaceholder('st:xlm:...').fill('st:xlm:valid_meta_address_123');
     await page.getByPlaceholder('0.0').fill('10.5');
     await page.getByPlaceholder('e.g., 100000').fill('500000');
-    await page.getByPlaceholder('e.g., 10000').fill('10000');
+    await refundWindowInput(page).fill('10000');
 
-    // Note: This may still be disabled if wallet is not connected
-    // In a real test with mocked wallet, it would be enabled
-    const submitButton = page.getByText('Create Deposit').filter({ hasText: 'Create Deposit' });
-    // Check if button exists (may be disabled due to wallet connection)
-    await expect(submitButton).toBeVisible();
+    // The deposit contract is not deployed yet, so the submit button stays
+    // disabled even with a valid form; assert the form is reachable and complete.
+    await expect(depositSubmit(page)).toBeVisible();
+    await expect(refundWindowInput(page)).toHaveValue('10000');
   });
 
   test('shows success state after deposit', async ({ page }) => {
-    await page.goto('/vault');
-    await page.getByText('Create Deposit').click();
+    await depositTab(page).click();
 
-    // Fill form
     await page.getByPlaceholder('st:xlm:...').fill('st:xlm:valid_meta_address_123');
     await page.getByPlaceholder('0.0').fill('10.5');
     await page.getByPlaceholder('e.g., 100000').fill('500000');
-    await page.getByPlaceholder('e.g., 10000').fill('10000');
+    await refundWindowInput(page).fill('10000');
 
-    // Note: This test would need wallet mocking to actually submit
-    // For now, just verify the form structure
     await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible();
   });
 });

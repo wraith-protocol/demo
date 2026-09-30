@@ -47,6 +47,23 @@ export const test = base.extend<{
         (window as any).freighterMock = {
           isConnected: async () => ({ isConnected: cfg.isConnected !== false }),
           authorized: false,
+          // StellarWalletContext also probes `isAllowed()` and `getNetworkDetails()`
+          // and constructs a `WatchWalletChanges` watcher; without them the
+          // connect flow throws and the dapp never shows a connected wallet.
+          isAllowed: async () => ({ isAllowed: cfg.isConnected !== false }),
+          getNetworkDetails: async () => ({
+            network: 'TESTNET',
+            networkName: 'Testnet',
+            networkUrl: 'https://horizon-testnet.stellar.org',
+            networkPassphrase: 'Test SDF Network ; September 2015',
+            sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
+          }),
+          WatchWalletChanges: class {
+            watch() {
+              return {};
+            }
+            stop() {}
+          },
           getAddress: async function () {
             if (cfg.shouldFailConnect) {
               return { address: '', error: 'Access denied' };

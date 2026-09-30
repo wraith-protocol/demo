@@ -24,7 +24,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
   }) => {
     await freighter.mock({ isConnected: false });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     // Verify correct page state when disconnected
     await expect(page.locator('h1')).toHaveText('Send');
@@ -41,7 +41,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     // Mock wallet NOT installed
     await freighter.mock({ isConnected: false });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
@@ -55,7 +55,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     // Mock installed, but connection will fail
     await freighter.mock({ isConnected: true, shouldFailConnect: true });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
@@ -74,7 +74,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Header should show connected wallet address (truncated: GCDU...2XHX)
@@ -92,7 +92,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click on the connected button (displays address) to disconnect
@@ -110,7 +110,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     const sendBtn = page.getByRole('button', { name: 'Send Privately' });
@@ -131,7 +131,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Enter wrong prefix
@@ -160,7 +160,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
@@ -192,7 +192,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
@@ -213,7 +213,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({});
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Verify stealth meta-address card is visible
@@ -239,7 +239,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({});
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click the copy button
@@ -261,7 +261,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({ accountExists: true, txSuccess: true, txHash: 'tx_register_hash' });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click Register On-Chain
@@ -282,7 +282,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({ sorobanEvents: [] });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
@@ -318,7 +318,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
@@ -359,7 +359,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();

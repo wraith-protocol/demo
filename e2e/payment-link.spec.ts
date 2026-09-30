@@ -19,7 +19,7 @@ test.describe('Stellar Payment Link', () => {
   }) => {
     // 1. Go to Receive page
     await page.goto('/receive');
-    await page.locator('select').selectOption('stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     // 2. Open generated link in a new context
     const testUrl =
@@ -30,7 +30,7 @@ test.describe('Stellar Payment Link', () => {
     await newPage.goto(testUrl);
 
     // Switch to Stellar network
-    await newPage.locator('select').selectOption('stellar');
+    await newPage.getByLabel('Chain').selectOption('stellar');
 
     // Click Connect Freighter
     await newPage.click('text=Connect Freighter');
@@ -56,7 +56,7 @@ test.describe('Stellar Payment Link', () => {
     await page.goto(testUrl);
 
     // Switch to Stellar network
-    await page.locator('select').selectOption('stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     // Click Connect Freighter
     await page.click('text=Connect Freighter');
