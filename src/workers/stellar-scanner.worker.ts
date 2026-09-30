@@ -3,6 +3,7 @@ import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
 import { Address, xdr } from '@stellar/stellar-sdk';
 import { scanWithStrategy, DEFAULT_SCAN_STRATEGY, type ScanStrategy } from './stellarScanDispatch';
 import { retentionErrorFromRpcMessage, retentionGapFromError } from '../lib/stellar/scannerCursor';
+import { validateWebWorkerMessage, createMessage, type WebWorkerMessage } from '../types/messages';
 
 function parseLedgerRange(message: string): { oldest: number; latest: number } | undefined {
   const match = message.match(/range:\s*(\d+)\s*-\s*(\d+)/i);
@@ -145,23 +146,37 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
 }
 
 self.onmessage = async (e: MessageEvent) => {
-  const {
-    rpcUrl,
-    announcerContract,
-    viewingKey,
-    spendingPubKey,
-    spendingScalar,
-    strategy,
-    startLedger,
-  }: {
-    rpcUrl: string;
-    announcerContract: string;
-    viewingKey: Uint8Array;
-    spendingPubKey: Uint8Array;
-    spendingScalar: bigint;
-    strategy?: ScanStrategy;
-    startLedger?: number;
-  } = e.data;
+  // Validate incoming message
+  const validation = validateWebWorkerMessage(e.data);
+
+  if (!validation.valid) {
+    console.error('[stellar-scanner.worker] Invalid message received:', validation.error);
+    self.postMessage(
+      createMessage<WebWorkerMessage>({
+        type: 'ERROR',
+        error: `Protocol error: ${validation.error}`,
+      } as Omit<WebWorkerMessage, 'version'>),
+    );
+    return;
+  }
+
+  const message = validation.message!;
+
+  // Only SCAN_REQUEST is expected as inbound
+  if (message.type !== 'SCAN_REQUEST') {
+    self.postMessage(
+      createMessage<WebWorkerMessage>({
+        type: 'ERROR',
+        error: `Unexpected message type: ${message.type}`,
+      } as Omit<WebWorkerMessage, 'version'>),
+    );
+    return;
+  }
+
+  const { rpcUrl, announcerContract, viewingKey, spendingPubKey, spendingScalar, strategy } =
+    message;
+
+  const startLedger = (message as any).startLedger;
 
   try {
     const { announcements, nextLedger } = await fetchAnnouncementEvents(
@@ -176,16 +191,24 @@ self.onmessage = async (e: MessageEvent) => {
       spendingPubKey,
       spendingScalar,
     );
-    self.postMessage({ type: 'SUCCESS', results, nextLedger });
+    self.postMessage(
+      createMessage<WebWorkerMessage>({
+        type: 'SUCCESS',
+        results,
+        nextLedger,
+      } as any),
+    );
   } catch (err) {
     const retentionGap = retentionGapFromError(err);
     if (retentionGap) {
-      self.postMessage({ type: 'RETENTION_GAP', ...retentionGap });
+      self.postMessage(createMessage({ type: 'RETENTION_GAP' as const, ...retentionGap }));
       return;
     }
-    self.postMessage({
-      type: 'ERROR',
-      error: err instanceof Error ? err.message : 'Scan failed in worker',
-    });
+    self.postMessage(
+      createMessage<WebWorkerMessage>({
+        type: 'ERROR',
+        error: err instanceof Error ? err.message : 'Scan failed in worker',
+      } as Omit<WebWorkerMessage, 'version'>),
+    );
   }
 };

@@ -1,6 +1,11 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { STELLAR_NETWORK } from '@/config';
 import { useChain } from '@/context/ChainContext';
+import {
+  validateBroadcastChannelMessage,
+  createMessage,
+  type BroadcastChannelMessage,
+} from '../types/messages';
 
 const CHANNEL_NAME = 'wraith:stellar-wallet';
 
@@ -60,13 +65,24 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     const channel = new BroadcastChannel(CHANNEL_NAME);
     channelRef.current = channel;
     channel.onmessage = (e) => {
+      // Validate incoming message
+      const validation = validateBroadcastChannelMessage(e.data);
+
+      if (!validation.valid) {
+        console.warn('[StellarWallet] Invalid broadcast message:', validation.error);
+        return;
+      }
+
+      const message = validation.message!;
+
       // tabId guard prevents infinite broadcast loops between tabs
-      if (e.data.origin === tabId.current) return;
-      switch (e.data.type as string) {
+      if ('origin' in message && message.origin === tabId.current) return;
+
+      switch (message.type) {
         case 'CONNECTED':
           manuallyDisconnected.current = false;
-          setAddress(e.data.address as string);
-          addressRef.current = e.data.address as string;
+          setAddress(message.address);
+          addressRef.current = message.address;
           setIsInstalled(true);
           break;
         case 'DISCONNECTED':
@@ -76,13 +92,11 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
           addressRef.current = null;
           fireListeners();
           break;
-        case 'NETWORK_CHANGED': {
-          const pass = e.data.passphrase as string;
-          setFreighterPassphrase(pass);
-          passPhraseRef.current = pass;
+        case 'NETWORK_CHANGED':
+          setFreighterPassphrase(message.passphrase);
+          passPhraseRef.current = message.passphrase;
           fireListeners();
           break;
-        }
       }
     };
     return () => {
@@ -132,11 +146,13 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
           if (addr && addr !== addressRef.current) {
             setAddress(addr);
             addressRef.current = addr;
-            channelRef.current?.postMessage({
-              type: 'CONNECTED',
-              address: addr,
-              origin: tabId.current,
-            });
+            channelRef.current?.postMessage(
+              createMessage({
+                type: 'CONNECTED' as const,
+                address: addr,
+                origin: tabId.current,
+              }),
+            );
           }
         }
 
@@ -168,11 +184,13 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
                 setFreighterNetwork(newNetwork);
               }
               fireListeners();
-              channelRef.current?.postMessage({
-                type: 'NETWORK_CHANGED',
-                passphrase: newPass,
-                origin: tabId.current,
-              });
+              channelRef.current?.postMessage(
+                createMessage({
+                  type: 'NETWORK_CHANGED' as const,
+                  passphrase: newPass,
+                  origin: tabId.current,
+                }),
+              );
             }
 
             // Skip address sync when the user deliberately disconnected — Freighter has no
@@ -182,14 +200,18 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
               setAddress(currentAddr);
               if (!currentAddr) {
                 fireListeners();
-                channelRef.current?.postMessage({ type: 'DISCONNECTED', origin: tabId.current });
+                channelRef.current?.postMessage(
+                  createMessage({ type: 'DISCONNECTED' as const, origin: tabId.current }),
+                );
               } else if (prevAddr) {
                 fireListeners();
-                channelRef.current?.postMessage({
-                  type: 'CONNECTED',
-                  address: currentAddr,
-                  origin: tabId.current,
-                });
+                channelRef.current?.postMessage(
+                  createMessage({
+                    type: 'CONNECTED' as const,
+                    address: currentAddr,
+                    origin: tabId.current,
+                  }),
+                );
               }
             }
           },
@@ -248,11 +270,13 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       // Non-fatal: the watcher will update the passphrase on its next 3s cycle
     }
 
-    channelRef.current?.postMessage({
-      type: 'CONNECTED',
-      address: addr,
-      origin: tabId.current,
-    });
+    channelRef.current?.postMessage(
+      createMessage({
+        type: 'CONNECTED' as const,
+        address: addr,
+        origin: tabId.current,
+      }),
+    );
   }, []);
 
   const disconnect = useCallback(() => {
@@ -260,7 +284,9 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
     setAddress(null);
     addressRef.current = null;
     fireListeners();
-    channelRef.current?.postMessage({ type: 'DISCONNECTED', origin: tabId.current });
+    channelRef.current?.postMessage(
+      createMessage({ type: 'DISCONNECTED' as const, origin: tabId.current }),
+    );
   }, [fireListeners]);
 
   const signMessage = useCallback(

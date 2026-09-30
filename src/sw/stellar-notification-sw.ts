@@ -43,6 +43,11 @@ import {
   pruneNotificationIds,
   releaseNotificationId,
 } from './notificationStore';
+import {
+  validateServiceWorkerInboundMessage,
+  createMessage,
+  type ServiceWorkerOutboundMessage,
+} from '../types/messages';
 export {};
 
 declare const self: ServiceWorkerGlobalScope;
@@ -176,7 +181,9 @@ async function fetchAnnouncementEvents(
 async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise<void> {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const client of clients) {
-    client.postMessage({ type: 'STELLAR_SCAN_RETENTION_GAP', publicKey, ...gap });
+    client.postMessage(
+      createMessage({ type: 'STELLAR_SCAN_RETENTION_GAP' as const, publicKey, ...gap }),
+    );
   }
 }
 
@@ -199,14 +206,16 @@ async function scanStoredKey(
 async function broadcastToClients(payload: ValidatedPushPayload, timestamp: number): Promise<void> {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const client of clients) {
-    client.postMessage({
-      type: 'WRAITH_NOTIFICATION',
-      channel: NOTIFICATION_CHANNEL,
-      payload: {
-        ...payload,
-        timestamp,
-      },
-    });
+    client.postMessage(
+      createMessage({
+        type: 'WRAITH_NOTIFICATION' as const,
+        channel: NOTIFICATION_CHANNEL,
+        payload: {
+          ...payload,
+          timestamp,
+        },
+      }),
+    );
   }
 }
 
@@ -301,7 +310,12 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
         (existing as WindowClient).navigate(data?.url ?? '/notifications');
         // Also post match info so the page can pre-highlight it
         if (data?.stealthAddress) {
-          existing.postMessage({ type: 'NAVIGATE_TO_MATCH', stealthAddress: data.stealthAddress });
+          existing.postMessage(
+            createMessage({
+              type: 'NAVIGATE_TO_MATCH' as const,
+              stealthAddress: data.stealthAddress,
+            }),
+          );
         }
         return;
       }
@@ -312,21 +326,44 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 
 // ─── message handler ──────────────────────────────────────────────────────────
 
+function sendResponse(client: Client, message: ServiceWorkerOutboundMessage): void {
+  client.postMessage(message);
+}
+
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
-    event.data ?? {};
+  // Validate incoming message
+  const validation = validateServiceWorkerInboundMessage(event.data);
+
+  if (!validation.valid) {
+    console.error('[stellar-notification-sw] Invalid message received:', validation.error);
+    if (event.source) {
+      sendResponse(
+        event.source as Client,
+        createMessage<ServiceWorkerOutboundMessage>({
+          type: 'VIEWING_KEY_ERROR',
+          error: `Protocol error: ${validation.error}`,
+        } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+      );
+    }
+    return;
+  }
+
+  const message = validation.message!;
+  const { type } = message;
+
+  if (type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
 
   if (type === 'RECOVER_SCAN_CURSOR') {
+    const { publicKey, oldestAvailableLedger } = message;
     event.waitUntil(
       (async () => {
         const db = await openDB();
         try {
-          const recoveryLedger = Number(event.data.oldestAvailableLedger);
-          if (
-            typeof publicKey !== 'string' ||
-            !Number.isSafeInteger(recoveryLedger) ||
-            recoveryLedger <= 0
-          ) {
+          const recoveryLedger = Number(oldestAvailableLedger);
+          if (!Number.isSafeInteger(recoveryLedger) || recoveryLedger <= 0) {
             return;
           }
           const storedKey = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
@@ -344,7 +381,9 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
             includeUncontrolled: true,
           });
           clients.forEach((client) =>
-            client.postMessage({ type: 'STELLAR_SCAN_RECOVERY_COMPLETE', publicKey }),
+            client.postMessage(
+              createMessage({ type: 'STELLAR_SCAN_RECOVERY_COMPLETE' as const, publicKey }),
+            ),
           );
         } finally {
           db.close();
@@ -355,6 +394,8 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 
   if (type === 'REGISTER_VIEWING_KEY') {
+    const { publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
+      message;
     event.waitUntil(
       (async () => {
         try {
@@ -363,9 +404,9 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
           const store = transaction.objectStore(STORE_NAME);
           const entry: StoredViewingKey = {
             publicKey,
-            encryptedViewingKey,
-            encryptedSpendingPubKey,
-            encryptedSpendingScalar,
+            encryptedViewingKey: encryptedViewingKey as unknown as string,
+            encryptedSpendingPubKey: encryptedSpendingPubKey as unknown as string,
+            encryptedSpendingScalar: encryptedSpendingScalar as unknown as string,
             timestamp: Date.now(),
           };
           await new Promise<void>((resolve, reject) => {
@@ -374,19 +415,26 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
             request.onsuccess = () => resolve();
           });
           db.close();
-          (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'VIEWING_KEY_REGISTERED',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         } catch (error) {
           console.error('[wraith-sw] Failed to register viewing key:', error);
-          (event.source as Client)?.postMessage({
-            type: 'VIEWING_KEY_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'VIEWING_KEY_ERROR',
+              error: error instanceof Error ? error.message : 'Unknown error',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         }
       })(),
     );
   }
 
   if (type === 'UNREGISTER_VIEWING_KEY') {
+    const { publicKey } = message;
     event.waitUntil(
       (async () => {
         try {
@@ -419,7 +467,11 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
             ).periodicSync.unregister(SYNC_TAG);
           }
 
-          (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_UNREGISTERED' });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'VIEWING_KEY_UNREGISTERED',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         } catch (error) {
           console.error('[wraith-sw] Failed to unregister viewing key:', error);
         }
@@ -433,10 +485,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
   // Push subscription management
   if (type === 'REGISTER_PUSH_SUBSCRIPTION') {
+    const { subscription, metaAddressHash, relayUrl } = message;
     event.waitUntil(
       (async () => {
         try {
-          const { subscription, metaAddressHash, relayUrl } = event.data ?? {};
           if (!subscription || !metaAddressHash) {
             throw new Error('Missing subscription or metaAddressHash');
           }
@@ -473,23 +525,29 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
           });
 
           db.close();
-          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_REGISTERED' });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'PUSH_SUBSCRIPTION_REGISTERED',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         } catch (error) {
           console.error('[wraith-sw] Failed to register push subscription:', error);
-          (event.source as Client)?.postMessage({
-            type: 'PUSH_SUBSCRIPTION_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'PUSH_SUBSCRIPTION_ERROR',
+              error: error instanceof Error ? error.message : 'Unknown error',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         }
       })(),
     );
   }
 
   if (type === 'UNREGISTER_PUSH_SUBSCRIPTION') {
+    const { subscription } = message;
     event.waitUntil(
       (async () => {
         try {
-          const { subscription, metaAddressHash } = event.data ?? {};
           if (!subscription) {
             throw new Error('Missing subscription');
           }
@@ -518,13 +576,19 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
           }
 
           db.close();
-          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_UNREGISTERED' });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'PUSH_SUBSCRIPTION_UNREGISTERED',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         } catch (error) {
           console.error('[wraith-sw] Failed to unregister push subscription:', error);
-          (event.source as Client)?.postMessage({
-            type: 'PUSH_SUBSCRIPTION_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          (event.source as Client)?.postMessage(
+            createMessage<ServiceWorkerOutboundMessage>({
+              type: 'PUSH_SUBSCRIPTION_ERROR',
+              error: error instanceof Error ? error.message : 'Unknown error',
+            } as Omit<ServiceWorkerOutboundMessage, 'version'>),
+          );
         }
       })(),
     );

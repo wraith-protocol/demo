@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { StealthKeys } from '@wraith-protocol/sdk/chains/stellar';
+import { createMessage, type ServiceWorkerInboundMessage } from '../types/messages';
 
 const SW_PATH = '/sw/stellar-notification-sw.js';
 const STORAGE_KEY_OPT_IN = 'wraith:stellar:notifications-opt-in';
@@ -233,13 +234,15 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
         const encryptedSpendingScalar = await encryptData(spendingScalarBytes, encryptionKey);
 
         // Send to service worker
-        swRef.current.active?.postMessage({
-          type: 'REGISTER_VIEWING_KEY',
-          publicKey,
-          encryptedViewingKey,
-          encryptedSpendingPubKey,
-          encryptedSpendingScalar,
-        });
+        swRef.current.active?.postMessage(
+          createMessage({
+            type: 'REGISTER_VIEWING_KEY' as const,
+            publicKey,
+            encryptedViewingKey,
+            encryptedSpendingPubKey,
+            encryptedSpendingScalar,
+          }),
+        );
 
         // Also store in IndexedDB for backup
         const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -283,10 +286,12 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
     if (!swRef.current) return;
 
     try {
-      swRef.current.active?.postMessage({
-        type: 'UNREGISTER_VIEWING_KEY',
-        publicKey,
-      });
+      swRef.current.active?.postMessage(
+        createMessage({
+          type: 'UNREGISTER_VIEWING_KEY' as const,
+          publicKey,
+        }),
+      );
 
       // Also remove from IndexedDB
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -346,9 +351,11 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
     }
 
     // Trigger manual scan in service worker
-    swRef.current.active?.postMessage({
-      type: 'TRIGGER_SCAN',
-    });
+    swRef.current.active?.postMessage(
+      createMessage({
+        type: 'TRIGGER_SCAN' as const,
+      }),
+    );
 
     // Also show immediate test notification
     if (swRef.current) {
