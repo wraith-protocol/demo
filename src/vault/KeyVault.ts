@@ -35,6 +35,14 @@ const DEFAULT_ITERATIONS = 310_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
 const VERIFIER_PLAINTEXT = 'vault-ready';
 
+// Stealth keys are stored as `Uint8Array`s (and sometimes `bigint`s). Plain
+// `JSON.stringify` flattens a `Uint8Array` into `{"0":1,"1":2}` and throws on a
+// `bigint`, so values are tagged on the way in and revived on the way out.
+// Without this, a vaulted key round-trips as an object and `bytesToHex` reads it
+// back as an empty byte array — silently destroying the recovery kit.
+const BINARY_TAG = '__wraithBinary';
+const BIGINT_TAG = '__wraithBigInt';
+
 function assertBrowserOnly() {
   if (
     typeof window === 'undefined' ||
@@ -55,6 +63,31 @@ function decodeText(value: ArrayBuffer | Uint8Array) {
 
 function cloneBytes(value: ArrayBuffer | Uint8Array) {
   return value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value);
+}
+
+/** JSON replacer that survives `Uint8Array` and `bigint` values. */
+function vaultReplacer(_key: string, value: unknown) {
+  if (value instanceof Uint8Array) {
+    return { [BINARY_TAG]: Array.from(value) };
+  }
+  if (typeof value === 'bigint') {
+    return { [BIGINT_TAG]: value.toString() };
+  }
+  return value;
+}
+
+/** JSON reviver that restores the values tagged by {@link vaultReplacer}. */
+function vaultReviver(_key: string, value: unknown) {
+  if (value && typeof value === 'object') {
+    const tagged = value as Record<string, unknown>;
+    if (Array.isArray(tagged[BINARY_TAG])) {
+      return new Uint8Array(tagged[BINARY_TAG] as number[]);
+    }
+    if (typeof tagged[BIGINT_TAG] === 'string') {
+      return BigInt(tagged[BIGINT_TAG] as string);
+    }
+  }
+  return value;
 }
 
 export class KeyVault {
@@ -278,7 +311,7 @@ export class KeyVault {
     if (!this.cryptoKey) throw new Error('KeyVault is locked');
 
     const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-    const plaintext = encodeText(JSON.stringify(value));
+    const plaintext = encodeText(JSON.stringify(value, vaultReplacer));
     const ciphertext = await globalThis.crypto.subtle.encrypt(
       { name: 'AES-GCM', iv: iv as unknown as BufferSource },
       this.cryptoKey,
@@ -300,7 +333,7 @@ export class KeyVault {
       ciphertext as unknown as BufferSource,
     );
 
-    return JSON.parse(decodeText(plaintext)) as T;
+    return JSON.parse(decodeText(plaintext), vaultReviver) as T;
   }
 
   private async readRecord<T>(
