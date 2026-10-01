@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn, expect } from '@storybook/test';
+import { useState, useRef } from 'react';
 import { StellarBatchWithdrawModal } from './StellarBatchWithdrawModal';
 import { withStellarWallet } from '../../.storybook/decorators/withStellarWallet';
 import { SAMPLE_STEALTH_ADDRESS } from '../../.storybook/fixtures';
@@ -80,4 +81,32 @@ export const Empty: Story = {
 /** Modal closed — component should render nothing. */
 export const Closed: Story = {
   args: { isOpen: false },
+};
+
+/**
+ * Interactive wrapper with trigger button for accessibility testing.
+ * This story provides a real trigger button that can be focused before opening,
+ * and the modal actually dismisses when closed via button or Escape.
+ */
+export const Interactive: Story = {
+  render: (args) => {
+    const [open, setOpen] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-11 border border-outline-variant bg-surface-bright px-4 font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-container"
+        >
+          Open Batch Withdraw
+        </button>
+        {open && (
+          <StellarBatchWithdrawModal {...args} isOpen={true} onClose={() => setOpen(false)} />
+        )}
+      </div>
+    );
+  },
 };

@@ -8,7 +8,7 @@
  */
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn, userEvent, within, expect } from '@storybook/test';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // ---------------------------------------------------------------------------
@@ -18,16 +18,19 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 // ---------------------------------------------------------------------------
 
 interface QRScannerDialogProps {
+  isOpen: boolean;
   onClose: () => void;
   onChooseImage: () => void;
 }
 
-function QRScannerDialogFixture({ onClose, onChooseImage }: QRScannerDialogProps) {
+function QRScannerDialogFixture({ isOpen, onClose, onChooseImage }: QRScannerDialogProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null); // synthetic trigger for focus return
 
-  useFocusTrap({ isActive: true, containerRef, initialFocusRef: closeBtnRef, triggerRef });
+  useFocusTrap({ isActive: isOpen, containerRef, initialFocusRef: closeBtnRef, triggerRef });
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -104,6 +107,7 @@ const meta = {
   component: QRScannerDialogFixture,
   parameters: { layout: 'fullscreen' },
   args: {
+    isOpen: true,
     onClose: fn(),
     onChooseImage: fn(),
   },
@@ -134,5 +138,31 @@ export const CloseButton: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /close qr scanner/i }));
     await expect(args.onClose).toHaveBeenCalled();
+  },
+};
+
+/**
+ * Interactive wrapper with trigger button for accessibility testing.
+ * This story provides a real trigger button that can be focused before opening,
+ * and the dialog actually dismisses when closed via button or Escape.
+ */
+export const Interactive: Story = {
+  render: (args) => {
+    const [open, setOpen] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-11 border border-outline-variant bg-surface-bright px-4 font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-container"
+        >
+          Scan QR
+        </button>
+        <QRScannerDialogFixture {...args} isOpen={open} onClose={() => setOpen(false)} />
+      </div>
+    );
   },
 };

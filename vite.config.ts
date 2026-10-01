@@ -99,12 +99,15 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
       buffer: 'buffer',
+      ws: path.resolve(__dirname, 'src/empty-stub.ts'),
+      '@react-native-async-storage/async-storage': path.resolve(__dirname, 'src/empty-stub.ts'),
     },
   },
   define: {
     global: 'globalThis',
   },
   optimizeDeps: {
+    exclude: ['ws', '@react-native-async-storage/async-storage'],
     esbuildOptions: {
       define: {
         global: 'globalThis',

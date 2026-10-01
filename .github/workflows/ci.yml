@@ -26,3 +26,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm build
+
+  a11y:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.0-noble
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.9
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Ensure Chromium is installed
+        run: pnpm exec playwright install chromium
+
+      - name: Run accessibility tests
+        env:
+          HOME: /root
+        run: pnpm test:a11y

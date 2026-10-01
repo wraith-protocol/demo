@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { fn } from '@storybook/test';
+import { expect, fn, userEvent, within } from '@storybook/test';
 import { StellarSendView } from './StellarSendView';
 import {
   SAMPLE_META_ADDRESS,
@@ -10,6 +10,11 @@ import {
 const meta = {
   title: 'Stellar/StellarSendView',
   component: StellarSendView,
+  parameters: {
+    msw: {
+      disabled: true,
+    },
+  },
   args: {
     isConnected: true,
     recipient: '',
@@ -124,3 +129,34 @@ export const Success: Story = {
     isSuccess: true,
   },
 };
+
+/**
+ * Mounts the real StellarSendView component and asserts Enter key triggers form submission.
+ */
+export const EnterKeySubmission: Story = {
+  args: {
+    isConnected: true,
+    recipient: SAMPLE_META_ADDRESS,
+    amount: '10',
+    assetKey: 'XLM',
+    balanceText: '100 XLM',
+    canSubmit: true,
+    isPending: false,
+    isSuccess: false,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+
+    // Target the real component's input
+    const inputs = canvas.getAllByRole('textbox');
+    const amountInput = inputs[inputs.length - 1]; // The amount field
+
+    // Clear and type with Enter key
+    await userEvent.clear(amountInput);
+    await userEvent.type(amountInput, '15{Enter}');
+
+    // Direct result assertion: verify that onSend handler was triggered
+    await expect(args.onSend).toHaveBeenCalled();
+  },
+};
+export const Interactive = EnterKeySubmission;

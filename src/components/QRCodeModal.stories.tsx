@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { fn, within, userEvent, expect } from '@storybook/test';
+import { useState, useRef } from 'react';
 import { QRCodeModal } from './QRCodeModal';
 import { SAMPLE_META_ADDRESS } from '../../.storybook/fixtures';
 
@@ -47,5 +48,31 @@ export const CloseButton: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: /close modal/i }));
     await expect(args.onClose).toHaveBeenCalled();
+  },
+};
+
+/**
+ * Interactive wrapper with trigger button for accessibility testing.
+ * This story provides a real trigger button that can be focused before opening,
+ * and the modal actually dismisses when closed via button or Escape.
+ */
+export const Interactive: Story = {
+  render: (args) => {
+    const [open, setOpen] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen(true)}
+          className="h-11 border border-outline-variant bg-surface-bright px-4 font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-container"
+        >
+          Show QR
+        </button>
+        {open && <QRCodeModal {...args} onClose={() => setOpen(false)} />}
+      </div>
+    );
   },
 };
