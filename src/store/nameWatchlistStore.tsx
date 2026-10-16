@@ -138,8 +138,13 @@ export const useNameWatchlistStore = create<NameWatchlistState>()(
   ),
 );
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
+let storageListener: ((e: StorageEvent) => void) | null = null;
+
+export function initNameWatchlistSync() {
+  if (typeof window === 'undefined' || storageListener !== null) return;
+  if (typeof window.addEventListener !== 'function') return;
+
+  storageListener = (e: StorageEvent) => {
     if (e.key === 'wraith-name-auction-watchlist') {
       if (e.newValue) {
         useNameWatchlistStore.persist.rehydrate();
@@ -149,5 +154,17 @@ if (typeof window !== 'undefined') {
     } else if (e.key === null) {
       useNameWatchlistStore.setState({ watchedAuctions: [], bids: {} });
     }
-  });
+  };
+
+  window.addEventListener('storage', storageListener);
+}
+
+export function cleanupNameWatchlistSync() {
+  if (storageListener === null) return;
+  if (typeof window.removeEventListener !== 'function') {
+    storageListener = null;
+    return;
+  }
+  window.removeEventListener('storage', storageListener);
+  storageListener = null;
 }

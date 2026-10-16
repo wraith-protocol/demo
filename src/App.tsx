@@ -33,6 +33,7 @@ import {
 } from '@/lib/idleLock';
 import { parseStellarQrPayload } from '@/utils/qr';
 import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
+import { initNameWatchlistSync, cleanupNameWatchlistSync } from '@/store/nameWatchlistStore';
 
 function SessionLock({ onUnlock }: { onUnlock: () => void }) {
   const [passphrase, setPassphrase] = useState('');
@@ -156,6 +157,11 @@ export function App() {
     idleLock.start();
     return () => idleLock.stop();
   }, [relockSession, sessionLocked]);
+
+  useEffect(() => {
+    initNameWatchlistSync();
+    return () => cleanupNameWatchlistSync();
+  }, []);
 
   useEffect(() => {
     if (location.pathname !== '/send') return;

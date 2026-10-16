@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { ContactsProvider, useContacts } from './contactsStore';
 import {
@@ -8,12 +8,21 @@ import {
   DEFAULT_SCAN_STRATEGY,
 } from '../context/ScanStrategyContext';
 import { SplitTemplatesProvider, useSplitTemplates } from './splitTemplatesStore';
-import { useNameWatchlistStore } from './nameWatchlistStore';
+import {
+  useNameWatchlistStore,
+  initNameWatchlistSync,
+  cleanupNameWatchlistSync,
+} from './nameWatchlistStore';
 import { useStealthLabels } from '../hooks/useStealthLabels';
 
 describe('Multi-tab synchronization', () => {
   beforeEach(() => {
     localStorage.clear();
+    initNameWatchlistSync();
+  });
+
+  afterEach(() => {
+    cleanupNameWatchlistSync();
   });
 
   it('synchronizes contacts between tabs', () => {

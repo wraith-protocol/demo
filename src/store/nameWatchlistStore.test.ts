@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -28,16 +28,56 @@ class MemoryStorage implements Storage {
   }
 }
 
+class MockWindow {
+  localStorage: Storage;
+  private listeners: Map<string, ((e: StorageEvent) => void)[]> = new Map();
+
+  constructor(storage: Storage) {
+    this.localStorage = storage;
+  }
+
+  addEventListener(event: string, listener: (e: StorageEvent) => void) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(listener);
+  }
+
+  removeEventListener(event: string, listener: (e: StorageEvent) => void) {
+    const eventListeners = this.listeners.get(event);
+    if (eventListeners) {
+      const index = eventListeners.indexOf(listener);
+      if (index > -1) {
+        eventListeners.splice(index, 1);
+      }
+    }
+  }
+
+  dispatchEvent(event: StorageEvent) {
+    const eventListeners = this.listeners.get(event.type);
+    if (eventListeners) {
+      eventListeners.forEach((listener) => listener(event));
+    }
+  }
+}
+
 describe('name auction watchlist', () => {
   beforeEach(() => {
     vi.resetModules();
     const storage = new MemoryStorage();
+    const mockWindow = new MockWindow(storage);
     vi.stubGlobal('localStorage', storage);
-    vi.stubGlobal('window', { localStorage: storage });
+    vi.stubGlobal('window', mockWindow);
+  });
+
+  afterEach(async () => {
+    const { cleanupNameWatchlistSync } = await import('./nameWatchlistStore');
+    cleanupNameWatchlistSync();
   });
 
   it('restores watched auctions and sealed bid recovery data', async () => {
-    const { useNameWatchlistStore } = await import('./nameWatchlistStore');
+    const { useNameWatchlistStore, initNameWatchlistSync } = await import('./nameWatchlistStore');
+    initNameWatchlistSync();
     const store = useNameWatchlistStore.getState();
     store.watchAuction({ name: 'NOVA', endsAt: 1_800_000_000 });
     store.saveBid({
@@ -66,7 +106,8 @@ describe('name auction watchlist', () => {
 
   it('recovers from corrupt and unknown-version persisted data', async () => {
     localStorage.setItem('wraith-name-auction-watchlist', '{not-json');
-    const { useNameWatchlistStore } = await import('./nameWatchlistStore');
+    const { useNameWatchlistStore, initNameWatchlistSync } = await import('./nameWatchlistStore');
+    initNameWatchlistSync();
     await useNameWatchlistStore.persist.rehydrate();
     expect(useNameWatchlistStore.getState().watchedAuctions).toEqual([]);
     expect(useNameWatchlistStore.getState().bids).toEqual({});
