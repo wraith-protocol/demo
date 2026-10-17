@@ -20,6 +20,7 @@ import Names from '@/pages/Names';
 import NameProfile from '@/pages/NameProfile';
 import NamesAuctions from '@/pages/NamesAuctions';
 import Activity from '@/pages/Activity';
+import History from '@/pages/History';
 import Portfolio from '@/pages/Portfolio';
 import Debug from '@/pages/Debug';
 import { useChain } from '@/context/ChainContext';
@@ -223,7 +224,7 @@ export function App() {
           <Route path="/n/:name" element={<NameProfile />} />
           <Route path="/names/auctions" element={<NamesAuctions />} />
           <Route path="/activity" element={<Activity />} />
-          <Route path="/history" element={<Activity />} />
+          <Route path="/history" element={<History />} />
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/debug" element={<Debug />} />
           <Route path="*" element={<Navigate to="/send" replace />} />
