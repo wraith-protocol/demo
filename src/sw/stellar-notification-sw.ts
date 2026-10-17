@@ -43,6 +43,12 @@ import {
   pruneNotificationIds,
   releaseNotificationId,
 } from './notificationStore';
+import {
+  validateMainThreadMessage,
+  validateWorkerMessage,
+  type MainThreadMessage,
+  type WorkerMessage,
+} from '../lib/workerProtocol';
 export {};
 
 declare const self: ServiceWorkerGlobalScope;
@@ -175,8 +181,14 @@ async function fetchAnnouncementEvents(
 
 async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise<void> {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const response: WorkerMessage = {
+    type: 'STELLAR_SCAN_RETENTION_GAP',
+    publicKey,
+    oldestAvailableLedger: gap.oldestAvailableLedger,
+    lastScannedLedger: gap.lastScannedLedger,
+  };
   for (const client of clients) {
-    client.postMessage({ type: 'STELLAR_SCAN_RETENTION_GAP', publicKey, ...gap });
+    client.postMessage(response);
   }
 }
 
@@ -313,221 +325,220 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
 // ─── message handler ──────────────────────────────────────────────────────────
 
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
-    event.data ?? {};
-
-  if (type === 'RECOVER_SCAN_CURSOR') {
-    event.waitUntil(
-      (async () => {
-        const db = await openDB();
-        try {
-          const recoveryLedger = Number(event.data.oldestAvailableLedger);
-          if (
-            typeof publicKey !== 'string' ||
-            !Number.isSafeInteger(recoveryLedger) ||
-            recoveryLedger <= 0
-          ) {
-            return;
-          }
-          const storedKey = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
-            const request = db
-              .transaction(STORE_NAME, 'readonly')
-              .objectStore(STORE_NAME)
-              .get(publicKey);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-          });
-          if (!storedKey) return;
-          await scanStoredKey(db, storedKey, recoveryLedger);
-          const clients = await self.clients.matchAll({
-            type: 'window',
-            includeUncontrolled: true,
-          });
-          clients.forEach((client) =>
-            client.postMessage({ type: 'STELLAR_SCAN_RECOVERY_COMPLETE', publicKey }),
-          );
-        } finally {
-          db.close();
-        }
-      })(),
-    );
+  const validation = validateMainThreadMessage(event.data);
+  if (!validation.valid) {
+    console.warn('[wraith-sw] Ignoring invalid message from main thread:', validation.reason);
     return;
   }
 
-  if (type === 'REGISTER_VIEWING_KEY') {
-    event.waitUntil(
-      (async () => {
-        try {
+  const msg = validation.data;
+
+  switch (msg.type) {
+    case 'RECOVER_SCAN_CURSOR':
+      event.waitUntil(
+        (async () => {
           const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-          const entry: StoredViewingKey = {
-            publicKey,
-            encryptedViewingKey,
-            encryptedSpendingPubKey,
-            encryptedSpendingScalar,
-            timestamp: Date.now(),
-          };
-          await new Promise<void>((resolve, reject) => {
-            const request = store.put(entry);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
-          });
-          db.close();
-          (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
-        } catch (error) {
-          console.error('[wraith-sw] Failed to register viewing key:', error);
-          (event.source as Client)?.postMessage({
-            type: 'VIEWING_KEY_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      })(),
-    );
-  }
-
-  if (type === 'UNREGISTER_VIEWING_KEY') {
-    event.waitUntil(
-      (async () => {
-        try {
-          const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-          await new Promise<void>((resolve, reject) => {
-            const request = store.delete(publicKey);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
-          });
-          db.close();
-
-          // Unregister periodic sync if no keys remain
-          const db2 = await openDB();
-          const remaining = await new Promise<StoredViewingKey[]>((resolve, reject) => {
-            const tx = db2.transaction([STORE_NAME], 'readonly');
-            const st = tx.objectStore(STORE_NAME);
-            const req = st.getAll();
-            req.onerror = () => reject(req.error);
-            req.onsuccess = () => resolve(req.result || []);
-          });
-          db2.close();
-
-          if (remaining.length === 0 && 'periodicSync' in self.registration) {
-            await (
-              self.registration as unknown as {
-                periodicSync: { unregister: (tag: string) => Promise<void> };
-              }
-            ).periodicSync.unregister(SYNC_TAG);
+          try {
+            const storedKey = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+              const request = db
+                .transaction(STORE_NAME, 'readonly')
+                .objectStore(STORE_NAME)
+                .get(msg.publicKey);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve(request.result);
+            });
+            if (!storedKey) return;
+            await scanStoredKey(db, storedKey, msg.oldestAvailableLedger);
+            const clients = await self.clients.matchAll({
+              type: 'window',
+              includeUncontrolled: true,
+            });
+            const response: WorkerMessage = {
+              type: 'STELLAR_SCAN_RECOVERY_COMPLETE',
+              requestId: msg.requestId,
+              publicKey: msg.publicKey,
+            };
+            clients.forEach((client) => client.postMessage(response));
+          } finally {
+            db.close();
           }
+        })(),
+      );
+      return;
 
-          (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_UNREGISTERED' });
-        } catch (error) {
-          console.error('[wraith-sw] Failed to unregister viewing key:', error);
-        }
-      })(),
-    );
-  }
-
-  if (type === 'TRIGGER_SCAN') {
-    event.waitUntil(handleSync(event as unknown as ExtendableEvent));
-  }
-
-  // Push subscription management
-  if (type === 'REGISTER_PUSH_SUBSCRIPTION') {
-    event.waitUntil(
-      (async () => {
-        try {
-          const { subscription, metaAddressHash, relayUrl } = event.data ?? {};
-          if (!subscription || !metaAddressHash) {
-            throw new Error('Missing subscription or metaAddressHash');
-          }
-
-          // Store subscription info in IndexedDB
-          const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-
-          // Update existing entry or create new one
-          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
-            const request = store.get(subscription.keys?.p256dh || 'default');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-          });
-
-          const entry: StoredViewingKey = existing || {
-            publicKey: subscription.keys?.p256dh || 'default',
-            encryptedViewingKey: '',
-            encryptedSpendingPubKey: '',
-            encryptedSpendingScalar: '',
-            timestamp: Date.now(),
-          };
-
-          // Store relay URL and meta-address hash
-          (entry as any).relayUrl = relayUrl;
-          (entry as any).metaAddressHash = metaAddressHash;
-          (entry as any).pushSubscription = subscription;
-
-          await new Promise<void>((resolve, reject) => {
-            const request = store.put(entry);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
-          });
-
-          db.close();
-          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_REGISTERED' });
-        } catch (error) {
-          console.error('[wraith-sw] Failed to register push subscription:', error);
-          (event.source as Client)?.postMessage({
-            type: 'PUSH_SUBSCRIPTION_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      })(),
-    );
-  }
-
-  if (type === 'UNREGISTER_PUSH_SUBSCRIPTION') {
-    event.waitUntil(
-      (async () => {
-        try {
-          const { subscription, metaAddressHash } = event.data ?? {};
-          if (!subscription) {
-            throw new Error('Missing subscription');
-          }
-
-          const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-
-          // Remove push subscription from entry
-          const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
-            const request = store.get(subscription.keys?.p256dh || 'default');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-          });
-
-          if (existing) {
-            delete (existing as any).relayUrl;
-            delete (existing as any).metaAddressHash;
-            delete (existing as any).pushSubscription;
-
+    case 'REGISTER_VIEWING_KEY':
+      event.waitUntil(
+        (async () => {
+          try {
+            const db = await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const entry: StoredViewingKey = {
+              publicKey: msg.publicKey,
+              encryptedViewingKey: msg.encryptedViewingKey,
+              encryptedSpendingPubKey: msg.encryptedSpendingPubKey,
+              encryptedSpendingScalar: msg.encryptedSpendingScalar,
+              timestamp: Date.now(),
+            };
             await new Promise<void>((resolve, reject) => {
-              const request = store.put(existing);
+              const request = store.put(entry);
               request.onerror = () => reject(request.error);
               request.onsuccess = () => resolve();
             });
+            db.close();
+            const response: WorkerMessage = { type: 'VIEWING_KEY_REGISTERED', requestId: msg.requestId };
+            (event.source as Client)?.postMessage(response);
+          } catch (error) {
+            console.error('[wraith-sw] Failed to register viewing key:', error);
+            const response: WorkerMessage = {
+              type: 'VIEWING_KEY_ERROR',
+              requestId: msg.requestId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            };
+            (event.source as Client)?.postMessage(response);
           }
+        })(),
+      );
+      return;
 
-          db.close();
-          (event.source as Client)?.postMessage({ type: 'PUSH_SUBSCRIPTION_UNREGISTERED' });
-        } catch (error) {
-          console.error('[wraith-sw] Failed to unregister push subscription:', error);
-          (event.source as Client)?.postMessage({
-            type: 'PUSH_SUBSCRIPTION_ERROR',
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      })(),
-    );
+    case 'UNREGISTER_VIEWING_KEY':
+      event.waitUntil(
+        (async () => {
+          try {
+            const db = await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            await new Promise<void>((resolve, reject) => {
+              const request = store.delete(msg.publicKey);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve();
+            });
+            db.close();
+
+            // Unregister periodic sync if no keys remain
+            const db2 = await openDB();
+            const remaining = await new Promise<StoredViewingKey[]>((resolve, reject) => {
+              const tx = db2.transaction([STORE_NAME], 'readonly');
+              const st = tx.objectStore(STORE_NAME);
+              const req = st.getAll();
+              req.onerror = () => reject(req.error);
+              req.onsuccess = () => resolve(req.result || []);
+            });
+            db2.close();
+
+            if (remaining.length === 0 && 'periodicSync' in self.registration) {
+              await (
+                self.registration as unknown as {
+                  periodicSync: { unregister: (tag: string) => Promise<void> };
+                }
+              ).periodicSync.unregister(SYNC_TAG);
+            }
+
+            const response: WorkerMessage = { type: 'VIEWING_KEY_UNREGISTERED', requestId: msg.requestId };
+            (event.source as Client)?.postMessage(response);
+          } catch (error) {
+            console.error('[wraith-sw] Failed to unregister viewing key:', error);
+          }
+        })(),
+      );
+      return;
+
+    case 'TRIGGER_SCAN':
+      event.waitUntil(handleSync(event as unknown as ExtendableEvent));
+      return;
+
+    case 'REGISTER_PUSH_SUBSCRIPTION':
+      event.waitUntil(
+        (async () => {
+          try {
+            const db = await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+
+            // Update existing entry or create new one
+            const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+              const request = store.get(msg.subscription.keys.p256dh || 'default');
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve(request.result);
+            });
+
+            const entry: StoredViewingKey = existing || {
+              publicKey: msg.subscription.keys.p256dh || 'default',
+              encryptedViewingKey: '',
+              encryptedSpendingPubKey: '',
+              encryptedSpendingScalar: '',
+              timestamp: Date.now(),
+            };
+
+            // Store relay URL and meta-address hash
+            (entry as any).relayUrl = msg.relayUrl;
+            (entry as any).metaAddressHash = msg.metaAddressHash;
+            (entry as any).pushSubscription = msg.subscription;
+
+            await new Promise<void>((resolve, reject) => {
+              const request = store.put(entry);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve();
+            });
+
+            db.close();
+            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_REGISTERED', requestId: msg.requestId };
+            (event.source as Client)?.postMessage(response);
+          } catch (error) {
+            console.error('[wraith-sw] Failed to register push subscription:', error);
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_ERROR',
+              requestId: msg.requestId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            };
+            (event.source as Client)?.postMessage(response);
+          }
+        })(),
+      );
+      return;
+
+    case 'UNREGISTER_PUSH_SUBSCRIPTION':
+      event.waitUntil(
+        (async () => {
+          try {
+            const db = await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+
+            // Remove push subscription from entry
+            const existing = await new Promise<StoredViewingKey | undefined>((resolve, reject) => {
+              const request = store.get(msg.subscription.keys.p256dh || 'default');
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => resolve(request.result);
+            });
+
+            if (existing) {
+              delete (existing as any).relayUrl;
+              delete (existing as any).metaAddressHash;
+              delete (existing as any).pushSubscription;
+
+              await new Promise<void>((resolve, reject) => {
+                const request = store.put(existing);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve();
+              });
+            }
+
+            db.close();
+            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_UNREGISTERED', requestId: msg.requestId };
+            (event.source as Client)?.postMessage(response);
+          } catch (error) {
+            console.error('[wraith-sw] Failed to unregister push subscription:', error);
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_ERROR',
+              requestId: msg.requestId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            };
+            (event.source as Client)?.postMessage(response);
+          }
+        })(),
+      );
+      return;
   }
 });
 
