@@ -81,12 +81,25 @@ export default defineConfig({
 
       // injectManifest config: controls what gets injected into self.__WB_MANIFEST
       injectManifest: {
-        // Precache all built assets (JS, CSS, HTML, icons, fonts)
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Precache only the application shell: the HTML entry point, the
+        // critical CSS, the favicons, and the web manifest. Everything else —
+        // JS chunks (entry bootstrap, route chunks, chain SDKs), images, and
+        // fonts — is fetched lazily and kept in a bounded, expiring runtime
+        // cache (see src/sw/app-sw.ts) instead of bloating the precache.
+        globPatterns: [
+          'index.html',
+          'assets/*.css',
+          'favicon.ico',
+          'favicon-*.png',
+          'apple-touch-icon.png',
+          'manifest.webmanifest',
+        ],
         // Exclude the stellar-notification-sw (it's now merged into app-sw)
         globIgnores: ['**/stellar-notification-sw*', '**/app-sw*'],
-        // Raise file size limit — Stellar SDK + wagmi chunks exceed 2 MiB
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
+        // No maximumFileSizeToCacheInBytes override: every precached entry is
+        // well under Workbox's default 2 MiB single-file limit. The 4 MiB
+        // raise that accommodated heavy chunks is removed — those chunks now
+        // go to the runtime cache with expiration instead.
       },
 
       devOptions: {

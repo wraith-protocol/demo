@@ -89,6 +89,38 @@ registerRoute(
   }),
 );
 
+// ─── Runtime caching: optional chain & media assets ──────────────────────────
+// The application shell (HTML + CSS) is precached. JS chunks (entry bootstrap,
+// route chunks, chain SDKs), images, and other media are NOT precached. They
+// are cached on first use in bounded, expiring caches so a deploy or storage
+// pressure cannot let them grow without bound. Vite hashes file names by
+// content, so CacheFirst is safe: a new deploy serves new URLs and busts the
+// old entries automatically.
+
+// JS chunks — entry bootstrap, route chunks, chain SDKs.
+registerRoute(
+  /^\/assets\/.*\.js$/i,
+  new CacheFirst({
+    cacheName: cacheName('assets'),
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+// Images — icons, OG image, logos, favicons not already precached.
+registerRoute(
+  /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+  new CacheFirst({
+    cacheName: cacheName('images'),
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 40, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
 // ─── Stellar Notification Service Worker logic ────────────────────────────────
 // (merged from src/sw/stellar-notification-sw.ts)
 
