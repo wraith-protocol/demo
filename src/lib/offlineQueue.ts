@@ -345,42 +345,25 @@ export function addEntry(entries: OfflineQueueEntry[], entry: OfflineQueueEntry)
   ) {
     return { entries, accepted: true, evicted: 0 };
   }
-  const next = [...entries, entry];
-  const overflow = next.length - MAX_OFFLINE_QUEUE_ITEMS;
-  if (overflow <= 0) return { entries: next, accepted: true, evicted: 0 };
-  const dropIds = oldestTerminalIds(next, overflow);
-  const pruned = next.filter((e) => !dropIds.has(e.id));
-  if (pruned.length <= MAX_OFFLINE_QUEUE_ITEMS) {
-    return { entries: pruned, accepted: true, evicted: dropIds.size };
+
+  if (entries.length < MAX_OFFLINE_QUEUE_ITEMS) {
+    return { entries: [...entries, entry], accepted: true, evicted: 0 };
   }
-  // No room even after pruning every terminal entry: the queue is full of
-  // actionable work. Reject without mutating anything.
-  return { entries, accepted: false, evicted: 0 };
+
+  const evictCount = entries.length - MAX_OFFLINE_QUEUE_ITEMS + 1;
+  const evictIds = oldestTerminalIds(entries, evictCount);
+  if (evictIds.size < evictCount) {
+    return { entries, accepted: false, evicted: 0 };
+  }
+
+  const remaining = entries.filter((e) => !evictIds.has(e.id));
+  return { entries: [...remaining, entry], accepted: true, evicted: evictIds.size };
 }
 
-export interface EnforceCapResult {
-  entries: OfflineQueueEntry[];
-  droppedTerminal: number;
-  /** Only nonzero for corrupt oversized state with no terminals to prune. */
-  droppedNewest: number;
-}
-
-/**
- * Caps loaded (possibly corrupt/legacy oversized) state using the same rule:
- * oldest terminal first; if actionable entries alone still exceed the cap,
- * keep the oldest (mirrors `readVersionedCollection`) and report the drop.
- */
-export function enforceQueueCap(entries: OfflineQueueEntry[]): EnforceCapResult {
-  const overflow = entries.length - MAX_OFFLINE_QUEUE_ITEMS;
-  if (overflow <= 0) return { entries, droppedTerminal: 0, droppedNewest: 0 };
-  const dropIds = oldestTerminalIds(entries, overflow);
-  const pruned = entries.filter((e) => !dropIds.has(e.id));
-  if (pruned.length <= MAX_OFFLINE_QUEUE_ITEMS) {
-    return { entries: pruned, droppedTerminal: dropIds.size, droppedNewest: 0 };
-  }
-  return {
-    entries: pruned.slice(0, MAX_OFFLINE_QUEUE_ITEMS),
-    droppedTerminal: dropIds.size,
-    droppedNewest: pruned.length - MAX_OFFLINE_QUEUE_ITEMS,
-  };
+export function enforceQueueCap(entries: OfflineQueueEntry[]): OfflineQueueEntry[] {
+  if (entries.length <= MAX_OFFLINE_QUEUE_ITEMS) return entries;
+  const evictCount = entries.length - MAX_OFFLINE_QUEUE_ITEMS;
+  const evictIds = oldestTerminalIds(entries, evictCount);
+  if (evictIds.size === 0) return entries;
+  return entries.filter((e) => !evictIds.has(e.id));
 }

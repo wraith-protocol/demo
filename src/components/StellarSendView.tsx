@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react';
-import { StellarLink } from '@/components/StellarLink';
 import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { STELLAR_ASSETS } from '@/lib/stellar/assets';
+
 
 export interface StellarSendViewProps {
   isConnected: boolean;
@@ -37,7 +36,6 @@ export interface StellarSendViewProps {
   onSend: () => void;
   onReset: () => void;
   // Extra optional props for payment-link / memo support
-  memo?: string;
   onMemoChange?: (value: string) => void;
   isExpired?: boolean;
   paramTo?: boolean;
@@ -45,7 +43,6 @@ export interface StellarSendViewProps {
   paramMemo?: boolean;
   onScanQRClick?: () => void;
   isScanningQR?: boolean;
-  scannerElement?: ReactNode;
 }
 
 export function StellarSendView({
@@ -82,7 +79,6 @@ export function StellarSendView({
   onSend,
   onReset,
   // Extra props destructuring with default fallbacks
-  memo = '',
   onMemoChange,
   isExpired = false,
   paramTo = false,
@@ -90,7 +86,6 @@ export function StellarSendView({
   paramMemo = false,
   onScanQRClick,
   isScanningQR = false,
-  scannerElement,
 }: StellarSendViewProps) {
   if (!isConnected) {
     return (
@@ -239,7 +234,6 @@ export function StellarSendView({
             <input
               id="stellar-memo"
               type="text"
-              value={memo}
               onChange={(e) => onMemoChange?.(e.target.value)}
               placeholder="e.g. Coffee"
               maxLength={28}
@@ -311,125 +305,15 @@ export function StellarSendView({
                   <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                     Predicted return value
                   </span>
-                  <span className="max-w-[65%] min-w-0 break-all text-right font-mono text-xs text-on-surface-variant">
+                  <span className="text-right font-mono text-xs text-on-surface-variant">
                     {simulationReturnValue}
                   </span>
                 </div>
-                <div className="flex flex-col gap-2">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                    Predicted contract events
-                  </span>
-                  {simulationEvents.length > 0 ? (
-                    <ul className="flex flex-col gap-1">
-                      {simulationEvents.map((event, index) => (
-                        <li
-                          key={`${event}-${index}`}
-                          className="border-l border-outline-variant pl-3 font-mono text-xs text-on-surface-variant"
-                        >
-                          {event}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="font-mono text-xs text-on-surface-variant">None</p>
-                  )}
-                </div>
               </div>
             </div>
-          )}
-
-          {simulationStatus === 'error' && simulationError && (
-            <p className="text-sm text-error">{simulationError}</p>
-          )}
-
-          {retryStatus && <p className="text-sm text-on-surface-variant">{retryStatus}</p>}
-          {error && <p className="text-sm text-error">{error}</p>}
-
-          {trustlineError && (
-            <div className="border border-error/20 bg-error/5 p-3">
-              <p className="font-mono text-xs text-error">{trustlineError}</p>
-              <p className="mt-1 font-body text-xs text-on-surface-variant">
-                To add a{' '}
-                <a
-                  href="https://stellar.org/learn/how-to-add-trustline"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  trustline
-                </a>
-                , the recipient needs to set a trustline for {assetKey} on their Stellar account.
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={onSend}
-            disabled={!canSubmit}
-            className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-          >
-            {isPending ? 'Confirm in wallet...' : `Send ${assetKey}`}
-          </button>
-        </div>
-      )}
-
-      {stealthResult && (
-        <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
-          <div className="flex items-center gap-2">
-            {isSuccess ? (
-              <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-            ) : (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
-            )}
-            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Final Transfer' : 'Pending Transfer'}
-            </span>
-            <span className="font-mono text-[10px] text-outline">{assetKey}</span>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
-              </span>
-              <div className="mt-0.5 flex min-w-0  items-center gap-2">
-                <StellarLink
-                  value={stealthResult.stealthAddress}
-                  type="account"
-                  className="max-w-full"
-                  linkClassName="text-xs"
-                />
-              </div>
-            </div>
-
-            {txHash && (
-              <div>
-                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Final Transaction Hash
-                </span>
-                <div className="mt-0.5 flex min-w-0 items-center gap-2">
-                  <StellarLink
-                    value={txHash}
-                    type="tx"
-                    className="max-w-full"
-                    linkClassName="text-xs"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {isSuccess && (
-            <button
-              onClick={onReset}
-              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
-            >
-              New Transfer
-            </button>
           )}
         </div>
       )}
-      {isScanningQR && scannerElement}
     </section>
   );
 }
