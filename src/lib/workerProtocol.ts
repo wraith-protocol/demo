@@ -44,7 +44,12 @@ export function requestIdSequence(id: string): number {
  */
 export type WorkerRequest =
   | { type: 'SKIP_WAITING' }
-  | { type: 'RECOVER_SCAN_CURSOR'; requestId: string; publicKey: string; oldestAvailableLedger: number }
+  | {
+      type: 'RECOVER_SCAN_CURSOR';
+      requestId: string;
+      publicKey: string;
+      oldestAvailableLedger: number;
+    }
   | {
       type: 'REGISTER_VIEWING_KEY';
       requestId: string;
@@ -77,7 +82,11 @@ export type WorkerSuccess =
   | { type: 'VIEWING_KEY_UNREGISTERED'; requestId: string }
   | { type: 'PUSH_SUBSCRIPTION_REGISTERED'; requestId: string }
   | { type: 'PUSH_SUBSCRIPTION_UNREGISTERED'; requestId: string }
-  | { type: 'STELLAR_SCAN_RECOVERY_COMPLETE'; requestId: string; publicKey: string }
+  | {
+      type: 'STELLAR_SCAN_RECOVERY_COMPLETE';
+      requestId: string;
+      publicKey: string;
+    }
   | { type: 'OFFLINE_QUEUE_FLUSH' };
 
 /**
