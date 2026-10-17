@@ -6,21 +6,13 @@ import {
   testRelayConnectivity,
   DEFAULT_RELAY_URL,
 } from '@/lib/pushRelay';
-
-interface SWMessage {
-  type: string;
-  channel: string;
-  payload: {
-    id: string;
-    title: string;
-    body: string;
-    timestamp: number;
-    amount?: string;
-    asset?: string;
-    sender?: string;
-    data?: Record<string, unknown>;
-  };
-}
+import {
+  validateWorkerMessage,
+  generateRequestId,
+  mainThreadRequestTracker,
+  type WorkerMessage,
+  type MainThreadMessage,
+} from '@/lib/workerProtocol';
 
 export interface WebPushState {
   supported: boolean;
@@ -131,17 +123,60 @@ export function useNotificationSW(): UseNotificationSWReturn {
     };
   }, [state.supported]);
 
-  // Listen for WRAITH_NOTIFICATION messages posted by the SW
+  // Listen for messages posted by the SW
   useEffect(() => {
-    const handler = (event: MessageEvent<SWMessage>) => {
-      if (
-        event.data?.type !== 'WRAITH_NOTIFICATION' ||
-        event.data?.channel !== 'wraith-notifications'
-      ) {
+    const handler = (event: MessageEvent) => {
+      const validation = validateWorkerMessage(event.data);
+      if (!validation.valid) {
+        console.warn('[useNotificationSW] Ignoring invalid message from SW:', validation.reason);
         return;
       }
-      const { id, title, body, timestamp, amount, asset, sender, data } = event.data.payload;
-      addNotification({ id, title, body, timestamp, amount, asset, sender, data });
+
+      const msg = validation.data;
+
+      switch (msg.type) {
+        case 'WRAITH_NOTIFICATION':
+          if (msg.channel === 'wraith-notifications') {
+            const { id, title, body, amount, asset, sender, url } = msg.payload;
+            addNotification({
+              id,
+              title,
+              body,
+              timestamp: Date.now(),
+              amount,
+              asset,
+              sender,
+              data: { url },
+            });
+          }
+          break;
+
+        case 'VIEWING_KEY_REGISTERED':
+        case 'VIEWING_KEY_UNREGISTERED':
+        case 'PUSH_SUBSCRIPTION_REGISTERED':
+        case 'PUSH_SUBSCRIPTION_UNREGISTERED':
+        case 'STELLAR_SCAN_RECOVERY_COMPLETE':
+          mainThreadRequestTracker.unregister(msg.requestId);
+          break;
+
+        case 'VIEWING_KEY_ERROR':
+        case 'PUSH_SUBSCRIPTION_ERROR':
+          console.error('[useNotificationSW] SW error:', msg.error);
+          mainThreadRequestTracker.unregister(msg.requestId);
+          break;
+
+        case 'STELLAR_SCAN_RETENTION_GAP':
+          console.warn('[useNotificationSW] Retention gap detected:', msg);
+          break;
+
+        case 'OFFLINE_QUEUE_FLUSH':
+          console.log('[useNotificationSW] Offline queue flush requested');
+          break;
+
+        case 'NAVIGATE_TO_MATCH':
+          console.log('[useNotificationSW] Navigate to match:', msg.stealthAddress);
+          break;
+      }
     };
 
     navigator.serviceWorker.addEventListener('message', handler);
@@ -259,6 +294,7 @@ export function useNotificationSW(): UseNotificationSWReturn {
         }
 
         localStorage.removeItem(STORAGE_KEY_SUBSCRIBED);
+        mainThreadRequestTracker.clear();
         setState((prev) => ({
           ...prev,
           subscribed: false,
