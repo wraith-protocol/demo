@@ -386,7 +386,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
               request.onsuccess = () => resolve();
             });
             db.close();
-            const response: WorkerMessage = { type: 'VIEWING_KEY_REGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'VIEWING_KEY_REGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[wraith-sw] Failed to register viewing key:', error);
@@ -434,7 +437,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
               ).periodicSync.unregister(SYNC_TAG);
             }
 
-            const response: WorkerMessage = { type: 'VIEWING_KEY_UNREGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'VIEWING_KEY_UNREGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[wraith-sw] Failed to unregister viewing key:', error);
@@ -482,7 +488,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
             });
 
             db.close();
-            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_REGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_REGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[wraith-sw] Failed to register push subscription:', error);
@@ -525,7 +534,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
             }
 
             db.close();
-            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_UNREGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_UNREGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[wraith-sw] Failed to unregister push subscription:', error);

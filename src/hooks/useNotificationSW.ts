@@ -138,7 +138,16 @@ export function useNotificationSW(): UseNotificationSWReturn {
         case 'WRAITH_NOTIFICATION':
           if (msg.channel === 'wraith-notifications') {
             const { id, title, body, amount, asset, sender, url } = msg.payload;
-            addNotification({ id, title, body, timestamp: Date.now(), amount, asset, sender, data: { url } });
+            addNotification({
+              id,
+              title,
+              body,
+              timestamp: Date.now(),
+              amount,
+              asset,
+              sender,
+              data: { url },
+            });
           }
           break;
 

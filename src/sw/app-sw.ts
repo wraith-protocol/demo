@@ -437,7 +437,10 @@ self.addEventListener('message', (event) => {
               request.onsuccess = () => resolve();
             });
             db.close();
-            const response: WorkerMessage = { type: 'VIEWING_KEY_REGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'VIEWING_KEY_REGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[app-sw] Failed to register viewing key:', error);
@@ -483,7 +486,10 @@ self.addEventListener('message', (event) => {
               ).periodicSync.unregister(SYNC_TAG);
             }
 
-            const response: WorkerMessage = { type: 'VIEWING_KEY_UNREGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'VIEWING_KEY_UNREGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[app-sw] Failed to unregister viewing key:', error);
@@ -531,7 +537,10 @@ self.addEventListener('message', (event) => {
             });
 
             db.close();
-            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_REGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_REGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[app-sw] Failed to register push subscription:', error);
@@ -574,7 +583,10 @@ self.addEventListener('message', (event) => {
             }
 
             db.close();
-            const response: WorkerMessage = { type: 'PUSH_SUBSCRIPTION_UNREGISTERED', requestId: msg.requestId };
+            const response: WorkerMessage = {
+              type: 'PUSH_SUBSCRIPTION_UNREGISTERED',
+              requestId: msg.requestId,
+            };
             (event.source as Client)?.postMessage(response);
           } catch (error) {
             console.error('[app-sw] Failed to unregister push subscription:', error);

@@ -158,9 +158,7 @@ export interface ValidatedPushPayload {
 /**
  * Result of message validation
  */
-export type ValidationResult<T> =
-  | { valid: true; data: T }
-  | { valid: false; reason: string };
+export type ValidationResult<T> = { valid: true; data: T } | { valid: false; reason: string };
 
 /**
  * Validate that a value is a non-empty string of at most maxLength characters
@@ -241,9 +239,12 @@ function assertPushPayload(value: unknown): ValidatedPushPayload {
   const id = assertString(payload.id, 'payload.id', 128, true);
   const title = assertString(payload.title, 'payload.title', 100, true);
   const body = assertString(payload.body, 'payload.body', 500, true);
-  const amount = payload.amount !== undefined ? assertString(payload.amount, 'payload.amount', 64) : undefined;
-  const asset = payload.asset !== undefined ? assertString(payload.asset, 'payload.asset', 16) : undefined;
-  const sender = payload.sender !== undefined ? assertString(payload.sender, 'payload.sender', 128) : undefined;
+  const amount =
+    payload.amount !== undefined ? assertString(payload.amount, 'payload.amount', 64) : undefined;
+  const asset =
+    payload.asset !== undefined ? assertString(payload.asset, 'payload.asset', 16) : undefined;
+  const sender =
+    payload.sender !== undefined ? assertString(payload.sender, 'payload.sender', 128) : undefined;
   const url = assertString(payload.url, 'payload.url', 256, true);
   return { version: 1, id, title, body, amount, asset, sender, url };
 }
@@ -268,7 +269,12 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
       case 'RECOVER_SCAN_CURSOR': {
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
-        const oldestAvailableLedger = assertInteger(msg.oldestAvailableLedger, 'oldestAvailableLedger', 1, Number.MAX_SAFE_INTEGER);
+        const oldestAvailableLedger = assertInteger(
+          msg.oldestAvailableLedger,
+          'oldestAvailableLedger',
+          1,
+          Number.MAX_SAFE_INTEGER,
+        );
         return {
           valid: true,
           data: { type: 'RECOVER_SCAN_CURSOR', requestId, publicKey, oldestAvailableLedger },
@@ -278,9 +284,24 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
       case 'REGISTER_VIEWING_KEY': {
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
-        const encryptedViewingKey = assertString(msg.encryptedViewingKey, 'encryptedViewingKey', 512, true);
-        const encryptedSpendingPubKey = assertString(msg.encryptedSpendingPubKey, 'encryptedSpendingPubKey', 512, true);
-        const encryptedSpendingScalar = assertString(msg.encryptedSpendingScalar, 'encryptedSpendingScalar', 512, true);
+        const encryptedViewingKey = assertString(
+          msg.encryptedViewingKey,
+          'encryptedViewingKey',
+          512,
+          true,
+        );
+        const encryptedSpendingPubKey = assertString(
+          msg.encryptedSpendingPubKey,
+          'encryptedSpendingPubKey',
+          512,
+          true,
+        );
+        const encryptedSpendingScalar = assertString(
+          msg.encryptedSpendingScalar,
+          'encryptedSpendingScalar',
+          512,
+          true,
+        );
         return {
           valid: true,
           data: {
@@ -309,17 +330,27 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const requestId = assertRequestId(msg.requestId);
         const subscription = assertPushSubscription(msg.subscription);
         const metaAddressHash = assertString(msg.metaAddressHash, 'metaAddressHash', 128, true);
-        const relayUrl = msg.relayUrl !== undefined ? assertString(msg.relayUrl, 'relayUrl', 512) : undefined;
+        const relayUrl =
+          msg.relayUrl !== undefined ? assertString(msg.relayUrl, 'relayUrl', 512) : undefined;
         return {
           valid: true,
-          data: { type: 'REGISTER_PUSH_SUBSCRIPTION', requestId, subscription, metaAddressHash, relayUrl },
+          data: {
+            type: 'REGISTER_PUSH_SUBSCRIPTION',
+            requestId,
+            subscription,
+            metaAddressHash,
+            relayUrl,
+          },
         };
       }
 
       case 'UNREGISTER_PUSH_SUBSCRIPTION': {
         const requestId = assertRequestId(msg.requestId);
         const subscription = assertPushSubscription(msg.subscription);
-        const metaAddressHash = msg.metaAddressHash !== undefined ? assertString(msg.metaAddressHash, 'metaAddressHash', 128) : undefined;
+        const metaAddressHash =
+          msg.metaAddressHash !== undefined
+            ? assertString(msg.metaAddressHash, 'metaAddressHash', 128)
+            : undefined;
         return {
           valid: true,
           data: { type: 'UNREGISTER_PUSH_SUBSCRIPTION', requestId, subscription, metaAddressHash },
@@ -330,7 +361,10 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         throw new Error(`Unknown message type: ${type}`);
     }
   } catch (error) {
-    return { valid: false, reason: error instanceof Error ? error.message : 'Unknown validation error' };
+    return {
+      valid: false,
+      reason: error instanceof Error ? error.message : 'Unknown validation error',
+    };
   }
 }
 
@@ -383,16 +417,32 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
       case 'STELLAR_SCAN_RECOVERY_COMPLETE': {
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
-        return { valid: true, data: { type: 'STELLAR_SCAN_RECOVERY_COMPLETE', requestId, publicKey } };
+        return {
+          valid: true,
+          data: { type: 'STELLAR_SCAN_RECOVERY_COMPLETE', requestId, publicKey },
+        };
       }
 
       case 'STELLAR_SCAN_RETENTION_GAP': {
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
-        const oldestAvailableLedger = assertInteger(msg.oldestAvailableLedger, 'oldestAvailableLedger', 1, Number.MAX_SAFE_INTEGER);
-        const lastScannedLedger = msg.lastScannedLedger !== undefined ? assertInteger(msg.lastScannedLedger, 'lastScannedLedger', 1, Number.MAX_SAFE_INTEGER) : undefined;
+        const oldestAvailableLedger = assertInteger(
+          msg.oldestAvailableLedger,
+          'oldestAvailableLedger',
+          1,
+          Number.MAX_SAFE_INTEGER,
+        );
+        const lastScannedLedger =
+          msg.lastScannedLedger !== undefined
+            ? assertInteger(msg.lastScannedLedger, 'lastScannedLedger', 1, Number.MAX_SAFE_INTEGER)
+            : undefined;
         return {
           valid: true,
-          data: { type: 'STELLAR_SCAN_RETENTION_GAP', publicKey, oldestAvailableLedger, lastScannedLedger },
+          data: {
+            type: 'STELLAR_SCAN_RETENTION_GAP',
+            publicKey,
+            oldestAvailableLedger,
+            lastScannedLedger,
+          },
         };
       }
 
@@ -417,7 +467,10 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         throw new Error(`Unknown message type: ${type}`);
     }
   } catch (error) {
-    return { valid: false, reason: error instanceof Error ? error.message : 'Unknown validation error' };
+    return {
+      valid: false,
+      reason: error instanceof Error ? error.message : 'Unknown validation error',
+    };
   }
 }
 
