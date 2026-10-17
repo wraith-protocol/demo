@@ -1,27 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { AutoSign } from '@/components/AutoSign';
 import { TelemetryBanner } from '@/components/TelemetryBanner';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
-import Send from '@/pages/Send';
-import Receive from '@/pages/Receive';
-import Privacy from '@/pages/Privacy';
-import Settings from '@/pages/Settings';
+import { RouteFallback } from '@/components/RouteFallback';
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { HelpButton } from '@/components/HelpButton';
-import Vault from '@/pages/Vault';
-import Notifications from '@/pages/Notifications';
 import { useNotificationSW } from '@/hooks/useNotificationSW';
 import { useOfflineReconcile } from '@/hooks/useOfflineReconcile';
-import Schedule from '@/pages/Schedule';
-import StellarSplit from '@/pages/StellarSplit';
-import Names from '@/pages/Names';
-import NameProfile from '@/pages/NameProfile';
-import NamesAuctions from '@/pages/NamesAuctions';
-import Activity from '@/pages/Activity';
-import Portfolio from '@/pages/Portfolio';
-import Debug from '@/pages/Debug';
 import { useChain } from '@/context/ChainContext';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { KeyVault } from '@/vault/KeyVault';
@@ -34,6 +22,24 @@ import {
 import { parseStellarQrPayload } from '@/utils/qr';
 import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
 import { initNameWatchlistSync, cleanupNameWatchlistSync } from '@/store/nameWatchlistStore';
+
+// Code-split per route so the initial bundle only ships the app shell.
+// Each page (and the chain-specific wallet SDKs it pulls in — see
+// pages/Send.tsx and pages/Receive.tsx) loads on first navigation instead
+// of up front. RouteErrorBoundary + RouteFallback below handle the load.
+const Send = lazy(() => import('@/pages/Send'));
+const Receive = lazy(() => import('@/pages/Receive'));
+const Privacy = lazy(() => import('@/pages/Privacy'));
+const Vault = lazy(() => import('@/pages/Vault'));
+const Notifications = lazy(() => import('@/pages/Notifications'));
+const Schedule = lazy(() => import('@/pages/Schedule'));
+const StellarSplit = lazy(() => import('@/pages/StellarSplit'));
+const Names = lazy(() => import('@/pages/Names'));
+const NameProfile = lazy(() => import('@/pages/NameProfile'));
+const NamesAuctions = lazy(() => import('@/pages/NamesAuctions'));
+const Activity = lazy(() => import('@/pages/Activity'));
+const Portfolio = lazy(() => import('@/pages/Portfolio'));
+const Debug = lazy(() => import('@/pages/Debug'));
 
 function SessionLock({ onUnlock }: { onUnlock: () => void }) {
   const [passphrase, setPassphrase] = useState('');
@@ -210,24 +216,28 @@ export function App() {
       <TelemetryBanner />
       <AutoSign />
       <main className="mx-auto w-full max-w-[720px] flex-1 px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10">
-        <Routes>
-          <Route path="/send" element={<Send />} />
-          <Route path="/receive" element={<Receive />} />
-          <Route path="/privacy" element={<Privacy />} />
-          <Route path="/vault" element={<Vault />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/schedule" element={<Schedule />} />
-          <Route path="/stellar/split" element={<StellarSplit />} />
-          <Route path="/pay" element={<Send />} />
-          <Route path="/names" element={<Names />} />
-          <Route path="/n/:name" element={<NameProfile />} />
-          <Route path="/names/auctions" element={<NamesAuctions />} />
-          <Route path="/activity" element={<Activity />} />
-          <Route path="/history" element={<Activity />} />
-          <Route path="/portfolio" element={<Portfolio />} />
-          <Route path="/debug" element={<Debug />} />
-          <Route path="*" element={<Navigate to="/send" replace />} />
-        </Routes>
+        <RouteErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/send" element={<Send />} />
+              <Route path="/receive" element={<Receive />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/vault" element={<Vault />} />
+              <Route path="/notifications" element={<Notifications />} />
+              <Route path="/schedule" element={<Schedule />} />
+              <Route path="/stellar/split" element={<StellarSplit />} />
+              <Route path="/pay" element={<Send />} />
+              <Route path="/names" element={<Names />} />
+              <Route path="/n/:name" element={<NameProfile />} />
+              <Route path="/names/auctions" element={<NamesAuctions />} />
+              <Route path="/activity" element={<Activity />} />
+              <Route path="/history" element={<Activity />} />
+              <Route path="/portfolio" element={<Portfolio />} />
+              <Route path="/debug" element={<Debug />} />
+              <Route path="*" element={<Navigate to="/send" replace />} />
+            </Routes>
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
       <HelpButton />
     </div>

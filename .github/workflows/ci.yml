@@ -27,6 +27,11 @@ jobs:
       - run: pnpm format:check
       - run: pnpm build
 
+      # Fails when the initial load, the Stellar scanner worker, or any
+      # lazy-loaded route/chain chunk grows past its budget. See
+      # scripts/bundle-budget-gate.mjs for what each budget covers and why.
+      - run: pnpm build:budget-check
+
       # Fails when a new critical (or more than the accepted number of high)
       # production dependency finding appears. See docs/SECURITY_AUDIT.md.
       - run: pnpm audit:gate
