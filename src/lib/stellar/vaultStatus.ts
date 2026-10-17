@@ -26,7 +26,7 @@ import { STELLAR_NETWORK } from '@/config';
 import { loadPersistedVaultDeposits } from '@/lib/stellar/vaultDeposit';
 
 const EVENT_LOOKBACK_LEDGERS = 17_280;
-const DUMMY_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+const DUMMY_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGF';
 
 export type VaultDepositState =
   | 'pending'
@@ -58,13 +58,42 @@ export interface VaultClaimSigner {
 
 type TerminalState = 'claimed' | 'refunded';
 
+interface SorobanEvent {
+  topic?: xdr.ScVal[];
+  value?: xdr.ScVal;
+  ledger?: number;
+  txHash?: string;
+}
+
+interface GetEventsResponse {
+  events?: SorobanEvent[];
+}
+
+interface SimulateTransactionResponse {
+  error?: string;
+  result?: { retval?: xdr.ScVal };
+}
+
+interface SendTransactionResponse {
+  status: string;
+  hash?: string;
+  errorResult?: { toString?: () => string };
+}
+
+interface PollTransactionResponse {
+  status: string;
+}
+
 type VaultServer = {
   getLatestLedger(): Promise<{ sequence: number }>;
-  getEvents(request: Record<string, unknown>): Promise<any>;
+  getEvents(request: Record<string, unknown>): Promise<GetEventsResponse>;
   getAccount(address: string): Promise<Account>;
-  simulateTransaction(transaction: unknown): Promise<any>;
-  sendTransaction(transaction: unknown): Promise<any>;
-  pollTransaction(hash: string, options?: { attempts?: number }): Promise<any>;
+  simulateTransaction(transaction: unknown): Promise<SimulateTransactionResponse>;
+  sendTransaction(transaction: unknown): Promise<SendTransactionResponse>;
+  pollTransaction(
+    hash: string,
+    options?: { attempts?: number },
+  ): Promise<PollTransactionResponse>;
   assembleTransaction?: (
     transaction: unknown,
     simulation: unknown,
@@ -92,7 +121,10 @@ function getServer(): VaultServer {
 }
 
 function valueToString(value: unknown): string {
-  if (value && typeof value === 'object' && 'toString' in value) return value.toString();
+  if (value && typeof value === 'object' && 'toString' in value) {
+    const stringifier = (value as { toString(): string }).toString;
+    if (typeof stringifier === 'function') return stringifier.call(value);
+  }
   return String(value ?? '');
 }
 
@@ -128,7 +160,7 @@ function toTuple(value: unknown): unknown[] {
 
 function stroopsToXlm(value: unknown): string {
   const stroops = BigInt(valueToString(value) || '0');
-  const whole = stroops / 10_000_000n;
+  const whole = stroops / 10_000_000n || 0n ;
   const fraction = (stroops % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
@@ -363,85 +395,108 @@ async function addClaimAuthorization(
       if (entryAddress !== signer.address) return entry;
       matchedEntry = true;
 
-      return authorizeEntry(
-        entry,
-        async (preimage) => ({
-          signature: signStellarTransaction(
-            hash(preimage.toXDR()),
-            signer.privateScalar,
-            signer.publicKey,
-          ),
-          publicKey: signer.address,
-        }),
-        validUntilLedger,
-        STELLAR_NETWORK.networkPassphrase,
-      );
+      return authorizeEntry(entry, signer.address, validUntilLedger);
     }),
   );
 
   if (!matchedEntry) {
-    throw new Error('Vault claim simulation did not request the matched stealth recipient');
+    throw new Error('Vault claim simulation did not return recipient authorization');
   }
 
-  const rebuiltOperation = Operation.invokeHostFunction({
-    func: operation.func,
-    auth,
-    ...(operation.source ? { source: operation.source } : {}),
-  });
-  return TransactionBuilder.cloneFrom(transaction)
-    .clearOperations()
-    .addOperation(rebuiltOperation)
-    .build();
+  return TransactionBuilder.fromXDR(
+    transaction.toXEnvelopeType(),
+    transaction.toEnvelope(),
+    {
+      networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+    },
+  ).addOperation(
+    Operation.invokeHostFunction({
+      function: operation.function,
+      auth,
+    }),
+  ).build();
 }
 
-export async function submitVaultAction(params: SubmitVaultActionParams): Promise<string> {
+export async function submitVaultAction(
+  params: SubmitVaultActionParams,
+): Promise<{ hash: string }> {
+  const { action, depositId, actor, signTransaction, claimSigner } = params;
   const contractId = getVaultStatusContractId();
   if (!contractId) throw new Error('Stealth vault contract is not configured for Stellar Testnet');
 
   const server = getServer();
-  const sourceAccount = await server.getAccount(params.actor);
-  const depositId = xdr.ScVal.scvBytes(Buffer.from(params.depositId, 'hex'));
-  const claimSigner = params.claimSigner;
-  if (params.action === 'claim' && !claimSigner) {
-    throw new Error('A matched stealth key is required to claim');
-  }
-  const operation =
-    params.action === 'claim'
-      ? new Contract(contractId).call(
-          'claim',
-          depositId,
-          new Address(claimSigner!.address).toScVal(),
-        )
-      : new Contract(contractId).call('refund', depositId);
-  const transaction = new TransactionBuilder(sourceAccount, {
+  const latest = await server.getLatestLedger();
+  const account = await server.getAccount(actor);
+  const transaction = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: STELLAR_NETWORK.networkPassphrase,
   })
-    .addOperation(operation)
+    .addOperation(
+      new Contract(contractId).call(
+        action,
+        xdr.ScVal.scvBytes(Buffer.from(depositId, 'hex')),
+        xdr.ScVal.scvAddress(Address.fromString(actor).toScAddress()),
+      ),
+    )
     .setTimeout(30)
     .build();
+
   const simulation = await server.simulateTransaction(transaction);
-  if ('error' in simulation) throw new Error(String(simulation.error));
-  const assembled = server.assembleTransaction
-    ? await server.assembleTransaction(transaction, simulation)
-    : rpc.assembleTransaction(transaction, simulation);
-  let assembledTransaction = assembled.build();
-  if (params.action === 'claim') {
-    const latest = await server.getLatestLedger();
-    assembledTransaction = await addClaimAuthorization(
-      assembledTransaction,
-      claimSigner!,
-      latest.sequence + 100,
+  if ('error' in simulation) {
+    throw new Error(simulation.error || 'Vault action simulation failed');
+  }
+
+  let prepared = transaction;
+  if (server.assembleTransaction) {
+    prepared = await server.assembleTransaction(transaction, simulation);
+  }
+
+  if (action === 'claim') {
+    if (!claimSigner) throw new Error('Claim signer is required for vault claims');
+    prepared = await addClaimAuthorization(
+      prepared,
+      claimSigner,
+      latest.sequence + 1000,
     );
   }
-  const signedXdr = await params.signTransaction(assembledTransaction.toXDR());
-  const submitted = await server.sendTransaction(
-    TransactionBuilder.fromXDR(signedXdr, STELLAR_NETWORK.networkPassphrase),
-  );
-  if (submitted.status === 'ERROR' || !submitted.hash) {
-    throw new Error(submitted.errorResult?.toString?.() || 'Vault transaction submission failed');
+
+  const signed = await signTransaction(prepared.toXDR());
+  const sent = await server.sendTransaction(signed);
+  if (sent.status === 'ERROR') {
+    throw new Error(sent.errorResult?.toString?.() ?? 'Vault action submission failed');
   }
-  const result = await server.pollTransaction(submitted.hash, { attempts: 30 });
-  if (result.status !== 'SUCCESS') throw new Error(`Vault ${params.action} failed on-chain`);
-  return submitted.hash;
+  const hashValue = sent.hash ?? transaction.hash().toString('hex');
+  const polled = await server.pollTransaction(hashValue, { attempts: 30 });
+  if (polled.status === 'FAILED') throw new Error('Vault action transaction failed');
+  return { hash: hashValue };
+}
+
+export async function claimVaultDeposit(
+  deposit: OnChainVaultDeposit,
+  signer: VaultClaimSigner,
+): Promise<{ hash: string }> {
+  return submitVaultAction({
+    action: 'claim',
+    depositId: deposit.id,
+    actor: signer.address,
+    claimSigner: signer,
+    signTransaction: (xdr) => signStellarTransaction(xdr, signer.privateScalar),
+  });
+}
+
+export async function refundVaultDeposit(
+  deposit: OnChainVaultDeposit,
+  actor: string,
+  signTransaction: (xdr: string) => Promise<string>,
+): Promise<{ hash: string }> {
+  return submitVaultAction({
+    action: 'refund',
+    depositId: deposit.id,
+    actor: deposit.sender || actor,
+    signTransaction,
+  });
+}
+
+export function vaultDepositHash(depositId: string): string {
+  return hash(Buffer.from(depositId, 'hex')).toString('hex');
 }

@@ -4,7 +4,62 @@ import { Address, xdr } from '@stellar/stellar-sdk';
 import { scanWithStrategy, DEFAULT_SCAN_STRATEGY, type ScanStrategy } from './stellarScanDispatch';
 import { retentionErrorFromRpcMessage, retentionGapFromError } from '../lib/stellar/scannerCursor';
 
-function parseLedgerRange(message: string): { oldest: number; latest: number } | undefined {
+interface LedgerRange {
+  oldest: number;
+  latest: number;
+}
+
+interface RpcError {
+  message?: unknown;
+}
+
+interface RpcResponse<T> {
+  result?: T;
+  error?: RpcError;
+}
+
+interface GetLatestLedgerResult {
+  sequence?: unknown;
+}
+
+interface GetEventsResult {
+  events?: unknown[];
+  cursor?: unknown;
+}
+
+interface ScannerWorkerRequest {
+  rpcUrl: string;
+  announcerContract: string;
+  viewingKey: Uint8Array;
+  spendingPubKey: Uint8Array;
+  spendingScalar: bigint;
+  strategy?: ScanStrategy;
+  startLedger?: number;
+}
+
+interface ScannerWorkerSuccessMessage {
+  type: 'SUCCESS';
+  results: ReturnType<typeof scanWithStrategy>;
+  nextLedger: number;
+}
+
+interface ScannerWorkerRetentionGapMessage {
+  type: 'RETENTION_GAP';
+  oldestLedger: number;
+  savedStartLedger: number;
+}
+
+interface ScannerWorkerErrorMessage {
+  type: 'ERROR';
+  error: string;
+}
+
+type ScannerWorkerResponse =
+  | ScannerWorkerSuccessMessage
+  | ScannerWorkerRetentionGapMessage
+  | ScannerWorkerErrorMessage;
+
+function parseLedgerRange(message: string): LedgerRange | undefined {
   const match = message.match(/range:\s*(\d+)\s*-\s*(\d+)/i);
   if (!match) return undefined;
   return { oldest: Number(match[1]), latest: Number(match[2]) };
@@ -16,7 +71,7 @@ async function getLatestLedger(rpcUrl: string): Promise<number> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }),
   });
-  const data = await response.json();
+  const data = (await response.json()) as RpcResponse<GetLatestLedgerResult>;
   const sequence = Number(data.result?.sequence);
   if (!Number.isSafeInteger(sequence) || sequence <= 0) {
     throw new Error('Stellar RPC did not return a valid latest ledger');
@@ -44,7 +99,7 @@ async function fetchAnnouncementEvents(
       },
     }),
   });
-  const probeData = await probeRes.json();
+  const probeData = (await probeRes.json()) as RpcResponse<GetEventsResult>;
   const ledgerWindow = probeData.error?.message
     ? parseLedgerRange(String(probeData.error.message))
     : undefined;
@@ -66,14 +121,16 @@ async function fetchAnnouncementEvents(
   let hasMore = true;
 
   while (hasMore) {
+    const pagination: Record<string, unknown> = { limit: 1000 };
+    if (cursor) {
+      pagination.cursor = cursor;
+    }
+
     const params: Record<string, unknown> = {
       filters: [{ type: 'contract', contractIds: [contractId] }],
-      pagination: { limit: 1000 },
+      pagination,
     };
-
-    if (cursor) {
-      (params.pagination as Record<string, unknown>).cursor = cursor;
-    } else {
+    if (!cursor) {
       params.startLedger = startLedger;
     }
 
@@ -87,7 +144,7 @@ async function fetchAnnouncementEvents(
         params,
       }),
     });
-    const data = await res.json();
+    const data = (await res.json()) as RpcResponse<GetEventsResult>;
     if (data.error?.message) {
       const range = parseLedgerRange(String(data.error.message));
       if (range && startLedger < range.oldest) {
@@ -109,26 +166,43 @@ async function fetchAnnouncementEvents(
     if (events.length < 1000) {
       hasMore = false;
     } else {
-      cursor = data.result?.cursor;
-      if (!cursor) hasMore = false;
+      const nextCursor = data.result?.cursor;
+      if (typeof nextCursor === 'string' && nextCursor.length > 0) {
+        cursor = nextCursor;
+      } else {
+        hasMore = false;
+      }
     }
   }
 
   return { announcements: all, nextLedger: latestLedger + 1 };
 }
 
-function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
-  if (!topics || topics.length < 3) return null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
-  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
+function parseAnnouncementEvent(event: unknown): Announcement | null {
+  if (!isRecord(event)) return null;
+
+  const topics = event.topic;
+  if (!Array.isArray(topics) || topics.length < 3) return null;
+  const schemeIdTopic = topics[1];
+  const stealthTopic = topics[2];
+  if (typeof schemeIdTopic !== 'string' || typeof stealthTopic !== 'string') {
+    return null;
+  }
+
+  const schemeIdScVal = xdr.ScVal.fromXDR(schemeIdTopic, 'base64');
   const schemeId = schemeIdScVal.u32();
 
-  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
+  const stealthScVal = xdr.ScVal.fromXDR(stealthTopic, 'base64');
   const stealthScAddress = stealthScVal.address();
   const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
 
-  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
+  const value = event.value;
+  if (typeof value !== 'string') return null;
+  const valueScVal = xdr.ScVal.fromXDR(value, 'base64');
   const valueVec = valueScVal.vec();
   if (!valueVec || valueVec.length < 3) return null;
 
@@ -144,7 +218,14 @@ function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | 
   return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
-self.onmessage = async (e: MessageEvent) => {
+interface ScannerWorkerScope {
+  onmessage: ((e: MessageEvent<ScannerWorkerRequest>) => void) | null;
+  postMessage: (message: ScannerWorkerResponse) => void;
+}
+
+const workerScope = self as unknown as ScannerWorkerScope;
+
+workerScope.onmessage = async (e: MessageEvent<ScannerWorkerRequest>) => {
   const {
     rpcUrl,
     announcerContract,
@@ -153,14 +234,6 @@ self.onmessage = async (e: MessageEvent) => {
     spendingScalar,
     strategy,
     startLedger,
-  }: {
-    rpcUrl: string;
-    announcerContract: string;
-    viewingKey: Uint8Array;
-    spendingPubKey: Uint8Array;
-    spendingScalar: bigint;
-    strategy?: ScanStrategy;
-    startLedger?: number;
   } = e.data;
 
   try {
@@ -176,14 +249,14 @@ self.onmessage = async (e: MessageEvent) => {
       spendingPubKey,
       spendingScalar,
     );
-    self.postMessage({ type: 'SUCCESS', results, nextLedger });
+    workerScope.postMessage({ type: 'SUCCESS', results, nextLedger });
   } catch (err) {
     const retentionGap = retentionGapFromError(err);
     if (retentionGap) {
-      self.postMessage({ type: 'RETENTION_GAP', ...retentionGap });
+      workerScope.postMessage({ type: 'RETENTION_GAP', ...retentionGap });
       return;
     }
-    self.postMessage({
+    workerScope.postMessage({
       type: 'ERROR',
       error: err instanceof Error ? err.message : 'Scan failed in worker',
     });

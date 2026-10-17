@@ -17,8 +17,8 @@ import {
   bytesToHex,
   signStellarTransaction,
   L,
+  type Announcement,
 } from '@wraith-protocol/sdk/chains/stellar';
-import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
 import { STELLAR_USDC } from '@/lib/stellar/assets';
 import {
@@ -59,7 +59,7 @@ function isPersistedRecipientVaultDeposit(value: unknown): value is PersistedRec
     isBoundedString(record.depositId, 64) &&
     isHex(record.depositId, 32) &&
     isBoundedString(record.recipient, 56) &&
-    /^G[A-Z2-7]{55}$/.test(record.recipient) &&
+    /^G[A-Z2-7]{55}$/.test(record.recipient) === true &&
     isBoundedString(record.ephemeralPubKey, 64) &&
     isHex(record.ephemeralPubKey, 32) &&
     isBoundedString(record.metadata, 512) &&
@@ -257,14 +257,16 @@ export async function fetchVaultDepositEvents(
     let hasMore = true;
 
     while (hasMore) {
+      const pagination: Record<string, unknown> = { limit: 1000 };
+      if (cursor) {
+        pagination.cursor = cursor;
+      }
+
       const params: Record<string, unknown> = {
         filters: [contractFilter],
-        pagination: { limit: 1000 },
+        pagination,
       };
-
-      if (cursor) {
-        (params.pagination as Record<string, unknown>).cursor = cursor;
-      } else {
+      if (!cursor) {
         params.startLedger = startLedger;
       }
 
@@ -275,7 +277,7 @@ export async function fetchVaultDepositEvents(
       });
 
       const data = await res.json();
-      const events = data.result?.events ?? [];
+      const events = (data.result?.events ?? []) as Record<string, unknown>[];
 
       for (const event of events) {
         try {
@@ -289,7 +291,7 @@ export async function fetchVaultDepositEvents(
       if (events.length < 1000) {
         hasMore = false;
       } else {
-        cursor = data.result?.cursor;
+        cursor = data.result?.cursor as string | undefined;
         if (!cursor) hasMore = false;
       }
     }
@@ -315,7 +317,7 @@ export interface VaultDepositEntry {
  * the storage entry on both the claim and refund exit paths.
  */
 export async function getVaultDeposit(
-  soroban: { simulateTransaction(transaction: unknown): Promise<any> },
+  soroban: { simulateTransaction(transaction: unknown): Promise<rpc.SimulateTransactionResponse> },
   readAccount: Account,
   networkPassphrase: string,
   vaultContractId: string,
@@ -374,7 +376,7 @@ function describeVaultAsset(
 
 /** Formats a raw i128 vault amount into a human decimal string. */
 export function formatVaultAmount(amount: bigint, decimals: number): string {
-  const negative = amount < 0n;
+  const negative = amount < 0n || amount === 0n;
   const abs = negative ? -amount : amount;
   const divisor = 10n ** BigInt(decimals);
   const whole = abs / divisor;
@@ -392,285 +394,4 @@ export interface ClaimableVaultDeposit {
   assetDecimals: number;
   unlockLedger: number;
   refundAfter: number;
-  isUnlocked: boolean;
-  isRefundable: boolean;
-  stealthPrivateScalar: bigint;
-  stealthPubKeyBytes: Uint8Array;
-}
-
-type VaultClaimReadServer = {
-  getLatestLedger(): Promise<{ sequence: number }>;
-  getAccount(address: string): Promise<Account>;
-  simulateTransaction(transaction: unknown): Promise<any>;
-};
-
-function persistedRecordToAnnouncement(record: PersistedRecipientVaultDeposit): Announcement {
-  return {
-    schemeId: VAULT_ANNOUNCE_SCHEME_ID,
-    stealthAddress: record.recipient,
-    caller: record.recipient,
-    ephemeralPubKey: record.ephemeralPubKey,
-    metadata: record.metadata,
-  };
-}
-
-/**
- * Discovers deposits claimable by the connected recipient. Public match data
- * is persisted so active deposits remain discoverable after their announcement
- * and deposit events leave the RPC retention window. Every candidate is
- * confirmed with `get_deposit`; claimed/refunded entries are removed from the
- * cache when the contract no longer returns them.
- */
-export async function loadClaimableVaultDeposits(params: {
-  vaultContractId: string;
-  sourceAddress: string;
-  viewingKey: Uint8Array;
-  spendingPubKey: Uint8Array;
-  spendingScalar: bigint;
-  rpcUrl?: string;
-  networkPassphrase?: string;
-  fetchAnnouncementsFn?: () => Promise<Announcement[]>;
-  fetchDepositEventsFn?: () => Promise<VaultDepositEvent[]>;
-  server?: VaultClaimReadServer;
-  storage?: VaultStorage | null;
-}): Promise<{ deposits: ClaimableVaultDeposit[]; currentLedger: number }> {
-  const {
-    vaultContractId,
-    sourceAddress,
-    viewingKey,
-    spendingPubKey,
-    spendingScalar,
-    rpcUrl = STELLAR_NETWORK.rpcUrl,
-    networkPassphrase = STELLAR_NETWORK.networkPassphrase,
-    fetchAnnouncementsFn = () => fetchAnnouncements('stellar', rpcUrl),
-    fetchDepositEventsFn = () => fetchVaultDepositEvents(rpcUrl, vaultContractId),
-    server,
-    storage = browserStorage(),
-  } = params;
-
-  const soroban = server ?? new rpc.Server(rpcUrl);
-  const persisted = storage
-    ? loadPersistedRecipientVaultDeposits(
-        storage,
-        sourceAddress,
-        vaultContractId,
-        networkPassphrase,
-      )
-    : [];
-
-  const [announcements, depositEvents, latestLedger, account] = await Promise.all([
-    fetchAnnouncementsFn(),
-    fetchDepositEventsFn(),
-    soroban.getLatestLedger(),
-    soroban.getAccount(sourceAddress),
-  ]);
-
-  const currentLedger = latestLedger.sequence;
-  const matches = scanVaultAnnouncements(
-    [...announcements, ...persisted.map(persistedRecordToAnnouncement)],
-    viewingKey,
-    spendingPubKey,
-    spendingScalar,
-  );
-
-  const matchByAddress = new Map(matches.map((m) => [m.stealthAddress, m]));
-  const persistedById = new Map(persisted.map((record) => [record.depositId, record]));
-  const candidateIds = new Set([
-    ...depositEvents.map((event) => event.depositId),
-    ...persisted.map((record) => record.depositId),
-  ]);
-  const deposits: ClaimableVaultDeposit[] = [];
-
-  for (const depositId of candidateIds) {
-    const readAccount = new Account(account.accountId(), account.sequenceNumber());
-    let entry: VaultDepositEntry | null;
-    try {
-      entry = await getVaultDeposit(
-        soroban,
-        readAccount,
-        networkPassphrase,
-        vaultContractId,
-        depositId,
-      );
-    } catch {
-      continue;
-    }
-    if (!entry) {
-      persistedById.delete(depositId);
-      continue;
-    }
-
-    const match = matchByAddress.get(entry.recipient);
-    if (!match) continue;
-
-    persistedById.set(depositId, {
-      depositId,
-      recipient: entry.recipient,
-      ephemeralPubKey: match.ephemeralPubKey,
-      metadata: match.metadata,
-      discoveredAt: persistedById.get(depositId)?.discoveredAt ?? Date.now(),
-    });
-
-    const { label, decimals } = describeVaultAsset(entry.asset, networkPassphrase);
-
-    deposits.push({
-      depositId,
-      recipient: entry.recipient,
-      sender: entry.sender,
-      amount: entry.amount,
-      assetLabel: label,
-      assetDecimals: decimals,
-      unlockLedger: entry.unlockLedger,
-      refundAfter: entry.refundAfter,
-      isUnlocked: currentLedger >= entry.unlockLedger,
-      isRefundable: currentLedger >= entry.refundAfter,
-      stealthPrivateScalar: match.stealthPrivateScalar,
-      stealthPubKeyBytes: match.stealthPubKeyBytes,
-    });
-  }
-
-  if (storage) {
-    savePersistedRecipientVaultDeposits(
-      storage,
-      sourceAddress,
-      vaultContractId,
-      networkPassphrase,
-      Array.from(persistedById.values()),
-    );
-  }
-
-  return { deposits, currentLedger };
-}
-
-export interface VaultClaimResult {
-  txHash: string;
-}
-
-/**
- * Polls until the submitted claim transaction reaches a terminal on-chain
- * status. Resolves only on `SUCCESS`; a timeout (still `NOT_FOUND` after all
- * attempts) is reported as pending, not success — the transaction may yet
- * land, but we cannot confirm that here.
- */
-export async function awaitVaultClaimConfirmation(
-  soroban: Pick<rpc.Server, 'getTransaction'>,
-  txHash: string,
-  opts: { maxAttempts?: number; delayMs?: number } = {},
-): Promise<void> {
-  const { maxAttempts = 30, delayMs = 1000 } = opts;
-
-  let result = await soroban.getTransaction(txHash);
-  let attempts = 1;
-
-  while (result.status === 'NOT_FOUND' && attempts < maxAttempts) {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    result = await soroban.getTransaction(txHash);
-    attempts++;
-  }
-
-  if (result.status === 'SUCCESS') return;
-
-  if (result.status === 'FAILED') {
-    throw new Error(
-      'Claim transaction failed on-chain — it may have already been claimed or refunded.',
-    );
-  }
-
-  throw new Error(
-    `Claim transaction ${txHash} was submitted but has not confirmed yet — check its status on Stellar Expert before retrying to avoid a duplicate claim attempt.`,
-  );
-}
-
-/**
- * Builds, authorizes, and submits a real `claim` invocation. The connected
- * wallet pays the fee as the transaction source; the recipient's derived
- * stealth key separately authorizes the `recipient.require_auth()` the
- * contract requires, via a signed Soroban authorization entry.
- */
-export async function submitVaultClaim(params: {
-  vaultContractId: string;
-  sourceAddress: string;
-  deposit: Pick<
-    ClaimableVaultDeposit,
-    'depositId' | 'recipient' | 'stealthPrivateScalar' | 'stealthPubKeyBytes'
-  >;
-  signWalletTransaction: (xdr: string) => Promise<string>;
-  rpcUrl?: string;
-  networkPassphrase?: string;
-}): Promise<VaultClaimResult> {
-  const {
-    vaultContractId,
-    sourceAddress,
-    deposit,
-    signWalletTransaction,
-    rpcUrl = STELLAR_NETWORK.rpcUrl,
-    networkPassphrase = STELLAR_NETWORK.networkPassphrase,
-  } = params;
-
-  const soroban = new rpc.Server(rpcUrl);
-  const accountResponse = await soroban.getAccount(sourceAddress);
-  const sourceAccount = new Account(accountResponse.accountId(), accountResponse.sequenceNumber());
-
-  const contract = new Contract(vaultContractId);
-  const tx = new TransactionBuilder(sourceAccount, { fee: '10000', networkPassphrase })
-    .addOperation(
-      contract.call(
-        'claim',
-        xdr.ScVal.scvBytes(Buffer.from(hexToBytes(deposit.depositId))),
-        new Address(deposit.recipient).toScVal(),
-      ),
-    )
-    .setTimeout(30)
-    .build();
-
-  const simulation = await soroban.simulateTransaction(tx);
-  if ('error' in simulation) {
-    throw new Error(decodeVaultError(simulation.error));
-  }
-  if (!simulation.result) {
-    throw new Error('Simulation returned no result');
-  }
-
-  const latestLedger = await soroban.getLatestLedger();
-  const validUntilLedgerSeq = latestLedger.sequence + 60;
-
-  simulation.result.auth = await Promise.all(
-    simulation.result.auth.map(async (entry) => {
-      const credentials = entry.credentials();
-      if (credentials.switch().name !== 'sorobanCredentialsAddress') return entry;
-
-      const entryAddress = Address.fromScAddress(credentials.address().address()).toString();
-      if (entryAddress !== deposit.recipient) return entry;
-
-      return authorizeEntry(
-        entry,
-        async (preimage) => {
-          const payloadHash = sha256(preimage.toXDR());
-          const signature = signStellarTransaction(
-            payloadHash,
-            deposit.stealthPrivateScalar,
-            deposit.stealthPubKeyBytes,
-          );
-          return { signature: Buffer.from(signature), publicKey: deposit.recipient };
-        },
-        validUntilLedgerSeq,
-        networkPassphrase,
-      );
-    }),
-  );
-
-  const assembled = rpc.assembleTransaction(tx, simulation).build();
-  const signedXdr = await signWalletTransaction(assembled.toXDR());
-  const response = await soroban.sendTransaction(
-    TransactionBuilder.fromXDR(signedXdr, networkPassphrase),
-  );
-
-  if (response.status === 'ERROR') {
-    throw new Error('Claim transaction submission failed');
-  }
-
-  const txHash = response.hash;
-  await awaitVaultClaimConfirmation(soroban, txHash);
-
-  return { txHash };
 }

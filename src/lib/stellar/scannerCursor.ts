@@ -3,7 +3,10 @@ export interface RetentionGap {
   oldestAvailableLedger: number;
 }
 
+export type RetentionErrorCode = 'WRAITH/NETWORK/RETENTION_EXCEEDED';
+
 export class StellarRetentionExceededError extends Error implements RetentionGap {
+  readonly code: RetentionErrorCode = 'WRAITH/NETWORK/RETENTION_EXCEEDED';
   readonly requestedLedger: number;
   readonly oldestAvailableLedger: number;
 
@@ -20,9 +23,11 @@ export class StellarRetentionExceededError extends Error implements RetentionGap
 interface RetentionErrorLike {
   name?: unknown;
   code?: unknown;
-  requestedLedger?: unknown;
-  oldestAvailableLedger?: unknown;
+  requestedLedger?: number;
+  oldestAvailableLedger?: number;
 }
+
+const RETENTION_ERROR_CODE: RetentionErrorCode = 'WRAITH/NETWORK/RETENTION_EXCEEDED';
 
 const CURSOR_PREFIX = 'wraith-stellar-scan-cursor';
 
@@ -47,7 +52,7 @@ export function retentionGapFromError(error: unknown): RetentionGap | undefined 
   const candidate = error as RetentionErrorLike;
   const isRetentionError =
     candidate.name === 'RetentionExceededError' ||
-    candidate.code === 'WRAITH/NETWORK/RETENTION_EXCEEDED';
+    candidate.code === RETENTION_ERROR_CODE;
   if (!isRetentionError) return undefined;
 
   const requestedLedger = Number(candidate.requestedLedger);

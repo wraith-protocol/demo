@@ -1,4 +1,3 @@
-// @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -44,9 +43,36 @@ import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 import { createStellarQrUri } from '@/utils/qr';
 import { readScanCursor, writeScanCursor, type RetentionGap } from '@/lib/stellar/scannerCursor';
+import type { StellarAssetKey } from '@/lib/stellar/assets';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
+
+interface ScanWorkerMessage {
+  type: 'SUCCESS' | 'RETENTION_GAP' | 'ERROR';
+  results?: MatchedAnnouncement[];
+  nextLedger?: number;
+  requestedLedger?: number;
+  oldestAvailableLedger?: number;
+  error?: string;
+}
+
+interface SorobanServerMock {
+  getAccount(address: string): Promise<{ accountId(): string; sequenceNumber(): string }>;
+  simulateTransaction(tx: unknown): Promise<unknown>;
+  sendTransaction(tx: unknown): Promise<{ status: string; hash: string }>;
+  getTransaction(hash: string): Promise<{ status: string }>;
+}
+
+type WindowWithMocks = Window & {
+  scanAnnouncementsMock?: (
+    announcements: Announcement[],
+    viewingKey: Uint8Array,
+    spendingPubKey: Uint8Array,
+    spendingScalar: bigint,
+  ) => MatchedAnnouncement[];
+  sorobanServerMock?: SorobanServerMock;
+};
 
 // Fetches announcements on the main thread. Only used to support the
 // `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
@@ -136,7 +162,7 @@ async function fetchAnnouncementEvents(
 }
 
 function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
+  const topics = event.topic as string[] | undefined;
   if (!topics || topics.length < 3) return null;
 
   const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
@@ -172,6 +198,7 @@ function StellarMatchCardContainer({
   onTagClick,
   showPrivacyWarning,
   onDismissPrivacyWarning,
+  onBalanceFetched,
 }: {
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
@@ -182,6 +209,7 @@ function StellarMatchCardContainer({
   onTagClick: (tag: string) => void;
   showPrivacyWarning: boolean;
   onDismissPrivacyWarning: () => void;
+  onBalanceFetched: (addr: string, bal: string) => void;
   isSelected?: boolean;
   onToggleSelect?: () => void;
 }) {
@@ -201,6 +229,7 @@ function StellarMatchCardContainer({
   const [showKey, setShowKey] = useState(false);
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [loadingBal, setLoadingBal] = useState(true);
 
   const { upsert } = useActivity();
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
@@ -208,6 +237,7 @@ function StellarMatchCardContainer({
   useEffect(() => {
     (async () => {
       try {
+        setLoadingBal(true);
         const res = await fetchWithRetry(
           `${STELLAR_NETWORK.horizonUrl}/accounts/${match.stealthAddress}`,
           {},
@@ -218,7 +248,7 @@ function StellarMatchCardContainer({
           setBalances({ XLM: '0' });
           return;
         }
-        const data = await res.json();
+        const data = (await res.json()) as { balances?: Array<{ asset_type: string; balance: string }> };
         const parsed = parseAssetBalances(data.balances || []);
         setBalances(parsed);
       } catch {
@@ -226,6 +256,7 @@ function StellarMatchCardContainer({
         setBalances({ XLM: '0' });
       } finally {
         setBalanceState('loaded');
+        setLoadingBal(false);
       }
     })();
   }, [match.stealthAddress]);
@@ -236,7 +267,7 @@ function StellarMatchCardContainer({
     onBalanceFetched(match.stealthAddress, bal);
   }, [balances, match.stealthAddress, onBalanceFetched]);
 
-  const hasAnyBalance = Object.values(balances).some((b) => parseFloat(b) > 0);
+  const balance = balances['XLM'];
   const withdrawAssetInfo = getAssetByKey(withdrawAssetKey);
   const withdrawBalance = parseFloat(balances[withdrawAssetKey] || '0');
 
@@ -265,14 +296,18 @@ function StellarMatchCardContainer({
       );
       setRetryStatus('');
       if (!res.ok) throw new Error('Account not found');
-      const account = await res.json();
+      const account = (await res.json()) as {
+        sequence: string;
+        balances?: Array<{ asset_type: string; balance: string }>;
+        subentry_count?: number;
+      };
 
       if (withdrawBalance <= 0) throw new Error(`No ${withdrawAssetKey} balance`);
 
       const sourceAccount = new Account(match.stealthAddress, account.sequence);
 
       if (withdrawAssetKey === 'XLM') {
-        const xlmBal = account.balances?.find(
+        const xlmBal = (account.balances as Array<{ asset_type: string; balance: string }>)?.find(
           (b: { asset_type: string }) => b.asset_type === 'native',
         );
         if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
@@ -333,7 +368,11 @@ function StellarMatchCardContainer({
           body: `tx=${signedXdrStr}`,
         });
 
-        const submitData = await submitRes.json();
+        const submitData = (await submitRes.json()) as {
+          hash: string;
+          title?: string;
+          extras?: { result_codes?: { transaction?: string } };
+        };
         if (!submitRes.ok) {
           throw new Error(
             submitData.extras?.result_codes?.transaction ||
@@ -384,7 +423,11 @@ function StellarMatchCardContainer({
           body: `tx=${signedXdrStr}`,
         });
 
-        const submitData = await submitRes.json();
+        const submitData = (await submitRes.json()) as {
+          hash: string;
+          title?: string;
+          extras?: { result_codes?: { transaction?: string } };
+        };
         if (!submitRes.ok) {
           throw new Error(
             submitData.extras?.result_codes?.transaction ||
@@ -398,7 +441,6 @@ function StellarMatchCardContainer({
       trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
       setError(err instanceof Error ? err.message : 'Withdraw failed');
       // In a real robust implementation we'd check if we submitted and mark failed
       setRetryStatus('');
@@ -440,9 +482,12 @@ function StellarMatchCardContainer({
       );
       setRetryStatus('');
       if (!stealthRes.ok) throw new Error('Stealth account not found');
-      const stealthAccount = await stealthRes.json();
+      const stealthAccount = (await stealthRes.json()) as {
+        sequence: string;
+        balances?: Array<{ asset_type: string; balance: string }>;
+      };
 
-      const xlmBal = stealthAccount.balances?.find(
+      const xlmBal = (stealthAccount.balances as Array<{ asset_type: string; balance: string }>)?.find(
         (b: { asset_type: string }) => b.asset_type === 'native',
       );
       if (!xlmBal || parseFloat(xlmBal.balance) === 0) throw new Error('No XLM balance');
@@ -509,7 +554,11 @@ function StellarMatchCardContainer({
         body: `tx=${encodeURIComponent(signedFeeBumpXdr)}`,
       });
 
-      const submitData = await submitRes.json();
+      const submitData = (await submitRes.json()) as {
+        hash: string;
+        title?: string;
+        extras?: { result_codes?: { transaction?: string } };
+      };
       if (!submitRes.ok) {
         throw new Error(
           submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
@@ -668,6 +717,7 @@ function StellarMatchCardContainer({
         onTagClick={onTagClick}
         showPrivacyWarning={showPrivacyWarning}
         onDismissPrivacyWarning={onDismissPrivacyWarning}
+        onBalanceFetched={onBalanceFetched}
       />
       {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
     </>
@@ -770,7 +820,7 @@ export function StellarReceive() {
   const [vaultBusy, setVaultBusy] = useState<'idle' | 'unlocking' | 'saving' | 'locking'>('idle');
   const [vaultSupported, setVaultSupported] = useState(false);
   const vaultRef = useRef<KeyVault | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
     labels,
@@ -828,8 +878,8 @@ export function StellarReceive() {
     (async () => {
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban =
-          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const soroban: InstanceType<typeof rpcMod.Server> =
+          (window as WindowWithMocks).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
         const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
         const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
@@ -1087,8 +1137,8 @@ export function StellarReceive() {
     const onRetryReg = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
     try {
       const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-      const soroban =
-        (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+      const soroban: InstanceType<typeof rpcMod.Server> =
+        (window as WindowWithMocks).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
       const accountResponse = (await withRetry(() => soroban.getAccount(address), {
@@ -1197,7 +1247,7 @@ export function StellarReceive() {
       // Test hook: e2e/fixtures.ts injects a mock scan function on `window` so
       // specs can control match results without real crypto. It runs on the
       // main thread since a Worker doesn't share `window` with the page.
-      const mockScan = (window as any).scanAnnouncementsMock;
+      const mockScan = (window as WindowWithMocks).scanAnnouncementsMock;
       if (mockScan) {
         try {
           const announcements = await fetchAnnouncementEvents(
@@ -1242,7 +1292,7 @@ export function StellarReceive() {
           requestedLedger,
           oldestAvailableLedger,
           error: workerError,
-        } = event.data ?? {};
+        } = (event.data ?? {}) as ScanWorkerMessage;
         if (type === 'SUCCESS') {
           setMatched(results ?? []);
           setHasScanned(true);
@@ -1252,7 +1302,7 @@ export function StellarReceive() {
           }
           trackEvent('scan_triggered');
         } else if (type === 'RETENTION_GAP') {
-          setRetentionGap({ requestedLedger, oldestAvailableLedger });
+          setRetentionGap({ requestedLedger, oldestAvailableLedger } as RetentionGap);
         } else {
           setError(workerError || t('common.scanFailed'));
         }
@@ -1549,6 +1599,7 @@ export function StellarReceive() {
                           onTagClick={() => {}}
                           showPrivacyWarning={false}
                           onDismissPrivacyWarning={() => {}}
+                          onBalanceFetched={handleBalanceFetched}
                         />
                       </div>
                     );

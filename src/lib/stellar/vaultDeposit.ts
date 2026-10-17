@@ -23,8 +23,8 @@ const STORAGE_PREFIX = 'wraith:stellar-vault-deposits:v1';
 export type VaultDepositProgress =
   | { status: 'simulating' }
   | { status: 'signing'; fee: string }
-  | { status: 'pending'; txHash: string }
-  | { status: 'success'; txHash: string; depositId: string };
+  | { status: 'pending'; tyHash: string }
+  | { status: 'success'; tyHash: string; depositId: string };
 
 export interface SubmitVaultDepositParams {
   sender: string;
@@ -38,7 +38,7 @@ export interface SubmitVaultDepositParams {
 
 export interface PersistedVaultDeposit {
   depositId: string;
-  txHash: string;
+  tyHash: string;
   sender: string;
   recipient: string;
   ephemeralPubKey: string;
@@ -49,15 +49,33 @@ export interface PersistedVaultDeposit {
   createdAt: number;
 }
 
+type SimulationResult = {
+  minResourceFee?: string | number;
+  error?: unknown;
+  [key: string]: unknown;
+};
+
+type SubmitResult = {
+  status: string;
+  hash?: string;
+  errorResult?: { toString?(): string };
+  [key: string]: unknown;
+};
+
+type PollResult = {
+  status: string;
+  returnValue?: unknown;
+  [key: string]: unknown;
+};
+
 type VaultServer = {
   getAccount(address: string): Promise<Account>;
-  simulateTransaction(transaction: unknown): Promise<any>;
-  sendTransaction(transaction: unknown): Promise<any>;
-  pollTransaction(hash: string, options?: { attempts?: number }): Promise<any>;
-  assembleTransaction?: (
-    transaction: unknown,
-    simulation: unknown,
-  ) => { build(): { toXDR(): string } } | Promise<{ build(): { toXDR(): string } }>;
+  simulateTransaction(transaction: unknown): Promise<SimulationResult>;
+  sendTransaction(transaction: unknown): Promise<SubmitResult>;
+  pollTransaction(tyHash: string, options?: { attempts?: number }): Promise<PollResult>;
+  assembleTransaction?: (transaction: unknown, simulation: unknown) =>
+    | Record<string, unknown>
+    | Promise<Record<string, unknown>>;
 };
 
 export function getVaultContractId(): string {
@@ -154,7 +172,7 @@ export async function submitVaultDeposit(
 
   params.onProgress?.({ status: 'simulating' });
   const simulation = await server.simulateTransaction(transaction);
-  if ('error' in simulation) {
+  if (simulation.error !== undefined && simulation.error !== null) {
     throw new Error(formatSimulationError(simulation.error));
   }
 
@@ -162,7 +180,7 @@ export async function submitVaultDeposit(
   params.onProgress?.({ status: 'signing', fee });
   const assembled = server.assembleTransaction
     ? await server.assembleTransaction(transaction, simulation)
-    : rpc.assembleTransaction(transaction, simulation);
+    : rpc.assembleTransaction(transaction, simulation as rpc.SimulateTransactionResponse);
   const signedXdr = await params.signTransaction(assembled.build().toXDR());
   const signedTransaction = TransactionBuilder.fromXDR(
     signedXdr,
@@ -188,7 +206,7 @@ export async function submitVaultDeposit(
   const depositId = normalizeDepositId(result.returnValue);
   const persisted: PersistedVaultDeposit = {
     depositId,
-    txHash: submitted.hash,
+    tyHash: submitted.hash,
     sender: params.sender,
     recipient: stealth.stealthAddress,
     ephemeralPubKey: bytesToHex(stealth.ephemeralPubKey),
