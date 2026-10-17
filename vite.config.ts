@@ -83,8 +83,8 @@ export default defineConfig({
       injectManifest: {
         // Precache all built assets (JS, CSS, HTML, icons, fonts)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Exclude the stellar-notification-sw (it's now merged into app-sw)
-        globIgnores: ['**/stellar-notification-sw*', '**/app-sw*'],
+        // app-sw.ts is the service worker itself, not a prefetchable asset
+        globIgnores: ['**/app-sw*'],
         // Raise file size limit — Stellar SDK + wagmi chunks exceed 2 MiB
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
       },

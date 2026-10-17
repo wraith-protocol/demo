@@ -63,13 +63,25 @@ export function retentionGapFromError(error: unknown): RetentionGap | undefined 
   return { requestedLedger, oldestAvailableLedger };
 }
 
+/**
+ * Reads the ledger range Soroban reports when a request falls outside its
+ * retention window, e.g. `startLedger must be within the ledger range: 250 - 500`.
+ */
+export function parseLedgerWindow(message: string): { oldest: number; latest: number } | undefined {
+  const match = message.match(/range:\s*(\d+)\s*-\s*(\d+)/i);
+  if (!match) return undefined;
+  const oldest = Number(match[1]);
+  const latest = Number(match[2]);
+  if (!Number.isSafeInteger(oldest) || !Number.isSafeInteger(latest)) return undefined;
+  return { oldest, latest };
+}
+
 export function retentionErrorFromRpcMessage(
   requestedLedger: number,
   message: string,
 ): StellarRetentionExceededError | undefined {
-  const match = message.match(/range:\s*(\d+)\s*-\s*(\d+)/i);
-  if (!match) return undefined;
-  const oldestAvailableLedger = Number(match[1]);
-  if (requestedLedger >= oldestAvailableLedger) return undefined;
-  return new StellarRetentionExceededError(requestedLedger, oldestAvailableLedger);
+  const window = parseLedgerWindow(message);
+  if (!window) return undefined;
+  if (requestedLedger >= window.oldest) return undefined;
+  return new StellarRetentionExceededError(requestedLedger, window.oldest);
 }

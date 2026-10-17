@@ -32,9 +32,16 @@ test('recovers an expired Stellar scanner cursor without a silent jump', async (
     const { default: ScannerWorker } =
       await import('/src/workers/stellar-scanner.worker.ts?worker');
     const worker = new ScannerWorker();
+    // The worker reports per-page progress before its terminal message, so wait
+    // for the terminal one (SUCCESS / ERROR / RETENTION_GAP).
     const scan = (startLedger: number) =>
       new Promise<Record<string, unknown>>((resolve, reject) => {
-        worker.onmessage = (event) => resolve(event.data);
+        worker.onmessage = (event) => {
+          const type = (event.data as { type?: string })?.type;
+          if (type === 'SUCCESS' || type === 'ERROR' || type === 'RETENTION_GAP') {
+            resolve(event.data);
+          }
+        };
         worker.onerror = (event) => reject(new Error(event.message));
         worker.postMessage({
           rpcUrl: 'https://soroban-testnet.stellar.org',
@@ -64,6 +71,7 @@ test('recovers an expired Stellar scanner cursor without a silent jump', async (
     oldestAvailableLedger: 250,
   });
   expect(result.cursorAfterError).toBe('100');
-  expect(result.recovered).toEqual({ type: 'SUCCESS', results: [], nextLedger: 501 });
+  // `recovered` also carries the committed boundary and page/truncation stats.
+  expect(result.recovered).toMatchObject({ type: 'SUCCESS', results: [], nextLedger: 501 });
   expect(result.finalCursor).toBe('501');
 });

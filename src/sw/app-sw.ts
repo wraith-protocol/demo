@@ -7,11 +7,8 @@ import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { CACHE_PREFIX, CACHE_VERSION_SUFFIX, cacheName, purgeObsoleteCaches } from '../lib/swCache';
-import {
-  retentionErrorFromRpcMessage,
-  retentionGapFromError,
-  type RetentionGap,
-} from '../lib/stellar/scannerCursor';
+import { fetchEventPages } from '../lib/stellar/rpcEvents';
+import { retentionGapFromError, type RetentionGap } from '../lib/stellar/scannerCursor';
 import {
   deliverPushNotification,
   type NotificationPresentation,
@@ -179,44 +176,12 @@ async function updateLastScannedLedger(
 }
 
 // ── Stellar RPC helpers ────────────────────────────────────────────────────────
-
-async function fetchLatestLedger(): Promise<number> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }),
-  });
-  const data = await response.json();
-  return data.result?.sequence || 0;
-}
-
-async function fetchAnnouncementEvents(
-  startLedger: number,
-  contractId: string = ANNOUNCER_CONTRACT,
-): Promise<{ events: unknown[]; latestLedger: number }> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'getEvents',
-      params: {
-        startLedger,
-        filters: [{ type: 'contract', contractIds: [contractId] }],
-        pagination: { limit: 1000 },
-      },
-    }),
-  });
-  const data = await response.json();
-  if (data.error?.message) {
-    const retentionError = retentionErrorFromRpcMessage(startLedger, String(data.error.message));
-    throw retentionError ?? new Error(String(data.error.message));
-  }
-  const events = data.result?.events || [];
-  const latestLedger = await fetchLatestLedger();
-  return { events, latestLedger };
-}
+//
+// Event reads go through the shared, paginated implementation in
+// src/lib/stellar/rpcEvents.ts. It follows the RPC cursor to the end of the
+// committed boundary, maps out-of-range requests to retention gaps, and reports
+// progress per page so a sync that is killed mid-way restarts at the first
+// ledger it has not announced yet instead of at the tip.
 
 async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise<void> {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -228,14 +193,23 @@ async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise
 async function scanStoredKey(
   db: IDBDatabase,
   storedKey: StoredViewingKey,
-  startLedger: number,
+  startLedger: number | undefined,
 ): Promise<void> {
-  const { events, latestLedger } = await fetchAnnouncementEvents(startLedger);
+  const { events } = await fetchEventPages({
+    rpcUrl: STELLAR_RPC_URL,
+    contractId: ANNOUNCER_CONTRACT,
+    // `undefined` lets the module clamp a first scan to the retention window
+    // instead of asking for a ledger the RPC has already dropped.
+    startLedger,
+    onPage: async (page) => {
+      await updateLastScannedLedger(db, storedKey.publicKey, page.committedLedger + 1);
+    },
+  });
+
   if (events.length > 0) {
-    console.log(`Found ${events.length} events for ${storedKey.publicKey}`);
+    console.log(`[app-sw] Found ${events.length} events for ${storedKey.publicKey}`);
     // TODO: decrypt and scan with Wraith SDK when bundled in SW context
   }
-  await updateLastScannedLedger(db, storedKey.publicKey, latestLedger + 1);
 }
 
 // ── Background sync handler ────────────────────────────────────────────────────
@@ -252,17 +226,14 @@ async function handleSync(): Promise<void> {
     });
 
     for (const storedKey of allKeys) {
-      const startLedger = storedKey.lastScannedLedger || 1;
       try {
-        await scanStoredKey(db, storedKey, startLedger);
+        await scanStoredKey(db, storedKey, storedKey.lastScannedLedger);
       } catch (error) {
         const gap = retentionGapFromError(error);
         if (!gap) throw error;
-        if (storedKey.lastScannedLedger === undefined) {
-          await scanStoredKey(db, storedKey, gap.oldestAvailableLedger);
-        } else {
-          await notifyRetentionGap(storedKey.publicKey, gap);
-        }
+        // A stored cursor that fell out of the window is never advanced
+        // silently: surface the gap so the page can offer a recovery scan.
+        await notifyRetentionGap(storedKey.publicKey, gap);
       }
     }
 

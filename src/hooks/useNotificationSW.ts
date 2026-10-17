@@ -6,6 +6,7 @@ import {
   testRelayConnectivity,
   DEFAULT_RELAY_URL,
 } from '@/lib/pushRelay';
+import { getAppServiceWorkerRegistration } from '@/lib/swRegistration';
 
 interface SWMessage {
   type: string;
@@ -99,10 +100,10 @@ export function useNotificationSW(): UseNotificationSWReturn {
 
     async function registerSW() {
       try {
-        const registration = await navigator.serviceWorker.register(
-          new URL('../sw/stellar-notification-sw.ts', import.meta.url),
-          { type: 'module' },
-        );
+        // Reuse the unified app worker instead of registering a second script at
+        // the same scope, which would replace the PWA registration.
+        const registration = await getAppServiceWorkerRegistration();
+        if (!registration) throw new Error('App service worker is not registered');
 
         if (cancelled) return;
 
