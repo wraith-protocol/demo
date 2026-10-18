@@ -102,7 +102,7 @@ describe('workerProtocol', () => {
         const result = validateMainThreadMessage(msg);
         expect(result.valid).toBe(false);
         if (!result.valid) {
-          expect(result.reason).toContain('Unknown message type');
+          expect(result.reason).toContain('extra fields');
         }
       });
     });
@@ -193,6 +193,23 @@ describe('workerProtocol', () => {
           expect(result.reason).toContain('encryptedViewingKey');
         }
       });
+
+      it('rejects REGISTER_VIEWING_KEY with extra fields', () => {
+        const msg = {
+          type: 'REGISTER_VIEWING_KEY',
+          requestId: 'req-1',
+          publicKey: 'GABC123...XYZ',
+          encryptedViewingKey: 'encrypted-key-1',
+          encryptedSpendingPubKey: 'encrypted-key-2',
+          encryptedSpendingScalar: 'encrypted-key-3',
+          extra: 'field',
+        };
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
+        }
+      });
     });
 
     describe('UNREGISTER_VIEWING_KEY', () => {
@@ -208,6 +225,20 @@ describe('workerProtocol', () => {
           expect(result.data).toEqual(msg);
         }
       });
+
+      it('rejects UNREGISTER_VIEWING_KEY with extra fields', () => {
+        const msg = {
+          type: 'UNREGISTER_VIEWING_KEY',
+          requestId: 'req-1',
+          publicKey: 'GABC123...XYZ',
+          extra: 'field',
+        };
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
+        }
+      });
     });
 
     describe('TRIGGER_SCAN', () => {
@@ -220,6 +251,19 @@ describe('workerProtocol', () => {
         expect(result.valid).toBe(true);
         if (result.valid) {
           expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects TRIGGER_SCAN with extra fields', () => {
+        const msg = {
+          type: 'TRIGGER_SCAN',
+          requestId: 'req-1',
+          extra: 'field',
+        };
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
         }
       });
     });
@@ -259,6 +303,27 @@ describe('workerProtocol', () => {
           expect(result.reason).toContain('subscription');
         }
       });
+
+      it('rejects REGISTER_PUSH_SUBSCRIPTION with extra fields', () => {
+        const msg = {
+          type: 'REGISTER_PUSH_SUBSCRIPTION',
+          requestId: 'req-1',
+          subscription: {
+            endpoint: 'https://push.example.com',
+            keys: {
+              p256dh: 'p256dh-key',
+              auth: 'auth-key',
+            },
+          },
+          metaAddressHash: 'hash123',
+          extra: 'field',
+        };
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
+        }
+      });
     });
 
     describe('UNREGISTER_PUSH_SUBSCRIPTION', () => {
@@ -278,6 +343,26 @@ describe('workerProtocol', () => {
         expect(result.valid).toBe(true);
         if (result.valid) {
           expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects UNREGISTER_PUSH_SUBSCRIPTION with extra fields', () => {
+        const msg = {
+          type: 'UNREGISTER_PUSH_SUBSCRIPTION',
+          requestId: 'req-1',
+          subscription: {
+            endpoint: 'https://push.example.com',
+            keys: {
+              p256dh: 'p256dh-key',
+              auth: 'auth-key',
+            },
+          },
+          extra: 'field',
+        };
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
         }
       });
     });
@@ -352,6 +437,19 @@ describe('workerProtocol', () => {
         expect(result.valid).toBe(true);
         if (result.valid) {
           expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects VIEWING_KEY_REGISTERED with extra fields', () => {
+        const msg = {
+          type: 'VIEWING_KEY_REGISTERED',
+          requestId: 'req-1',
+          extra: 'field',
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
         }
       });
     });
@@ -465,6 +563,51 @@ describe('workerProtocol', () => {
           expect(result.reason).toContain('payload');
         }
       });
+
+      it('rejects WRAITH_NOTIFICATION with extra fields', () => {
+        const msg = {
+          type: 'WRAITH_NOTIFICATION',
+          channel: 'wraith-notifications',
+          payload: {
+            version: 1,
+            id: 'notif-123',
+            title: 'Payment Received',
+            body: 'You received 10 XLM',
+            url: '/notifications',
+          },
+          extra: 'field',
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
+        }
+      });
+    });
+
+    describe('OFFLINE_QUEUE_FLUSH', () => {
+      it('validates correct OFFLINE_QUEUE_FLUSH message', () => {
+        const msg: WorkerMessage = {
+          type: 'OFFLINE_QUEUE_FLUSH',
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(true);
+        if (result.valid) {
+          expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects OFFLINE_QUEUE_FLUSH with extra fields', () => {
+        const msg = {
+          type: 'OFFLINE_QUEUE_FLUSH',
+          extra: 'field',
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
+        }
+      });
     });
 
     describe('NAVIGATE_TO_MATCH', () => {
@@ -477,6 +620,19 @@ describe('workerProtocol', () => {
         expect(result.valid).toBe(true);
         if (result.valid) {
           expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects NAVIGATE_TO_MATCH with extra fields', () => {
+        const msg = {
+          type: 'NAVIGATE_TO_MATCH',
+          stealthAddress: 'GABC123...XYZ',
+          extra: 'field',
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain('extra fields');
         }
       });
     });

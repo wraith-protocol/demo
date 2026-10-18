@@ -264,9 +264,19 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
 
     switch (type) {
       case 'SKIP_WAITING':
+        if (Object.keys(msg).length !== 1) {
+          throw new Error('SKIP_WAITING message must not have extra fields');
+        }
         return { valid: true, data: { type: 'SKIP_WAITING' } };
 
       case 'RECOVER_SCAN_CURSOR': {
+        const allowedFields = ['type', 'requestId', 'publicKey', 'oldestAvailableLedger'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `RECOVER_SCAN_CURSOR message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
         const oldestAvailableLedger = assertInteger(
@@ -282,6 +292,20 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
       }
 
       case 'REGISTER_VIEWING_KEY': {
+        const allowedFields = [
+          'type',
+          'requestId',
+          'publicKey',
+          'encryptedViewingKey',
+          'encryptedSpendingPubKey',
+          'encryptedSpendingScalar',
+        ];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `REGISTER_VIEWING_KEY message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
         const encryptedViewingKey = assertString(
@@ -316,17 +340,36 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
       }
 
       case 'UNREGISTER_VIEWING_KEY': {
+        const allowedFields = ['type', 'requestId', 'publicKey'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `UNREGISTER_VIEWING_KEY message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
         return { valid: true, data: { type: 'UNREGISTER_VIEWING_KEY', requestId, publicKey } };
       }
 
       case 'TRIGGER_SCAN': {
+        const allowedFields = ['type', 'requestId'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(`TRIGGER_SCAN message has unexpected fields: ${extraFields.join(', ')}`);
+        }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'TRIGGER_SCAN', requestId } };
       }
 
       case 'REGISTER_PUSH_SUBSCRIPTION': {
+        const allowedFields = ['type', 'requestId', 'subscription', 'metaAddressHash', 'relayUrl'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `REGISTER_PUSH_SUBSCRIPTION message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const subscription = assertPushSubscription(msg.subscription);
         const metaAddressHash = assertString(msg.metaAddressHash, 'metaAddressHash', 128, true);
@@ -345,6 +388,13 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
       }
 
       case 'UNREGISTER_PUSH_SUBSCRIPTION': {
+        const allowedFields = ['type', 'requestId', 'subscription', 'metaAddressHash'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `UNREGISTER_PUSH_SUBSCRIPTION message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const subscription = assertPushSubscription(msg.subscription);
         const metaAddressHash =
@@ -383,38 +433,87 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
 
     switch (type) {
       case 'VIEWING_KEY_REGISTERED': {
+        const allowedFields = ['type', 'requestId'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `VIEWING_KEY_REGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'VIEWING_KEY_REGISTERED', requestId } };
       }
 
       case 'VIEWING_KEY_UNREGISTERED': {
+        const allowedFields = ['type', 'requestId'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `VIEWING_KEY_UNREGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'VIEWING_KEY_UNREGISTERED', requestId } };
       }
 
       case 'PUSH_SUBSCRIPTION_REGISTERED': {
+        const allowedFields = ['type', 'requestId'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `PUSH_SUBSCRIPTION_REGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'PUSH_SUBSCRIPTION_REGISTERED', requestId } };
       }
 
       case 'PUSH_SUBSCRIPTION_UNREGISTERED': {
+        const allowedFields = ['type', 'requestId'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `PUSH_SUBSCRIPTION_UNREGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'PUSH_SUBSCRIPTION_UNREGISTERED', requestId } };
       }
 
       case 'VIEWING_KEY_ERROR': {
+        const allowedFields = ['type', 'requestId', 'error'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `VIEWING_KEY_ERROR message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const error = assertString(msg.error, 'error', 512, true);
         return { valid: true, data: { type: 'VIEWING_KEY_ERROR', requestId, error } };
       }
 
       case 'PUSH_SUBSCRIPTION_ERROR': {
+        const allowedFields = ['type', 'requestId', 'error'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `PUSH_SUBSCRIPTION_ERROR message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const error = assertString(msg.error, 'error', 512, true);
         return { valid: true, data: { type: 'PUSH_SUBSCRIPTION_ERROR', requestId, error } };
       }
 
       case 'STELLAR_SCAN_RECOVERY_COMPLETE': {
+        const allowedFields = ['type', 'requestId', 'publicKey'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `STELLAR_SCAN_RECOVERY_COMPLETE message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const requestId = assertRequestId(msg.requestId);
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
         return {
@@ -424,6 +523,13 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
       }
 
       case 'STELLAR_SCAN_RETENTION_GAP': {
+        const allowedFields = ['type', 'publicKey', 'oldestAvailableLedger', 'lastScannedLedger'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `STELLAR_SCAN_RETENTION_GAP message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
         const oldestAvailableLedger = assertInteger(
           msg.oldestAvailableLedger,
@@ -447,9 +553,19 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
       }
 
       case 'OFFLINE_QUEUE_FLUSH':
+        if (Object.keys(msg).length !== 1) {
+          throw new Error('OFFLINE_QUEUE_FLUSH message must not have extra fields');
+        }
         return { valid: true, data: { type: 'OFFLINE_QUEUE_FLUSH' } };
 
       case 'WRAITH_NOTIFICATION': {
+        const allowedFields = ['type', 'channel', 'payload'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `WRAITH_NOTIFICATION message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const channel = assertString(msg.channel, 'channel', 64, true);
         if (channel !== 'wraith-notifications') {
           throw new Error('channel must be wraith-notifications');
@@ -459,6 +575,13 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
       }
 
       case 'NAVIGATE_TO_MATCH': {
+        const allowedFields = ['type', 'stealthAddress'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(
+            `NAVIGATE_TO_MATCH message has unexpected fields: ${extraFields.join(', ')}`,
+          );
+        }
         const stealthAddress = assertString(msg.stealthAddress, 'stealthAddress', 128, true);
         return { valid: true, data: { type: 'NAVIGATE_TO_MATCH', stealthAddress } };
       }
