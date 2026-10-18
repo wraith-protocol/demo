@@ -1,4 +1,4 @@
-# Offline queue and reconciliation policy (Wave 9, #184)
+# Offline queue, reconciliation, and submission idempotency (Wave 9, #184; Wave 10, #213)
 
 The PWA shell caches assets (see `src/sw/app-sw.ts`), but transaction and
 scanner work used to have no documented offline policy: a user who lost
@@ -8,6 +8,7 @@ This document is the policy. The implementation lives in:
 - `src/lib/offlineQueue.ts` — queue core: classification, validation, persistence
 - `src/lib/offlineReconcile.ts` — reconnect reconciliation engine
 - `src/stores/offlineQueueStore.ts` — persisted zustand store + explicit broadcast
+- `src/lib/submissionIdempotency.ts` — persistent operation IDs and serialized Stellar submission
 - `src/hooks/useOfflineReconcile.ts` — `online` / service-worker triggers
 - `src/components/OfflineQueuePanel.tsx` — review UI (Send page)
 - `src/components/OfflineBanner.tsx` — queue-aware connectivity banner
@@ -57,7 +58,26 @@ Captured at the source, while offline:
 The stealth-announcement scanner needs no queue: it resumes from the
 persisted `lastScannedLedger` checkpoint on every run.
 
-## 3. Reconcile on reconnect with clear conflict handling
+## 3. Reuse one operation ID for direct sends and queue retries
+
+Every Stellar payment intent receives an operation ID before it can be
+submitted. The ID travels with the queued intent and into the review URL.
+Before the first Horizon broadcast, the signed envelope and its transaction
+hash are persisted under `wraith-submission-idempotency-v1`. A retry after a
+reload or a lost response reuses that exact envelope; an operation ID cannot
+be rebound to a different transaction.
+
+Broadcasts use the browser Web Locks API and the persisted operation record
+to serialize same-operation submissions across tabs. If a response is lost,
+the explicit queue retry may submit the same envelope again, but it cannot
+create a different Stellar transaction: the signed envelope and transaction
+hash are unchanged, and the network deduplicates that transaction hash.
+Browsers without cross-tab locking support fail closed rather than claiming
+retry safety. A failed direct broadcast is saved as a signed queue entry when
+the queue has capacity, with the original operation ID, so queue replay shares
+the same idempotency record.
+
+## 4. Reconcile on reconnect with clear conflict handling
 
 Triggers (first one wins; reconciliation is a no-op while offline):
 
@@ -86,12 +106,16 @@ a resolution action (review pre-filled in Send, or discard). Terminal
 states (`done`, `conflict`, `failed`) are never re-processed; "Clear
 finished" removes them.
 
-## 4. Coverage
+## 5. Coverage
 
 - Unit: `src/lib/offlineQueue.test.ts` (classification, validation,
   persistence round-trip, dedupe, cap pruning) and
   `src/lib/offlineReconcile.test.ts` (intent/scan outcomes, stale
-  envelopes, attempt budget, offline no-op, throwing consumers).
+  envelopes, attempt budget, offline no-op, throwing consumers), plus
+  `src/lib/submissionIdempotency.test.ts` (stable operation IDs, concurrent
+  submissions, delayed retry, and transaction binding).
 - E2E: `e2e/offline-queue.spec.ts` (banner + queue count while offline,
   real offline send → queued intent, reconnect reconciliation incl.
-  expired-intent conflict, signed envelopes never auto-broadcast).
+  expired-intent conflict, signed envelopes never auto-broadcast,
+  concurrent cross-tab broadcast, and same-envelope retry after a lost
+  response).

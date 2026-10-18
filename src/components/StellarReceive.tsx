@@ -17,7 +17,6 @@ import {
   signStellarTransaction,
   STEALTH_SIGNING_MESSAGE,
   SCHEME_ID,
-  bytesToHex,
 } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
 import { useTranslation } from 'react-i18next';
@@ -44,122 +43,27 @@ import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 import { createStellarQrUri } from '@/utils/qr';
 import { readScanCursor, writeScanCursor, type RetentionGap } from '@/lib/stellar/scannerCursor';
+import { fetchAnnouncementEvents } from '@/lib/stellar/announcementRpc';
 
 const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
 // Fetches announcements on the main thread. Only used to support the
 // `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
-// synchronous, main-thread access to the parsed announcements. The real,
-// production scan path fetches and scans off the main thread inside
-// stellar-scanner.worker.ts instead.
-async function fetchAnnouncementEvents(
+// main-thread access to the parsed announcements. The real, production scan
+// path fetches and scans off the main thread inside stellar-scanner.worker.ts
+// and shares this module's pagination and retention handling.
+async function fetchAnnouncementsBestEffort(
   rpcUrl: string,
   contractId: string,
 ): Promise<Announcement[]> {
-  const all: Announcement[] = [];
-
   try {
-    let startLedger = 1;
-    const probeRes = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 0,
-        method: 'getEvents',
-        params: {
-          startLedger: 1,
-          filters: [{ type: 'contract', contractIds: [contractId] }],
-          pagination: { limit: 1 },
-        },
-      }),
-    });
-    const probeData = await probeRes.json();
-
-    if (probeData.error?.message) {
-      const match = probeData.error.message.match(/range:\s*(\d+)\s*-\s*(\d+)/);
-      if (match) {
-        const oldest = parseInt(match[1], 10);
-        const latest = parseInt(match[2], 10);
-        startLedger = Math.max(oldest, latest - 5000);
-      } else {
-        return all;
-      }
-    }
-
-    let cursor: string | undefined;
-    let hasMore = true;
-
-    while (hasMore) {
-      const params: Record<string, unknown> = {
-        filters: [{ type: 'contract', contractIds: [contractId] }],
-        pagination: { limit: 1000 },
-      };
-
-      if (cursor) {
-        (params.pagination as Record<string, unknown>).cursor = cursor;
-      } else {
-        params.startLedger = startLedger;
-      }
-
-      const res = await fetch(rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'getEvents', params }),
-      });
-
-      const data = await res.json();
-      const events = data.result?.events ?? [];
-
-      for (const event of events) {
-        try {
-          const ann = parseAnnouncementEvent(event);
-          if (ann) all.push(ann);
-        } catch (err) {
-          console.error('Failed to parse announcement event:', err);
-        }
-      }
-
-      if (events.length < 1000) {
-        hasMore = false;
-      } else {
-        cursor = data.result?.cursor;
-        if (!cursor) hasMore = false;
-      }
-    }
+    const { announcements } = await fetchAnnouncementEvents({ rpcUrl, contractId });
+    return announcements;
   } catch {
-    // Events API may not be available
+    // The events API may be unavailable; the mock hook tolerates an empty list.
+    return [];
   }
-
-  return all;
-}
-
-function parseAnnouncementEvent(event: Record<string, unknown>): Announcement | null {
-  const topics = event.topic as string[];
-  if (!topics || topics.length < 3) return null;
-
-  const schemeIdScVal = xdr.ScVal.fromXDR(topics[1], 'base64');
-  const schemeId = schemeIdScVal.u32();
-
-  const stealthScVal = xdr.ScVal.fromXDR(topics[2], 'base64');
-  const stealthScAddress = stealthScVal.address();
-  const stealthAddress = Address.fromScAddress(stealthScAddress).toString();
-
-  const valueScVal = xdr.ScVal.fromXDR(event.value as string, 'base64');
-  const valueVec = valueScVal.vec();
-  if (!valueVec || valueVec.length < 3) return null;
-
-  const callerScAddress = valueVec[0].address();
-  const caller = Address.fromScAddress(callerScAddress).toString();
-
-  const ephBytes = valueVec[1].bytes();
-  const ephemeralPubKey = bytesToHex(new Uint8Array(ephBytes));
-
-  const metaBytes = valueVec[2].bytes();
-  const metadata = bytesToHex(new Uint8Array(metaBytes));
-
-  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
 }
 
 function StellarMatchCardContainer({
@@ -1200,7 +1104,7 @@ export function StellarReceive() {
       const mockScan = (window as any).scanAnnouncementsMock;
       if (mockScan) {
         try {
-          const announcements = await fetchAnnouncementEvents(
+          const announcements = await fetchAnnouncementsBestEffort(
             STELLAR_NETWORK.rpcUrl,
             ANNOUNCER_CONTRACT,
           );
@@ -1239,10 +1143,29 @@ export function StellarReceive() {
           type,
           results,
           nextLedger,
+          committedLedger,
+          matched: pageMatches,
           requestedLedger,
           oldestAvailableLedger,
           error: workerError,
         } = event.data ?? {};
+        if (type === 'PAGE') {
+          // Each page advances the stored cursor only once its matches have been
+          // handed to the page, so an interrupted scan resumes at the first
+          // ledger proven complete instead of at the tip. A ledger that the RPC
+          // page boundary split is re-read, and matches are deduped below.
+          if (address && Number.isSafeInteger(committedLedger)) {
+            writeScanCursor(localStorage, address, committedLedger + 1);
+          }
+          if (Array.isArray(pageMatches) && pageMatches.length > 0) {
+            setMatched((previous) => {
+              const seen = new Set(previous.map((match) => match.stealthAddress));
+              const fresh = pageMatches.filter((match) => !seen.has(match.stealthAddress));
+              return fresh.length > 0 ? [...previous, ...fresh] : previous;
+            });
+          }
+          return;
+        }
         if (type === 'SUCCESS') {
           setMatched(results ?? []);
           setHasScanned(true);

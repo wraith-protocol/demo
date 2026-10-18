@@ -16,6 +16,10 @@ import {
 import { defaultReconcileHandlers, reconcileOfflineQueue } from '@/lib/offlineReconcile';
 import { STELLAR_NETWORK } from '@/config';
 import { useActivityStore } from './activityStore';
+import {
+  broadcastStellarTransaction,
+  submitStellarTransactionOnce,
+} from '@/lib/submissionIdempotency';
 
 export type ReconcilePhase = 'idle' | 'reconciling';
 
@@ -177,21 +181,10 @@ export const useOfflineQueueStore = create<OfflineQueueState>()((set, get) => ({
       return { ok: false, error: `Chain ${payload.chain} is not supported yet.` };
     }
     try {
-      const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(payload.signedXdr)}`,
-      });
-      const data = (await res.json()) as {
-        hash?: string;
-        title?: string;
-        extras?: { result_codes?: { transaction?: string } };
-      };
-      if (!res.ok) {
-        throw new Error(
-          data.extras?.result_codes?.transaction || data.title || 'Broadcast failed.',
-        );
-      }
+      const operationId = payload.operationId ?? entry.id;
+      await submitStellarTransactionOnce(operationId, payload.txHash, payload.signedXdr, () =>
+        broadcastStellarTransaction(payload.signedXdr, payload.txHash, STELLAR_NETWORK.horizonUrl),
+      );
       const done = get().entries.map((e) =>
         e.id === id ? { ...e, status: 'done' as const, updatedAt: Date.now() } : e,
       );

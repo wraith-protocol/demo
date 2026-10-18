@@ -11,8 +11,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { StealthKeys } from '@wraith-protocol/sdk/chains/stellar';
+import { getAppServiceWorkerRegistration } from '@/lib/swRegistration';
 
-const SW_PATH = '/sw/stellar-notification-sw.js';
 const STORAGE_KEY_OPT_IN = 'wraith:stellar:notifications-opt-in';
 const DB_NAME = 'wraith-stellar-notifications';
 const DB_VERSION = 1;
@@ -73,7 +73,7 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
     setState((prev: NotificationState) => ({ ...prev, enabled: optIn }));
   }, []);
 
-  // Register service worker
+  // Attach to the app's unified service worker (registered by useAppUpdate).
   useEffect(() => {
     if (!state.supported || !state.enabled) return;
 
@@ -81,9 +81,8 @@ export function useStellarNotifications(): UseStellarNotificationsReturn {
 
     async function registerSW() {
       try {
-        const registration = await navigator.serviceWorker.register(SW_PATH, {
-          type: 'module',
-        });
+        const registration = await getAppServiceWorkerRegistration();
+        if (!registration) throw new Error('App service worker is not registered');
 
         if (cancelled) return;
 

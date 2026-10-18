@@ -39,6 +39,14 @@ import {
 } from '@/lib/stellarSimulation';
 import { useActivityStore } from '@/stores/activityStore';
 import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
+import {
+  broadcastStellarTransaction,
+  getSubmissionRecord,
+  releaseSubmissionDraft,
+  reserveSubmissionOperationId,
+  submitStellarTransactionOnce,
+  TransactionSubmissionUnknownError,
+} from '@/lib/submissionIdempotency';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
@@ -105,13 +113,16 @@ export function StellarSend() {
   const paramAmount = searchParams.get('amount');
   const paramMemo = searchParams.get('memo');
   const paramExp = searchParams.get('exp');
+  const paramAsset = searchParams.get('asset');
+  const paramOperationId = searchParams.get('operationId');
+  const initialAssetKey = STELLAR_ASSETS.find((asset) => asset.key === paramAsset)?.key ?? 'XLM';
 
   const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const [recipient, setRecipient] = useState(paramTo || '');
   const [amount, setAmount] = useState(paramAmount || '');
-  const [assetKey, setAssetKey] = useState<StellarAssetKey>('XLM');
+  const [assetKey, setAssetKey] = useState<StellarAssetKey>(initialAssetKey);
   const [allBalances, setAllBalances] = useState<Record<string, string>>({});
   const [memo, setMemo] = useState(paramMemo || '');
   const { isKnownAddress, addContact } = useContacts();
@@ -295,6 +306,8 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const operationIdOverrideRef = useRef<string | null>(paramOperationId);
+  const submissionDraftRef = useRef<{ draft: string; operationId: string } | null>(null);
   const simulationTimeoutRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
 
   const [trustlineMissing, setTrustlineMissing] = useState(false);
@@ -575,7 +588,26 @@ export function StellarSend() {
         return;
       }
       const expSecs = paramExp ? parseInt(paramExp, 10) : NaN;
+      const draft = JSON.stringify({
+        chain: 'stellar',
+        wallet: address,
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+        asset: assetKey,
+        memo: memo.trim(),
+      });
+      let operationId: string;
+      try {
+        operationId = await reserveSubmissionOperationId(draft, operationIdOverrideRef.current);
+        submissionDraftRef.current = { draft, operationId };
+      } catch (storageError) {
+        setError(
+          storageError instanceof Error ? storageError.message : 'Could not save operation ID.',
+        );
+        return;
+      }
       const queued = useOfflineQueueStore.getState().enqueuePaymentIntent({
+        operationId,
         chain: 'stellar',
         recipient: recipient.trim(),
         amount: amount.trim(),
@@ -604,14 +636,64 @@ export function StellarSend() {
     setIsPending(true);
     setRetryStatus('');
     let txHashHex = '';
+    let signedXdr = '';
+    let operationId = '';
+    const draft = JSON.stringify({
+      chain: 'stellar',
+      wallet: address,
+      recipient: recipient.trim(),
+      amount: amount.trim(),
+      asset: assetKey,
+      memo: memo.trim(),
+    });
 
     const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
+      operationId = await reserveSubmissionOperationId(draft, operationIdOverrideRef.current);
+      submissionDraftRef.current = { draft, operationId };
       const metaAddress = recipient;
       if (!metaAddress.startsWith('st:xlm:')) {
         setError(t('stellar.validMetaAddressError'));
         setIsPending(false);
+        return;
+      }
+
+      const previousSubmission = getSubmissionRecord(operationId);
+      if (previousSubmission?.txHash && previousSubmission.signedEnvelope) {
+        txHashHex = previousSubmission.txHash;
+        signedXdr = previousSubmission.signedEnvelope;
+        const stealthAddress = previousSubmission.metadata?.stealthAddress;
+        if (typeof stealthAddress === 'string') {
+          setStealthResult({ stealthAddress, ephemeralPubKey: new Uint8Array(), viewTag: 0 });
+        }
+        setTxHash(txHashHex);
+        addActivity({
+          id: txHashHex,
+          chain: 'stellar',
+          wallet: address,
+          kind: 'stealth-send',
+          direction: 'out',
+          status: 'pending',
+          amount: amountValue,
+          recipient: metaAddress,
+          timestamp: Date.now(),
+        });
+        const submittedHash = await submitStellarTransactionOnce(
+          operationId,
+          txHashHex,
+          signedXdr,
+          () => broadcastStellarTransaction(signedXdr, txHashHex, STELLAR_NETWORK.horizonUrl),
+          previousSubmission.metadata,
+        );
+        setTxHash(submittedHash);
+        setIsSuccess(true);
+        updateActivity(txHashHex, 'confirmed');
+        try {
+          await releaseSubmissionDraft(draft, operationId);
+        } catch {
+          setError('Transaction submitted, but its retry state could not be cleared.');
+        }
         return;
       }
 
@@ -680,7 +762,7 @@ export function StellarSend() {
 
       const classicTx = builder.build();
 
-      const signedXdr = await signTransaction(classicTx.toXDR());
+      signedXdr = await signTransaction(classicTx.toXDR());
       txHashHex = classicTx.hash().toString('hex');
       setTxHash(txHashHex);
 
@@ -696,22 +778,21 @@ export function StellarSend() {
         timestamp: Date.now(),
       });
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(signedXdr)}`,
-      });
+      const submittedHash = await submitStellarTransactionOnce(
+        operationId,
+        txHashHex,
+        signedXdr,
+        () => broadcastStellarTransaction(signedXdr, txHashHex, horizonUrl),
+        {
+          stealthAddress: result.stealthAddress,
+          ephemeralPubKey: Array.from(result.ephemeralPubKey, (byte) =>
+            byte.toString(16).padStart(2, '0'),
+          ).join(''),
+          viewTag: result.viewTag,
+        },
+      );
 
-      const submitData = await submitRes.json();
-      if (!submitRes.ok) {
-        throw new Error(
-          submitData.extras?.result_codes?.transaction ||
-            submitData.title ||
-            t('common.transactionFailed'),
-        );
-      }
-
-      setTxHash(submitData.hash);
+      setTxHash(submittedHash);
 
       // Add recipient to history after successful send
       addToHistory(recipient);
@@ -770,16 +851,46 @@ export function StellarSend() {
 
       setIsSuccess(true);
       updateActivity(txHashHex, 'confirmed');
+      try {
+        await releaseSubmissionDraft(draft, operationId);
+      } catch {
+        setError('Transaction submitted, but its retry state could not be cleared.');
+      }
     } catch (err) {
       setRetryStatus('');
-      if (txHashHex) updateActivity(txHashHex, 'failed');
-      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+      if (txHashHex && !(err instanceof TransactionSubmissionUnknownError)) {
+        updateActivity(txHashHex, 'failed');
+      }
+      const message = err instanceof Error ? err.message : t('common.transactionFailed');
+      if (operationId && txHashHex && signedXdr) {
+        const queued = useOfflineQueueStore.getState().enqueueSignedSubmit({
+          operationId,
+          chain: 'stellar',
+          txHash: txHashHex,
+          signedXdr,
+        });
+        if (queued) {
+          void useOfflineQueueStore.getState().reconcile();
+        } else {
+          setError(
+            `${message} The retry envelope could not be added because the offline queue is full.`,
+          );
+          return;
+        }
+      }
+      setError(message);
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, assetKey, signTransaction, t]);
+  }, [address, recipient, amount, assetKey, memo, signTransaction, t, paramExp]);
 
   const reset = () => {
+    const currentSubmission = submissionDraftRef.current;
+    if (currentSubmission) {
+      void releaseSubmissionDraft(currentSubmission.draft, currentSubmission.operationId);
+      submissionDraftRef.current = null;
+    }
+    operationIdOverrideRef.current = null;
     setRecipient(paramTo || '');
     setAmount(paramAmount || '');
     setMemo(paramMemo || '');

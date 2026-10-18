@@ -71,6 +71,18 @@ describe('createOfflineEntry', () => {
     expect(entry.attempts).toBe(0);
     expect(entry.id.length).toBeGreaterThan(0);
   });
+
+  it('keeps one operation ID on both payment intents and signed submissions', () => {
+    const intentEntry = createOfflineEntry('payment-intent', intent());
+    const signedEntry = createOfflineEntry('signed-submit', {
+      chain: 'stellar',
+      txHash: 'abc',
+      signedXdr: 'AAAA',
+    });
+
+    expect(intentEntry.payload).toMatchObject({ operationId: intentEntry.id });
+    expect(signedEntry.payload).toMatchObject({ operationId: signedEntry.id });
+  });
 });
 
 describe('isOfflineEntry', () => {

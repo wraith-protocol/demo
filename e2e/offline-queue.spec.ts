@@ -137,6 +137,7 @@ test.describe('Offline queue and reconciliation', () => {
     // Reviewing prefills the Send form from the queued intent.
     await entry.getByRole('button', { name: 'Review in Send' }).click();
     await expect(page).toHaveURL(/to=/);
+    await expect(page).toHaveURL(/operationId=/);
   });
 
   test('expired intents conflict and signed envelopes never auto-broadcast', async ({
@@ -213,5 +214,111 @@ test.describe('Offline queue and reconciliation', () => {
     // Finished work can be cleared.
     await panel.getByRole('button', { name: 'Clear finished' }).click();
     await expect(panel.getByTestId('offline-queue-entry')).toHaveCount(0);
+  });
+
+  test('concurrent queue broadcasts in two tabs submit only once', async ({ page, context }) => {
+    let broadcastPosts = 0;
+    await context.route('https://horizon-testnet.stellar.org/transactions', async (route) => {
+      if (route.request().method() === 'POST') {
+        broadcastPosts += 1;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ hash: 'shared_operation_hash', ledger: 101 }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+    await seedQueue(context, [
+      seedEntry({
+        id: 'shared-operation-id',
+        kind: 'signed-submit',
+        payload: {
+          chain: 'stellar',
+          operationId: 'shared-operation-id',
+          txHash: 'shared_operation_hash',
+          signedXdr: 'AAAA',
+        },
+      }),
+    ]);
+
+    const secondPage = await context.newPage();
+    await Promise.all([page.goto('/send'), secondPage.goto('/send')]);
+    const firstEntry = page.getByTestId('offline-queue-entry');
+    const secondEntry = secondPage.getByTestId('offline-queue-entry');
+    await expect(firstEntry.getByRole('button', { name: 'Broadcast now' })).toBeVisible();
+    await expect(secondEntry.getByRole('button', { name: 'Broadcast now' })).toBeVisible();
+
+    await Promise.all([
+      (async () => {
+        await firstEntry.getByRole('button', { name: 'Broadcast now' }).click();
+        await firstEntry.getByRole('button', { name: 'Confirm broadcast' }).click();
+      })(),
+      (async () => {
+        await secondEntry.getByRole('button', { name: 'Broadcast now' }).click();
+        await secondEntry.getByRole('button', { name: 'Confirm broadcast' }).click();
+      })(),
+    ]);
+
+    await expect(firstEntry).toContainText('Done');
+    await expect(secondEntry).toContainText('Done');
+    expect(broadcastPosts).toBe(1);
+    await secondPage.close();
+  });
+
+  test('delayed retry reuses the original signed envelope after a lost response', async ({
+    page,
+    context,
+  }) => {
+    const acceptedEnvelopes = new Set<string>();
+    const submittedEnvelopes: string[] = [];
+    await context.route('https://horizon-testnet.stellar.org/transactions', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      const body = route.request().postData() ?? '';
+      submittedEnvelopes.push(body);
+      const envelope = new URLSearchParams(body).get('tx') ?? '';
+      acceptedEnvelopes.add(envelope);
+      if (submittedEnvelopes.length === 1) {
+        // Simulate Horizon accepting the transaction while its response is lost.
+        await route.abort('failed');
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ hash: 'delayed_retry_hash', ledger: 102 }),
+      });
+    });
+    await seedQueue(context, [
+      seedEntry({
+        id: 'delayed-operation-id',
+        kind: 'signed-submit',
+        payload: {
+          chain: 'stellar',
+          operationId: 'delayed-operation-id',
+          txHash: 'delayed_retry_hash',
+          signedXdr: 'AAAA',
+        },
+      }),
+    ]);
+    await page.goto('/send');
+
+    const entry = page.getByTestId('offline-queue-entry');
+    await expect(entry.getByRole('button', { name: 'Broadcast now' })).toBeVisible();
+    await entry.getByRole('button', { name: 'Broadcast now' }).click();
+    await entry.getByRole('button', { name: 'Confirm broadcast' }).click();
+    await expect(entry.getByText('Conflict')).toBeVisible();
+    await entry.getByRole('button', { name: 'Retry broadcast' }).click();
+    await entry.getByRole('button', { name: 'Confirm broadcast' }).click();
+
+    await expect(entry.getByText('Done')).toBeVisible();
+    expect(submittedEnvelopes).toHaveLength(2);
+    expect(submittedEnvelopes[0]).toBe(submittedEnvelopes[1]);
+    expect(acceptedEnvelopes.size).toBe(1);
   });
 });
