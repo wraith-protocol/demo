@@ -274,7 +274,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `RECOVER_SCAN_CURSOR message has unexpected fields: ${extraFields.join(', ')}`,
+            `RECOVER_SCAN_CURSOR message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -303,7 +303,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `REGISTER_VIEWING_KEY message has unexpected fields: ${extraFields.join(', ')}`,
+            `REGISTER_VIEWING_KEY message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -344,7 +344,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `UNREGISTER_VIEWING_KEY message has unexpected fields: ${extraFields.join(', ')}`,
+            `UNREGISTER_VIEWING_KEY message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -356,7 +356,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const allowedFields = ['type', 'requestId'];
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
-          throw new Error(`TRIGGER_SCAN message has unexpected fields: ${extraFields.join(', ')}`);
+          throw new Error(`TRIGGER_SCAN message has extra fields: ${extraFields.join(', ')}`);
         }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'TRIGGER_SCAN', requestId } };
@@ -367,7 +367,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `REGISTER_PUSH_SUBSCRIPTION message has unexpected fields: ${extraFields.join(', ')}`,
+            `REGISTER_PUSH_SUBSCRIPTION message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -392,7 +392,7 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `UNREGISTER_PUSH_SUBSCRIPTION message has unexpected fields: ${extraFields.join(', ')}`,
+            `UNREGISTER_PUSH_SUBSCRIPTION message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -437,7 +437,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `VIEWING_KEY_REGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+            `VIEWING_KEY_REGISTERED message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -449,7 +449,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `VIEWING_KEY_UNREGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+            `VIEWING_KEY_UNREGISTERED message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -461,7 +461,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `PUSH_SUBSCRIPTION_REGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+            `PUSH_SUBSCRIPTION_REGISTERED message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -473,7 +473,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `PUSH_SUBSCRIPTION_UNREGISTERED message has unexpected fields: ${extraFields.join(', ')}`,
+            `PUSH_SUBSCRIPTION_UNREGISTERED message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -484,9 +484,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const allowedFields = ['type', 'requestId', 'error'];
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
-          throw new Error(
-            `VIEWING_KEY_ERROR message has unexpected fields: ${extraFields.join(', ')}`,
-          );
+          throw new Error(`VIEWING_KEY_ERROR message has extra fields: ${extraFields.join(', ')}`);
         }
         const requestId = assertRequestId(msg.requestId);
         const error = assertString(msg.error, 'error', 512, true);
@@ -498,7 +496,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `PUSH_SUBSCRIPTION_ERROR message has unexpected fields: ${extraFields.join(', ')}`,
+            `PUSH_SUBSCRIPTION_ERROR message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -511,7 +509,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `STELLAR_SCAN_RECOVERY_COMPLETE message has unexpected fields: ${extraFields.join(', ')}`,
+            `STELLAR_SCAN_RECOVERY_COMPLETE message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const requestId = assertRequestId(msg.requestId);
@@ -527,7 +525,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `STELLAR_SCAN_RETENTION_GAP message has unexpected fields: ${extraFields.join(', ')}`,
+            `STELLAR_SCAN_RETENTION_GAP message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
@@ -563,7 +561,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
           throw new Error(
-            `WRAITH_NOTIFICATION message has unexpected fields: ${extraFields.join(', ')}`,
+            `WRAITH_NOTIFICATION message has extra fields: ${extraFields.join(', ')}`,
           );
         }
         const channel = assertString(msg.channel, 'channel', 64, true);
@@ -578,9 +576,7 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         const allowedFields = ['type', 'stealthAddress'];
         const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
         if (extraFields.length > 0) {
-          throw new Error(
-            `NAVIGATE_TO_MATCH message has unexpected fields: ${extraFields.join(', ')}`,
-          );
+          throw new Error(`NAVIGATE_TO_MATCH message has extra fields: ${extraFields.join(', ')}`);
         }
         const stealthAddress = assertString(msg.stealthAddress, 'stealthAddress', 128, true);
         return { valid: true, data: { type: 'NAVIGATE_TO_MATCH', stealthAddress } };
