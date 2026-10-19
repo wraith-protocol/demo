@@ -32,6 +32,7 @@ import { StellarLink } from '@/components/StellarLink';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { computePrivacyScore } from '@/lib/privacy-score';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from '@/lib/stellar/deployments';
 import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
 import { useActivityStore } from '@/stores/activityStore';
 import type { ImportResult } from '@/lib/stealthLabels';
@@ -44,9 +45,6 @@ import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModa
 import { createStellarQrUri } from '@/utils/qr';
 import { readScanCursor, writeScanCursor, type RetentionGap } from '@/lib/stellar/scannerCursor';
 import { fetchAnnouncementEvents } from '@/lib/stellar/announcementRpc';
-
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
-const REGISTRY_CONTRACT = 'CC2LAUCXYOPJ4DV4CYXNXYAXRDVOTMAWFF76W4WFD5OVQBD6TN4PYYJ5';
 
 // Fetches announcements on the main thread. Only used to support the
 // `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
@@ -744,7 +742,7 @@ export function StellarReceive() {
           accountResponse.sequenceNumber(),
         );
 
-        const contract = new Contract(REGISTRY_CONTRACT);
+        const contract = new Contract(getStellarContractId('registry'));
         const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
           .addOperation(
             contract.call(
@@ -1004,7 +1002,7 @@ export function StellarReceive() {
         accountResponse.sequenceNumber(),
       );
 
-      const contract = new Contract(REGISTRY_CONTRACT);
+      const contract = new Contract(getStellarContractId('registry'));
       const metaAddressBytes = new Uint8Array(64);
       metaAddressBytes.set(stellarKeys.spendingPubKey, 0);
       metaAddressBytes.set(stellarKeys.viewingPubKey, 32);
@@ -1098,6 +1096,17 @@ export function StellarReceive() {
       setIsScanning(true);
       setError('');
 
+      // Resolve before touching the worker: scanning an unverified announcer ID
+      // returns no events, which would look exactly like an empty inbox.
+      let announcerContract: string;
+      try {
+        announcerContract = getStellarContractId('announcer');
+      } catch (err) {
+        setIsScanning(false);
+        setError(err instanceof Error ? err.message : t('common.scanFailed'));
+        return;
+      }
+
       // Test hook: e2e/fixtures.ts injects a mock scan function on `window` so
       // specs can control match results without real crypto. It runs on the
       // main thread since a Worker doesn't share `window` with the page.
@@ -1106,7 +1115,7 @@ export function StellarReceive() {
         try {
           const announcements = await fetchAnnouncementsBestEffort(
             STELLAR_NETWORK.rpcUrl,
-            ANNOUNCER_CONTRACT,
+            announcerContract,
           );
           const results = mockScan(
             announcements,
@@ -1197,7 +1206,7 @@ export function StellarReceive() {
 
       worker.postMessage({
         rpcUrl: STELLAR_NETWORK.rpcUrl,
-        announcerContract: ANNOUNCER_CONTRACT,
+        announcerContract,
         viewingKey: stellarKeys.viewingKey,
         spendingPubKey: stellarKeys.spendingPubKey,
         spendingScalar: stellarKeys.spendingScalar,

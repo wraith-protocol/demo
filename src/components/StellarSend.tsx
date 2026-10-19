@@ -24,6 +24,7 @@ import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useContacts } from '@/store/contactsStore';
 import { useNameHistory } from '@/store/nameHistoryStore';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from '@/lib/stellar/deployments';
 import { CopyButton } from '@/components/CopyButton';
 import { AssetPicker } from '@/components/AssetPicker';
 import { trackEvent } from '@/lib/telemetry';
@@ -50,7 +51,6 @@ import {
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const STELLAR_BASE_FEE_XLM = 0.00001;
 const STELLAR_BASE_RESERVE_XLM = 1;
 
@@ -802,7 +802,7 @@ export function StellarSend() {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
         const soroban =
           (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
-        const announcerContract = new Contract(ANNOUNCER_CONTRACT);
+        const announcerContract = new Contract(getStellarContractId('announcer'));
 
         const freshRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
         setRetryStatus('');

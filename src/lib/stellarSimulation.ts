@@ -15,9 +15,9 @@ import {
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from '@/lib/stellar/deployments';
 import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
 
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;
 
 export type StellarSendSimulationState =
@@ -114,7 +114,7 @@ export async function simulateStellarSendAnnouncement(
     networkPassphrase,
   })
     .addOperation(
-      new Contract(ANNOUNCER_CONTRACT).call(
+      new Contract(getStellarContractId('announcer')).call(
         'announce',
         nativeToScVal(SCHEME_ID, { type: 'u32' }),
         new Address(result.stealthAddress).toScVal(),

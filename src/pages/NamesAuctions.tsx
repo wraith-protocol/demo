@@ -7,9 +7,9 @@ import { useContacts } from '@/store/contactsStore';
 import { useNameHistory } from '@/store/nameHistoryStore';
 import { useNameWatchlistStore } from '@/store/nameWatchlistStore';
 import { stellarTxUrl } from '@/lib/explorer';
+import { tryGetStellarContractId } from '@/lib/stellar/deployments';
 import {
   MIN_AUCTION_BID_INCREMENT,
-  NAMES_CONTRACT_ID,
   buildClaimAuctionNameTransaction,
   buildCommitNameBidTransaction,
   buildRefundNameBidTransaction,
@@ -23,6 +23,10 @@ import {
   type NameAuction,
   type NameAuctionConfig,
 } from '@/lib/stellar/names';
+
+// Display-only label lookup: an undisployed names contract resolves to an empty
+// address so the page still renders, while every auction call fails closed.
+const NAMES_CONTRACT_ID = tryGetStellarContractId('names');
 
 const STROOPS_PER_XLM = 10_000_000n;
 
