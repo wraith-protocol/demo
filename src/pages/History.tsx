@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ActivityRow } from '@/components/ActivityRow';
 import { EmptyState } from '@/components/EmptyState';
+import { useStellarWallet } from '@/context/StellarWalletContext';
 import {
   useActivityStore,
   type ActivityEntry,
@@ -16,13 +17,22 @@ const CHAINS: HistoryChain[] = ['all', 'horizen', 'stellar', 'solana', 'ckb'];
 
 export default function History() {
   const navigate = useNavigate();
-  const { entries, clearAll } = useActivityStore();
+  // Scope all reads to the connected wallet address so entries from other
+  // wallets/profiles are never visible or exportable from this session.
+  const { address } = useStellarWallet();
+  const { entries, clearHistory } = useActivityStore();
   const [filterKind, setFilterKind] = useState<ActivityKind | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<ActivityStatus | 'all'>('all');
   const [filterChain, setFilterChain] = useState<HistoryChain>('all');
 
+  // Only the entries that belong to the currently connected wallet.
+  const walletEntries = useMemo(() => {
+    if (!address) return [];
+    return entries.filter((entry: ActivityEntry) => entry.wallet === address);
+  }, [entries, address]);
+
   const filteredEntries = useMemo(() => {
-    return entries
+    return walletEntries
       .filter((entry: ActivityEntry) => {
         if (filterChain !== 'all' && entry.chain !== filterChain) return false;
         if (filterKind !== 'all' && entry.kind !== filterKind) return false;
@@ -30,11 +40,27 @@ export default function History() {
         return true;
       })
       .sort((a: ActivityEntry, b: ActivityEntry) => b.timestamp - a.timestamp);
-  }, [entries, filterChain, filterKind, filterStatus]);
+  }, [walletEntries, filterChain, filterKind, filterStatus]);
 
-  // Exports deliberately omit `metadata` so private key and memo material
-  // is never leaked into CSV or JSON downloads.
-  const exportEntries = useMemo(() => entries.map(({ metadata, ...rest }) => rest), [entries]);
+  // Exports are scoped to the current filter view and deliberately omit
+  // `metadata` so private key and memo material is never leaked into downloads.
+  const exportEntries = useMemo(
+    () => filteredEntries.map(({ metadata: _metadata, ...rest }) => rest),
+    [filteredEntries],
+  );
+
+  if (!address) {
+    return (
+      <section className="flex flex-col gap-3">
+        <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
+          Activity History
+        </h1>
+        <p className="font-body text-sm leading-relaxed text-on-surface-variant">
+          Connect your wallet to view and export your transaction history.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-8">
@@ -49,8 +75,8 @@ export default function History() {
         </div>
         <button
           type="button"
-          onClick={() => clearAll()}
-          disabled={entries.length === 0}
+          onClick={() => clearHistory(filterChain === 'all' ? 'stellar' : filterChain, address)}
+          disabled={walletEntries.length === 0}
           className="rounded-lg bg-surface-container px-4 py-2 font-mono text-xs uppercase tracking-widest text-on-surface transition-colors hover:bg-error/20 hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
         >
           Clear History
@@ -147,13 +173,13 @@ export default function History() {
             Export JSON
           </button>
           <p className="basis-full font-body text-xs text-outline">
-            Exports include chain, status, amount, timestamp, and explorer links only. Private key
-            and memo material is never included.
+            Exports include only the entries matching the current filters. Private key and memo
+            material is never included.
           </p>
         </div>
       </div>
 
-      {entries.length === 0 && (
+      {walletEntries.length === 0 && (
         <EmptyState
           illustration={
             <svg
@@ -180,7 +206,7 @@ export default function History() {
         />
       )}
 
-      {entries.length > 0 && filteredEntries.length === 0 && (
+      {walletEntries.length > 0 && filteredEntries.length === 0 && (
         <EmptyState
           title="No matches"
           description="No activity matches the current filters. Try selecting a different type, status, or chain."
