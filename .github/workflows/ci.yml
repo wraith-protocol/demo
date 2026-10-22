@@ -27,6 +27,43 @@ jobs:
       - run: pnpm format:check
       - run: pnpm build
 
+      # Fails when the initial load, the Stellar scanner worker, or any
+      # lazy-loaded route/chain chunk grows past its budget. See
+      # scripts/bundle-budget-gate.mjs for what each budget covers and why.
+      - run: pnpm build:budget-check
+
       # Fails when a new critical (or more than the accepted number of high)
       # production dependency finding appears. See docs/SECURITY_AUDIT.md.
       - run: pnpm audit:gate
+
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+      - name: Run unit tests
+        run: pnpm test:unit --reporter=default --reporter=junit --outputFile.junit=reports/unit/junit.xml
+        env:
+          CI: true
+
+      # Keeps the machine-readable report out of the repository and attaches
+      # it to the run so a failing assertion can be inspected after the fact.
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: reports/unit/
+          if-no-files-found: ignore

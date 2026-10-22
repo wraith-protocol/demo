@@ -74,6 +74,7 @@ behaviour is preserved:
 | --------------------------------------------- | --------- | ---------------------------------------------------- |
 | `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.            |
 | `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                 |
+| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.            |
 | `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.            |
 | `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                 |
 | `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.            |

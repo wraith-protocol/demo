@@ -9,11 +9,17 @@ import {
 } from '@stellar/stellar-sdk';
 import { Buffer } from 'buffer';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from './deployments';
 
-// Override for futurenet recordings or a new deployment without rebuilding this module.
-export const NAMES_CONTRACT_ID =
-  import.meta.env.VITE_WRAITH_NAMES_CONTRACT_ID ||
-  'CD3Z7J2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
+/**
+ * The Wraith Names contract for the selected network. Resolved per call so an
+ * environment override or a new deployment takes effect without a rebuild, and
+ * so an undisployed names contract fails closed instead of calling an address
+ * that cannot exist on-chain.
+ */
+export function getNamesContractId(): string {
+  return getStellarContractId('names');
+}
 
 export interface NameMetadata {
   avatar_url?: string;
@@ -300,7 +306,7 @@ function normalizeAuction(value: Record<string, unknown> | null): NameAuction | 
 }
 
 export async function getNameAuction(name: string): Promise<NameAuction | null> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const value = await simulateRead<Record<string, unknown> | null>(
     contract.call('get_auction', nativeToScVal(name.trim().toLowerCase())),
   );
@@ -308,7 +314,7 @@ export async function getNameAuction(name: string): Promise<NameAuction | null> 
 }
 
 export async function getNameAuctionConfig(): Promise<NameAuctionConfig | null> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const value = await simulateRead<Record<string, unknown> | null>(contract.call('auction_config'));
   if (!value) return null;
   return {
@@ -322,7 +328,7 @@ export async function getNameAuctionConfig(): Promise<NameAuctionConfig | null> 
 }
 
 export async function getActiveNameAuctions(names: string[]): Promise<NameAuction[]> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   try {
     const values = await simulateRead<Array<Record<string, unknown>>>(
       contract.call('get_active_auctions'),
@@ -356,7 +362,7 @@ export async function computeNameBidCommitment(
   amount: bigint,
   saltHex: string,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const commitment = await simulateRead<Uint8Array>(
     contract.call(
       'compute_commitment',
@@ -373,7 +379,7 @@ export async function buildCommitNameBidTransaction(
   bidder: string,
   params: CommitBidParams,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -390,7 +396,7 @@ export async function buildRevealNameBidTransaction(
   bidder: string,
   params: RevealBidParams,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -404,7 +410,7 @@ export async function buildRevealNameBidTransaction(
 }
 
 export async function buildSettleNameAuctionTransaction(fromAddress: string, name: string) {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     fromAddress,
     contract.call('settle_auction', nativeToScVal(name.trim().toLowerCase())),
@@ -412,7 +418,7 @@ export async function buildSettleNameAuctionTransaction(fromAddress: string, nam
 }
 
 export async function buildRefundNameBidTransaction(bidder: string, name: string) {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -430,7 +436,7 @@ export async function buildClaimAuctionNameTransaction(
 ) {
   if (stealthMetaAddress.length !== 64)
     throw new Error('A 64-byte stealth meta-address is required');
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     winner,
     contract.call(
@@ -449,7 +455,7 @@ export async function checkAvailability(name: string): Promise<boolean> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
@@ -491,7 +497,7 @@ export async function buildRegisterTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -522,7 +528,7 @@ export async function buildTransferTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -549,7 +555,7 @@ export async function buildRenewTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -580,7 +586,7 @@ export async function buildSetMetadataTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   // Build metadata map
   const metadataMap: xdr.ScMapEntry[] = [
@@ -621,7 +627,7 @@ export async function getNameRecord(name: string): Promise<NameRecord | null> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
@@ -655,7 +661,7 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(

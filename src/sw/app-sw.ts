@@ -7,11 +7,14 @@ import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { CACHE_PREFIX, CACHE_VERSION_SUFFIX, cacheName, purgeObsoleteCaches } from '../lib/swCache';
-import {
-  retentionErrorFromRpcMessage,
-  retentionGapFromError,
-  type RetentionGap,
-} from '../lib/stellar/scannerCursor';
+import { fetchEventPages } from '../lib/stellar/rpcEvents';
+import { getStellarContractId, getStellarNetworkConfig } from '../lib/stellar/deployments';
+import { retentionGapFromError, type RetentionGap } from '../lib/stellar/scannerCursor';
+import { decodeAnnouncementEvents } from '../lib/stellar/announcementEvent';
+import { scanPages, deliverMatch, type MatchNotifier } from './backgroundScan';
+import { createIdbScanKeyBackend } from './idbScanKeyBackend';
+import { findSpendingSecretField, removeScanKey } from './scanKeyStore';
+import { scrubLegacySpendingMaterial, upsertAccountRecord } from './accountRecords';
 import {
   deliverPushNotification,
   type NotificationPresentation,
@@ -92,8 +95,6 @@ registerRoute(
 // ─── Stellar Notification Service Worker logic ────────────────────────────────
 // (merged from src/sw/stellar-notification-sw.ts)
 
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
-const STELLAR_RPC_URL = 'https://soroban-testnet.stellar.org';
 const DB_NAME = 'wraith-stellar-notifications';
 const DB_VERSION = 2;
 const STORE_NAME = 'viewing-keys';
@@ -107,9 +108,6 @@ const QUEUE_SYNC_TAG = 'wraith-offline-queue';
 
 interface StoredViewingKey {
   publicKey: string;
-  encryptedViewingKey: string;
-  encryptedSpendingPubKey: string;
-  encryptedSpendingScalar: string;
   lastScannedLedger?: number;
   timestamp: number;
   relayUrl?: string;
@@ -179,44 +177,13 @@ async function updateLastScannedLedger(
 }
 
 // ── Stellar RPC helpers ────────────────────────────────────────────────────────
-
-async function fetchLatestLedger(): Promise<number> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger' }),
-  });
-  const data = await response.json();
-  return data.result?.sequence || 0;
-}
-
-async function fetchAnnouncementEvents(
-  startLedger: number,
-  contractId: string = ANNOUNCER_CONTRACT,
-): Promise<{ events: unknown[]; latestLedger: number }> {
-  const response = await fetch(STELLAR_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 2,
-      method: 'getEvents',
-      params: {
-        startLedger,
-        filters: [{ type: 'contract', contractIds: [contractId] }],
-        pagination: { limit: 1000 },
-      },
-    }),
-  });
-  const data = await response.json();
-  if (data.error?.message) {
-    const retentionError = retentionErrorFromRpcMessage(startLedger, String(data.error.message));
-    throw retentionError ?? new Error(String(data.error.message));
-  }
-  const events = data.result?.events || [];
-  const latestLedger = await fetchLatestLedger();
-  return { events, latestLedger };
-}
+//
+// Event reads go through the shared, paginated implementation in
+// src/lib/stellar/rpcEvents.ts. It follows the RPC cursor to the end of the
+// committed boundary, maps out-of-range requests to retention gaps, and reports
+// progress per page so a sync that is killed mid-way restarts at the first
+// ledger proven fully announced instead of at the tip. A page boundary can
+// split one ledger, so the boundary ledger is re-read rather than skipped.
 
 async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise<void> {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
@@ -225,17 +192,58 @@ async function notifyRetentionGap(publicKey: string, gap: RetentionGap): Promise
   }
 }
 
+const matchNotifier: MatchNotifier = {
+  showNotification: (title, options) => self.registration.showNotification(title, options),
+  broadcast: async (message) => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) client.postMessage(message);
+  },
+};
+
+/**
+ * Scans from the stored cursor through the shared lossless pager. The sealed scan key is
+ * opened first, so a locked or unregistered account costs no network. Each page is matched
+ * and notified BEFORE its cursor is persisted, and a lock between pages stops the scan
+ * without committing the unread page.
+ */
 async function scanStoredKey(
   db: IDBDatabase,
   storedKey: StoredViewingKey,
-  startLedger: number,
+  startLedger: number | undefined,
 ): Promise<void> {
-  const { events, latestLedger } = await fetchAnnouncementEvents(startLedger);
-  if (events.length > 0) {
-    console.log(`Found ${events.length} events for ${storedKey.publicKey}`);
-    // TODO: decrypt and scan with Wraith SDK when bundled in SW context
+  await scanPages({
+    backend: createIdbScanKeyBackend(),
+    publicKey: storedKey.publicKey,
+    notifyMatch: (match) => deliverMatch(matchNotifier, match),
+    readPages: (onPage) =>
+      fetchEventPages({
+        rpcUrl: getStellarNetworkConfig().rpcUrl,
+        contractId: getStellarContractId('announcer'),
+        // undefined lets the module clamp a first scan to the retention window.
+        startLedger,
+        onPage: (page) =>
+          onPage({
+            announcements: decodeAnnouncementEvents(page.events),
+            committedLedger: page.committedLedger,
+          }),
+      }),
+    commit: (nextLedger) => updateLastScannedLedger(db, storedKey.publicKey, nextLedger),
+  });
+}
+
+async function scrubLegacyKeys(): Promise<void> {
+  try {
+    const db = await openDB();
+    try {
+      const scrubbed = await scrubLegacySpendingMaterial(db, STORE_NAME);
+      if (scrubbed > 0)
+        console.log('[app-sw] Removed legacy key fields from ' + scrubbed + ' record(s)');
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    console.error('[app-sw] Legacy key scrub failed:', error);
   }
-  await updateLastScannedLedger(db, storedKey.publicKey, latestLedger + 1);
 }
 
 // ── Background sync handler ────────────────────────────────────────────────────
@@ -252,17 +260,14 @@ async function handleSync(): Promise<void> {
     });
 
     for (const storedKey of allKeys) {
-      const startLedger = storedKey.lastScannedLedger || 1;
       try {
-        await scanStoredKey(db, storedKey, startLedger);
+        await scanStoredKey(db, storedKey, storedKey.lastScannedLedger);
       } catch (error) {
         const gap = retentionGapFromError(error);
         if (!gap) throw error;
-        if (storedKey.lastScannedLedger === undefined) {
-          await scanStoredKey(db, storedKey, gap.oldestAvailableLedger);
-        } else {
-          await notifyRetentionGap(storedKey.publicKey, gap);
-        }
+        // A stored cursor that fell out of the window is never advanced
+        // silently: surface the gap so the page can offer a recovery scan.
+        await notifyRetentionGap(storedKey.publicKey, gap);
       }
     }
 
@@ -301,6 +306,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
+      scrubLegacyKeys(),
       // Drop every cache this app owns that is not part of the running version:
       // superseded versions, newer versions left behind by a roll-back, and
       // caches written by installs that predate explicit versioning.
@@ -358,8 +364,17 @@ self.addEventListener('notificationclick', (event) => {
 // ── Message handler ────────────────────────────────────────────────────────────
 
 self.addEventListener('message', (event) => {
-  const { type, publicKey, encryptedViewingKey, encryptedSpendingPubKey, encryptedSpendingScalar } =
-    event.data;
+  const { type, publicKey } = event.data;
+
+  const forbidden = findSpendingSecretField(event.data);
+  if (forbidden) {
+    console.error('[app-sw] Dropped message: "' + forbidden + '" must never reach the worker');
+    (event.source as Client)?.postMessage({
+      type: 'VIEWING_KEY_ERROR',
+      error: 'Spending secrets are not accepted by the service worker',
+    });
+    return;
+  }
 
   if (type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -408,22 +423,15 @@ self.addEventListener('message', (event) => {
     event.waitUntil(
       (async () => {
         try {
+          if (typeof publicKey !== 'string' || publicKey.length === 0) {
+            throw new Error('Missing publicKey');
+          }
           const db = await openDB();
-          const transaction = db.transaction([STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(STORE_NAME);
-          const data: StoredViewingKey = {
-            publicKey,
-            encryptedViewingKey,
-            encryptedSpendingPubKey,
-            encryptedSpendingScalar,
-            timestamp: Date.now(),
-          };
-          await new Promise<void>((resolve, reject) => {
-            const request = store.put(data);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve();
-          });
-          db.close();
+          try {
+            await upsertAccountRecord(db, STORE_NAME, publicKey);
+          } finally {
+            db.close();
+          }
           (event.source as Client)?.postMessage({ type: 'VIEWING_KEY_REGISTERED' });
         } catch (error) {
           console.error('[app-sw] Failed to register viewing key:', error);
@@ -448,6 +456,8 @@ self.addEventListener('message', (event) => {
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve();
           });
+
+          await removeScanKey(createIdbScanKeyBackend(), publicKey);
 
           // Unregister periodic sync if no keys remain
           const allKeys = await new Promise<StoredViewingKey[]>((resolve, reject) => {
@@ -503,9 +513,6 @@ self.addEventListener('message', (event) => {
 
           const entry: StoredViewingKey = existing || {
             publicKey: subscription.keys?.p256dh || 'default',
-            encryptedViewingKey: '',
-            encryptedSpendingPubKey: '',
-            encryptedSpendingScalar: '',
             timestamp: Date.now(),
           };
 
