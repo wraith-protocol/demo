@@ -121,8 +121,8 @@ describe('toml override compatibility', () => {
   it('keeps stellar-sdk on a patched toml that preserves its parse contract', () => {
     const sdk = requireFrom('@stellar/stellar-sdk');
     const version = installedVersion(sdk, 'toml');
-    expect(version).toMatch(/^4\./);
-    expect(versionAtLeast(version, '4.2.0')).toBe(true);
+    expect(version).toMatch(/^5\./);
+    expect(versionAtLeast(version, '5.0.1')).toBe(true);
 
     const toml = sdk('toml');
     // StellarToml.Resolver runs `toml.parse(response.data)` and returns the

@@ -70,18 +70,18 @@ version with `pnpm.overrides` (see `package.json`). Except where noted, every
 override stays within a range the consumer already declares, so runtime
 behaviour is preserved:
 
-| Override (package selector)                   | Forced to | Reported advisory                                    |
-| --------------------------------------------- | --------- | ---------------------------------------------------- |
-| `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.            |
-| `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                 |
-| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.            |
-| `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.            |
-| `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                 |
-| `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.            |
-| `metro>image-size`                            | `2.0.4`   | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.            |
-| `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv. |
-| `@stellar/stellar-sdk>toml`                   | `4.2.0`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j.            |
-| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.            |
+| Override (package selector)                   | Forced to | Reported advisory                                                                                        |
+| --------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.                                                                |
+| `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                                                                     |
+| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.                                                                |
+| `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.                                                                |
+| `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                                                                     |
+| `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
+| `metro>image-size`                            | `2.0.4`   | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.                                                                |
+| `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv.                                                     |
+| `@stellar/stellar-sdk>toml`                   | `5.0.1`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64, GHSA-9qmh-m7c6-f92p. |
+| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.                                                                |
 
 Overrides that cross a declared major range are scoped to the single path that
 needs them with pnpm's `parent>child` syntax, so they cannot silently change a
