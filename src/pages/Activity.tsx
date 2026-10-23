@@ -62,7 +62,7 @@ export default function Activity() {
         </div>
         <button
           type="button"
-          onClick={() => clearHistory(filterChain === 'all' ? 'stellar' : filterChain, address)}
+          onClick={() => clearHistory(filterChain, address)}
           className="rounded-lg bg-surface-container px-4 py-2 font-mono text-xs uppercase tracking-widest text-on-surface transition-colors hover:bg-error/20 hover:text-error"
         >
           Clear History
