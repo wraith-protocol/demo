@@ -76,6 +76,20 @@ export function AssetPicker({
 
   return (
     <div ref={containerRef} className="relative">
+      <select
+        id="stellar-asset"
+        aria-label="Asset"
+        className="sr-only"
+        tabIndex={-1}
+        value={selectedKey}
+        onChange={(e) => onSelect(e.target.value)}
+      >
+        {entries.map((e) => (
+          <option key={e.key} value={e.key}>
+            {e.code}
+          </option>
+        ))}
+      </select>
       <button
         type="button"
         onClick={() => !disabled && setOpen(!open)}

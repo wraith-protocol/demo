@@ -29,12 +29,7 @@ const EVENT_LOOKBACK_LEDGERS = 17_280;
 const DUMMY_ACCOUNT = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
 
 export type VaultDepositState =
-  | 'pending'
-  | 'claimable'
-  | 'expired'
-  | 'claimed'
-  | 'refunded'
-  | 'failed';
+  'pending' | 'claimable' | 'expired' | 'claimed' | 'refunded' | 'failed';
 
 export interface OnChainVaultDeposit {
   id: string;

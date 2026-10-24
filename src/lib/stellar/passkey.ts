@@ -24,11 +24,7 @@ export const PASSKEY_PUBLIC_KEY_ALGORITHM_STORAGE_KEY = 'wraith:passkey:publicKe
 export const PASSKEY_SIGN_COUNT_STORAGE_KEY = 'wraith:passkey:signCount';
 
 export type PasskeyErrorCode =
-  | 'PRF_UNSUPPORTED'
-  | 'NO_CREDENTIAL'
-  | 'USER_REJECTED'
-  | 'CREATE_FAILED'
-  | 'GET_FAILED';
+  'PRF_UNSUPPORTED' | 'NO_CREDENTIAL' | 'USER_REJECTED' | 'CREATE_FAILED' | 'GET_FAILED';
 
 export class PasskeyError extends Error {
   constructor(

@@ -33,8 +33,7 @@ export interface PageScanner {
 }
 
 export type OpenPageScannerResult =
-  | { status: 'ready'; scanner: PageScanner }
-  | { status: 'locked' | 'missing' | 'invalid' };
+  { status: 'ready'; scanner: PageScanner } | { status: 'locked' | 'missing' | 'invalid' };
 
 /**
  * Opens the sealed scan key. Holds no state beyond the returned scanner: lock, restart

@@ -2,7 +2,7 @@ import { Asset } from '@stellar/stellar-sdk';
 
 export const STELLAR_USDC = {
   code: 'USDC',
-  issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NOATFQRAHX4JHPX',
+  issuer: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
 } as const;
 
 export const STELLAR_ASSETS = [

@@ -22,10 +22,10 @@ import type { Announcement, MatchedAnnouncement } from '@wraith-protocol/sdk/cha
 import { useTranslation } from 'react-i18next';
 import { useScanStrategy } from '@/context/ScanStrategyContext';
 import { StellarReceiveView } from '@/components/StellarReceiveView';
+import { StellarMatchCard } from '@/components/StellarMatchCard';
 import { QRCodeModal } from '@/components/QRCodeModal';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { useActivity } from '@/context/ActivityContext';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 import { StellarLink } from '@/components/StellarLink';
@@ -104,7 +104,6 @@ function StellarMatchCardContainer({
   const [showSponsorPrompt, setShowSponsorPrompt] = useState(false);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
 
-  const { upsert } = useActivity();
   const scalarHex = match.stealthPrivateScalar.toString(16).padStart(64, '0');
 
   useEffect(() => {
@@ -131,12 +130,6 @@ function StellarMatchCardContainer({
       }
     })();
   }, [match.stealthAddress]);
-
-  useEffect(() => {
-    const bal = balances['XLM'];
-    if (!bal) return;
-    onBalanceFetched(match.stealthAddress, bal);
-  }, [balances, match.stealthAddress, onBalanceFetched]);
 
   const hasAnyBalance = Object.values(balances).some((b) => parseFloat(b) > 0);
   const withdrawAssetInfo = getAssetByKey(withdrawAssetKey);
@@ -439,110 +432,6 @@ function StellarMatchCardContainer({
 
   return (
     <>
-      <div className="flex flex-col gap-4 border border-outline-variant bg-surface-container p-5">
-        <div className="flex items-start justify-between gap-4">
-          {onToggleSelect && (
-            <input
-              type="checkbox"
-              checked={!!isSelected}
-              onChange={onToggleSelect}
-              className="mt-1 h-4 w-4 shrink-0 rounded-none border-outline-variant bg-surface text-primary focus:ring-0"
-              aria-label={`Select stealth deposit ${match.stealthAddress}`}
-            />
-          )}
-          <div className="min-w-0 flex-1">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              {t('common.stealthAddress')}
-            </span>
-            <div className="mt-0.5 flex items-center gap-2">
-              <StellarLink
-                value={match.stealthAddress}
-                type="account"
-                className="max-w-full"
-                linkClassName="text-xs"
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {loadingBal ? (
-              <span className="font-mono text-xs text-outline">...</span>
-            ) : balance && parseFloat(balance) > 0 ? (
-              <>
-                <PrivacyBadge
-                  score={computePrivacyScore({
-                    reuseCount: 1,
-                    balance: balance ?? '0',
-                    transferTimestamps: [],
-                  })}
-                />
-                <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-                <span className="font-heading text-lg font-bold text-on-surface">
-                  {balance} XLM
-                </span>
-              </>
-            ) : (
-              <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
-            )}
-          </div>
-        </div>
-
-        {!withdrawHash && balance && parseFloat(balance) > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              {t('common.withdrawTo')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
-                placeholder="Destination address (G...)"
-                className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
-              />
-              <button
-                onClick={handleWithdraw}
-                disabled={!dest || withdrawing}
-                className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
-              >
-                {withdrawing ? '...' : t('common.withdraw')}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error && <p className="text-xs text-error">{error}</p>}
-
-        {withdrawHash && (
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
-            <span className="font-mono text-[10px] text-on-surface-variant">
-              {t('common.withdrawn')} —{' '}
-              <StellarLink value={withdrawHash} type="tx" linkClassName="text-[10px]" />
-            </span>
-          </div>
-        )}
-
-        <div className="border-t border-outline-variant/30 pt-3">
-          {!showKey ? (
-            <button
-              onClick={() => setShowKey(true)}
-              className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-            >
-              {t('common.revealSecretKey')}
-            </button>
-          ) : (
-            <div className="border border-error/20 bg-error/5 p-3">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                  {t('common.stealthKey')}
-                </span>
-                <CopyButton text={scalarHex} />
-              </div>
-              <code className="break-all font-mono text-[11px] text-on-surface">{scalarHex}</code>
-            </div>
-          )}
-        </div>
-      </div>
       <StellarMatchCard
         stealthAddress={match.stealthAddress}
         scalarHex={scalarHex}

@@ -278,7 +278,16 @@ export class KeyVault {
     if (!this.cryptoKey) throw new Error('KeyVault is locked');
 
     const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
-    const plaintext = encodeText(JSON.stringify(value));
+    const serialized = JSON.stringify(value, (_key, val) => {
+      if (
+        val instanceof Uint8Array ||
+        Object.prototype.toString.call(val) === '[object Uint8Array]'
+      ) {
+        return { __type: 'Uint8Array', data: Array.from(val as Uint8Array) };
+      }
+      return val;
+    });
+    const plaintext = encodeText(serialized);
     const ciphertext = await globalThis.crypto.subtle.encrypt(
       { name: 'AES-GCM', iv: iv as unknown as BufferSource },
       this.cryptoKey,
@@ -300,7 +309,17 @@ export class KeyVault {
       ciphertext as unknown as BufferSource,
     );
 
-    return JSON.parse(decodeText(plaintext)) as T;
+    return JSON.parse(decodeText(plaintext), (_key, val) => {
+      if (
+        val &&
+        typeof val === 'object' &&
+        val.__type === 'Uint8Array' &&
+        Array.isArray(val.data)
+      ) {
+        return new Uint8Array(val.data);
+      }
+      return val;
+    }) as T;
   }
 
   private async readRecord<T>(

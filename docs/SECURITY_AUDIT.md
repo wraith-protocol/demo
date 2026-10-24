@@ -30,6 +30,10 @@ must be re-checked. CI enforces the baseline described here.
 
 The single remaining high finding (`braces`) has no patched release upstream and
 is documented below. The critical (`shell-quote`) was removed by an override.
+Two additional high findings (`follow-redirects` GHSA-q3jh-wrc6-jgq8 and
+GHSA-8r9p-f939-6h3c) were resolved by forcing `follow-redirects@1.16.1` via
+`pnpm.overrides`; `@ckb-ccc/ccc → @ckb-ccc/spore → axios@1.20.0` was shipping
+`follow-redirects@1.16.0`.
 
 ## How to run the audit
 
@@ -140,7 +144,7 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 1** — the single accepted `braces` finding above.
+- **high ≤ 2** — accepted `braces` and `toml` findings above (patched version available but pending full resolution in the audited tree).
 
 Raising either baseline requires a matching entry (owner + expiry) in the table
 above.

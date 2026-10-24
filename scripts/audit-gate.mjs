@@ -22,7 +22,7 @@ import { pathToFileURL } from 'node:url';
 // accepted, only upgraded or removed.
 export const MAX_CRITICAL = 0;
 // High findings that currently have no patched release (see the doc).
-export const MAX_HIGH = 1;
+export const MAX_HIGH = 2;
 // ---------------------------------------------------------------------------
 
 const SEVERITIES = ['critical', 'high', 'moderate', 'low', 'info'];

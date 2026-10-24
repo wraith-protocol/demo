@@ -56,12 +56,7 @@ export type OfflineWorkKind = 'payment-intent' | 'scan-session' | 'signed-submit
 export type OfflineQueuePolicy = 'safe-to-queue' | 'signing-required';
 
 export type OfflineEntryStatus =
-  | 'queued'
-  | 'syncing'
-  | 'needs-review'
-  | 'done'
-  | 'conflict'
-  | 'failed';
+  'queued' | 'syncing' | 'needs-review' | 'done' | 'conflict' | 'failed';
 
 export const OFFLINE_WORK_KINDS: OfflineWorkKind[] = [
   'payment-intent',
@@ -141,11 +136,7 @@ export interface OfflineQueueEntry {
 
 /** Conflict reasons surfaced to the user with a resolution action. */
 export type OfflineConflictReason =
-  | 'expired'
-  | 'invalid-recipient'
-  | 'unparseable-scan'
-  | 'stale-envelope'
-  | 'unsupported-chain';
+  'expired' | 'invalid-recipient' | 'unparseable-scan' | 'stale-envelope' | 'unsupported-chain';
 
 /**
  * Maps work to its offline policy. The security boundary of the queue:

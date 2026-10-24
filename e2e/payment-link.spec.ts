@@ -4,12 +4,20 @@ test.describe('Stellar Payment Link', () => {
   test.beforeEach(async ({ context }) => {
     // Mock Freighter API so the app thinks a wallet is installed and connected
     await context.addInitScript(() => {
-      (window as any).freighter = {
+      const mock = {
         isConnected: () => Promise.resolve({ isConnected: true }),
         getAddress: () => Promise.resolve({ address: 'GATTESTADDRESSYOURSFREIGHTER123456789' }),
-        requestAccess: () => Promise.resolve(),
+        requestAccess: () => Promise.resolve({ address: 'GATTESTADDRESSYOURSFREIGHTER123456789' }),
+        getNetworkDetails: () =>
+          Promise.resolve({
+            network: 'TESTNET',
+            networkPassphrase: 'Test SDF Network ; September 2015',
+          }),
+        signTransaction: (xdr: string) => Promise.resolve({ signedTxXdr: xdr }),
       };
-      (window as any).freighterApi = (window as any).freighter; // Some versions use freighterApi
+      (window as any).freighterMock = mock;
+      (window as any).freighter = mock;
+      (window as any).freighterApi = mock;
     });
   });
 
@@ -19,7 +27,7 @@ test.describe('Stellar Payment Link', () => {
   }) => {
     // 1. Go to Receive page
     await page.goto('/receive');
-    await page.locator('select').selectOption('stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     // 2. Open generated link in a new context
     const testUrl =
@@ -30,7 +38,7 @@ test.describe('Stellar Payment Link', () => {
     await newPage.goto(testUrl);
 
     // Switch to Stellar network
-    await newPage.locator('select').selectOption('stellar');
+    await newPage.getByLabel('Chain').selectOption('stellar');
 
     // Click Connect Freighter
     await newPage.click('text=Connect Freighter');
@@ -56,7 +64,7 @@ test.describe('Stellar Payment Link', () => {
     await page.goto(testUrl);
 
     // Switch to Stellar network
-    await page.locator('select').selectOption('stellar');
+    await page.getByLabel('Chain').selectOption('stellar');
 
     // Click Connect Freighter
     await page.click('text=Connect Freighter');

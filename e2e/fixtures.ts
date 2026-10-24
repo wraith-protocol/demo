@@ -170,7 +170,7 @@ export const test = base.extend<{
       }, mergedConfig);
 
       // Route Horizon accounts calls
-      await page.route('https://horizon-testnet.stellar.org/accounts/*', async (route) => {
+      await page.route('**/horizon-testnet.stellar.org/accounts/*', async (route) => {
         const url = route.request().url();
         const address = url.split('/accounts/').pop()?.split('?')[0] || '';
 
@@ -200,7 +200,7 @@ export const test = base.extend<{
       });
 
       // Route Horizon transactions submission
-      await page.route('https://horizon-testnet.stellar.org/transactions', async (route) => {
+      await page.route('**/horizon-testnet.stellar.org/transactions', async (route) => {
         if (route.request().method() === 'POST') {
           if (mergedConfig.txSuccess) {
             await route.fulfill({
@@ -253,12 +253,22 @@ export const test = base.extend<{
       });
 
       // Route Soroban RPC calls (specifically for getEvents)
-      await page.route('https://soroban-testnet.stellar.org', async (route) => {
+      await page.route('**/soroban-testnet.stellar.org/**', async (route) => {
         if (route.request().method() === 'POST') {
           const body = route.request().postDataJSON();
           const id = body?.id || 1;
 
-          if (body?.method === 'getEvents') {
+          if (body?.method === 'getLatestLedger') {
+            await route.fulfill({
+              status: 200,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id,
+                result: { sequence: 1000 },
+              }),
+            });
+          } else if (body?.method === 'getEvents') {
             await route.fulfill({
               status: 200,
               contentType: 'application/json',

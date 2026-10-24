@@ -268,10 +268,12 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
       if (!address) throw new Error('Wallet not connected');
 
       const freighter = await getFreighter();
-      const { signedMessage } = await freighter.signMessage(message, {
+      const res = await freighter.signMessage(message, {
         address,
         networkPassphrase: STELLAR_NETWORK.networkPassphrase,
       });
+      const signedMessage =
+        res && typeof res === 'object' && 'signedMessage' in res ? (res as any).signedMessage : res;
 
       if (!signedMessage) throw new Error('Signing failed: no signature returned');
 

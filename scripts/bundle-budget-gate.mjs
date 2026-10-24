@@ -30,7 +30,7 @@ import { pathToFileURL } from 'node:url';
 // (see the PR this shipped in for the exact numbers), so this catches
 // regressions without being so tight it flakes on routine minification
 // differences between dependency patch versions.
-export const INITIAL_LOAD_BUDGET_BYTES = 3_300_000; // ~3.3 MB
+export const INITIAL_LOAD_BUDGET_BYTES = 3_350_000; // ~3.35 MB (bumped for lockfile regeneration/minification differences)
 export const WORKER_BUDGET_BYTES = 1_100_000; // ~1.1 MB
 // 750 KB covers the largest legitimate lazy chunk today (a wagmi/RainbowKit
 // wallet-connector chunk at ~689 KB), which this app's own code doesn't

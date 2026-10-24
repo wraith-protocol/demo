@@ -77,13 +77,13 @@ function formatAsset(value: number, assetKey: StellarAssetKey) {
 
 function validateMetaAddress(value: string) {
   if (!value) return 'Recipient meta-address is required';
-  if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
+  if (!value.startsWith('st:xlm:')) return 'Enter a valid Stellar meta-address (st:xlm:...)';
 
   try {
     decodeStealthMetaAddress(value);
     return '';
   } catch {
-    return 'Not a valid Stellar stealth meta-address';
+    return 'Enter a valid Stellar meta-address (st:xlm:...)';
   }
 }
 
@@ -263,7 +263,9 @@ export function StellarSend() {
   const [isPending, setIsPending] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
   const [, setRetryStatus] = useState('');
-  const [, setSimulation] = useState<StellarSendSimulationState>(emptyStellarSendSimulation());
+  const [simulation, setSimulation] = useState<StellarSendSimulationState>(
+    emptyStellarSendSimulation(),
+  );
 
   useEffect(() => {
     if (paramExp) {
@@ -339,6 +341,12 @@ export function StellarSend() {
     assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
       ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
       : '';
+  const balanceText =
+    isBalanceLoading || isAwaitingBalance
+      ? 'Checking...'
+      : balanceLookupError ||
+        balanceError ||
+        (sourceBalance !== null ? `${formatAsset(sourceBalance, assetKey)} ${assetKey}` : '');
   const balanceEntries: Array<{
     key: string;
     code: string;
@@ -366,7 +374,7 @@ export function StellarSend() {
         const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
         const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
         if (!knownAssetKeys.has(code)) continue;
-        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+        entries.push({ key: code, code, issuer, balance: bal, isKnown: true, isNative: false });
       }
     }
     if (!hasXlm) {
@@ -446,7 +454,7 @@ export function StellarSend() {
     setSourceBalance(null);
     setBalanceLookupError('');
 
-    if (!address || amountError || !amountValue) {
+    if (!address) {
       setIsBalanceLoading(false);
       return;
     }
@@ -514,13 +522,13 @@ export function StellarSend() {
           setIsBalanceLoading(false);
         }
       }
-    }, 500);
+    }, 50);
 
     return () => {
       controller.abort();
       globalThis.clearTimeout(timeout);
     };
-  }, [address, amountError, amountValue, assetKey]);
+  }, [address, assetKey]);
 
   const assetInfo = getAssetByKey(assetKey);
 
@@ -627,7 +635,60 @@ export function StellarSend() {
     }
     setQueuedOffline(false);
 
-    if (!canSubmit) {
+    if (
+      !canSubmit &&
+      sourceBalance === null &&
+      !balanceLookupError &&
+      address &&
+      metaAddress &&
+      amountValue &&
+      !recipientError &&
+      !amountError
+    ) {
+      try {
+        const accountRes = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${address}`,
+        );
+        if (accountRes.ok) {
+          const accountData = await accountRes.json();
+          const balances = (accountData.balances || []) as HorizonBalance[];
+          const assetInfo = getAssetByKey(assetKey);
+          let parsedBalance = 0;
+          if (assetInfo.isNative) {
+            const nativeBalance = balances.find((bal) => bal.asset_type === 'native');
+            parsedBalance = Number(nativeBalance?.balance || 0);
+          } else {
+            const assetBalance = balances.find(
+              (bal) =>
+                bal.asset_code === assetInfo.key &&
+                bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
+            );
+            parsedBalance = Number(assetBalance?.balance || 0);
+          }
+          if (Number.isFinite(parsedBalance)) {
+            setSourceBalance(parsedBalance);
+            if (requiredBalance !== null && requiredBalance > parsedBalance) {
+              setError(
+                `Insufficient ${assetKey} (you have ${formatAsset(parsedBalance, assetKey)}, need ${formatAsset(requiredBalance, assetKey)})`,
+              );
+              return;
+            }
+          }
+        }
+      } catch {
+        // Continue to canSubmit check
+      }
+    }
+
+    if (!canSubmit && sourceBalance === null) {
+      // If balance is now loaded or submit was only blocked by isAwaitingBalance
+      const hasValidationError =
+        recipientError || amountError || balanceLookupError || trustlineError;
+      if (hasValidationError) {
+        setError(validationError || 'Enter valid send details');
+        return;
+      }
+    } else if (!canSubmit) {
       setError(validationError || 'Enter valid send details');
       return;
     }
@@ -964,22 +1025,29 @@ export function StellarSend() {
       {!stealthResult && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="stellar-send-recipient"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               {t('common.recipientMetaAddress')}
             </label>
             <div className="flex flex-col gap-2">
               <input
+                id="stellar-send-recipient"
+                aria-label="Recipient Meta-Address"
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder={t('stellar.recipientPlaceholder')}
-                className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                disabled={!!paramTo || isExpired}
+                className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
               />
               <div className="flex justify-end gap-4">
                 <button
                   type="button"
                   onClick={handlePaste}
-                  className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                  disabled={!!paramTo || isExpired}
+                  className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary disabled:opacity-50"
                 >
                   {t('common.paste')}
                 </button>
@@ -987,7 +1055,8 @@ export function StellarSend() {
                   ref={scanQrTriggerRef}
                   type="button"
                   onClick={openQrScanner}
-                  className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110"
+                  disabled={!!paramTo || isExpired}
+                  className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110 disabled:opacity-50"
                 >
                   Scan QR
                 </button>
@@ -996,17 +1065,23 @@ export function StellarSend() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+            <label
+              htmlFor="stellar-send-amount"
+              className="font-mono text-[10px] uppercase tracking-widest text-outline"
+            >
               {t('common.amount')}
             </label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <input
+                  id="stellar-send-amount"
+                  aria-label="Amount"
                   type="text"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.0"
-                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                  disabled={!!paramAmount || isExpired}
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
                 />
               </div>
               <AssetPicker
@@ -1014,9 +1089,35 @@ export function StellarSend() {
                 selectedKey={assetKey as string}
                 onSelect={(key) => setAssetKey(key as StellarAssetKey)}
                 trustlineWarning={trustlineWarning}
-                disabled={isPending}
+                disabled={isPending || isExpired}
               />
             </div>
+            {balanceText && (
+              <span
+                className={`font-mono text-[10px] ${
+                  balanceLookupError || balanceError ? 'text-error' : 'text-on-surface-variant'
+                }`}
+                aria-live="polite"
+              >
+                {balanceText}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+              Memo (optional)
+            </label>
+            <input
+              id="stellar-memo"
+              type="text"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="e.g. Coffee"
+              maxLength={28}
+              disabled={!!paramMemo || isExpired}
+              className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary disabled:opacity-50"
+            />
           </div>
 
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
@@ -1101,12 +1202,40 @@ export function StellarSend() {
             </div>
           )}
 
+          {trustlineError && (
+            <div className="border border-error/20 bg-error/5 p-3">
+              <p className="font-mono text-xs text-error">{trustlineError}</p>
+              <p className="mt-1 font-body text-xs text-on-surface-variant">
+                To add a{' '}
+                <a
+                  href="https://stellar.org/learn/how-to-add-trustline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline"
+                >
+                  trustline
+                </a>
+                , the recipient needs to set a trustline for {assetKey} on their Stellar account.
+              </p>
+            </div>
+          )}
+
+          {simulation.status === 'error' && simulation.error && (
+            <p className="text-sm text-error">{simulation.error}</p>
+          )}
+
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={
+              !recipient || !amount || isPending || isExpired || simulation.status === 'error'
+            }
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            {isPending
+              ? t('common.confirmInWallet')
+              : assetKey === 'XLM'
+                ? t('common.sendPrivately')
+                : `Send ${assetKey}`}
           </button>
         </div>
       )}
