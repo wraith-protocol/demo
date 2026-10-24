@@ -1,3 +1,5 @@
+// @ts-check
+// Type-checked: do not add @ts-nocheck to this file.
 /**
  * src/wallets/stellar/types.ts
  *
@@ -72,6 +74,14 @@ export type WalletId = 'freighter' | 'albedo' | 'xbull' | 'lobstr' | 'walletconn
 
 // ─── Error class ─────────────────────────────────────────────────────────────
 
+export type WalletErrorCode =
+  | 'NOT_AVAILABLE'
+  | 'USER_REJECTED'
+  | 'NETWORK_MISMATCH'
+  | 'SIGN_FAILED'
+  | 'CONNECT_FAILED'
+  | 'UNKNOWN';
+
 export class WalletError extends Error {
   constructor(
     message: string,
@@ -82,11 +92,3 @@ export class WalletError extends Error {
     this.name = 'WalletError';
   }
 }
-
-export type WalletErrorCode =
-  | 'NOT_AVAILABLE'
-  | 'USER_REJECTED'
-  | 'NETWORK_MISMATCH'
-  | 'SIGN_FAILED'
-  | 'CONNECT_FAILED'
-  | 'UNKNOWN';

@@ -18,6 +18,7 @@ import { STELLAR_NETWORK } from '@/config';
 import { getStellarContractId } from '@/lib/stellar/deployments';
 import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
 
+const ANNOUNCER_CONTRACT = 'CCJLK2QRBJAAKIG6ELPQVXLLWMKKWV4Q2FKWUETHZGMPAMHK7WVWL';
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;
 
 export type StellarSendSimulationState =

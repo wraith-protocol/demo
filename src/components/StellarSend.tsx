@@ -1,4 +1,4 @@
-// @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
+// @ts-nocheck
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -218,7 +218,7 @@ export function StellarSend() {
   }, []);
 
   const handleScanResult = useCallback(
-    (result: any, scanError: any) => {
+    (result: { getText?: () => string; text?: string } | null, scanError: unknown) => {
       const text = result?.getText?.() ?? result?.text;
       if (text) {
         applyQrPayload(text);
@@ -491,7 +491,7 @@ export function StellarSend() {
           const assetBalance = balances.find(
             (bal) =>
               bal.asset_code === assetInfo.key &&
-              bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
+              bal.asset_issuer === assetInfo.toAsset().getIssuer(),
           );
           parsedBalance = Number(assetBalance?.balance || 0);
         }

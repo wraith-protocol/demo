@@ -23,6 +23,23 @@ export interface BuildSendStellarAssetResult {
   txHashHex: string;
 }
 
+interface HorizonAccountResponse {
+  sequence: string;
+  balances?: Array<{
+    asset_type?: string;
+    asset_code?: string;
+    asset_issuer?: string;
+  }>;
+}
+
+async function fetchHorizonAccount(
+  address: string,
+): Promise<HorizonAccountResponse | null> {
+  const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${address}`);
+  if (!res.ok) return null;
+  return (await res.json()) as HorizonAccountResponse;
+}
+
 export async function buildSendStellarAsset(
   params: BuildSendStellarAssetParams,
 ): Promise<BuildSendStellarAssetResult> {
@@ -31,19 +48,20 @@ export async function buildSendStellarAsset(
   const assetInfo = getAssetByKey(assetKey);
   const asset = assetInfo.toAsset();
   const decoded = decodeStealthMetaAddress(recipientMetaAddress);
-  const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
-  const horizonUrl = STELLAR_NETWORK.horizonUrl;
+  const result = generateStealthAddress(
+    decoded.spendingPubKey,
+    decoded.viewingPubKey,
+  );
   const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
-  const accountRes = await fetch(`${horizonUrl}/accounts/${senderAddress}`);
-  if (!accountRes.ok) throw new Error('Failed to load sender account');
-  const accountData = await accountRes.json();
+  const accountData = await fetchHorizonAccount(senderAddress);
+  if (!accountData) throw new Error('Failed to load sender account');
   const sourceAccount = new Account(senderAddress, accountData.sequence);
 
   let stealthExists = false;
   try {
-    const stealthCheckRes = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`);
-    stealthExists = stealthCheckRes.ok;
+    const stealthAccount = await fetchHorizonAccount(result.stealthAddress);
+    stealthExists = stealthAccount !== null;
   } catch {
     // Transient — assume not created yet
   }
@@ -112,18 +130,18 @@ export async function checkAssetTrustline(
   address: string,
   assetKey: StellarAssetKey,
 ): Promise<boolean> {
-  if (assetKey === 'XLM') return true;
+  if (assetKey === 'XLM') {
+    return true;
+  }
 
   const assetInfo = getAssetByKey(assetKey);
   try {
-    const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/accounts/${address}`);
-    if (!res.ok) return true;
-    const data = await res.json();
+    const data = await fetchHorizonAccount(address);
+    if (!data) return true;
     const balances = data.balances || [];
+    const issuer = assetInfo.toAsset().getIssuer();
     return balances.some(
-      (b: { asset_type?: string; asset_code?: string; asset_issuer?: string }) =>
-        b.asset_code === assetInfo.key &&
-        b.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
+      (b) => b.asset_code === assetInfo.key && b.asset_issuer === issuer,
     );
   } catch {
     return true;

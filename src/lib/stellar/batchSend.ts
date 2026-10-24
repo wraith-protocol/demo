@@ -4,8 +4,6 @@ import {
   Operation,
   Asset,
   Memo,
-  Transaction,
-  FeeBumpTransaction,
 } from '@stellar/stellar-sdk';
 import {
   generateStealthAddress,
@@ -16,9 +14,9 @@ import type { StellarAssetKey } from '@/lib/stellar/assets';
 import { getAssetByKey } from '@/lib/stellar/assets';
 import { fetchWithRetry } from '@/lib/stellar/retry';
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 export type RowStatus = 'idle' | 'valid' | 'invalid' | 'pending' | 'success' | 'failed';
 
@@ -55,9 +53,9 @@ export interface BatchSendResult {
   failedCount: number;
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Constants
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /** Stellar enforces a hard cap of 100 operations per transaction */
 export const MAX_BATCH_ROWS = 100;
@@ -65,9 +63,9 @@ export const MAX_BATCH_ROWS = 100;
 /** Minimum XLM amount (7-decimal precision floor) */
 const MIN_AMOUNT = 0.0000001;
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // CSV parsing
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /**
  * Parse a CSV text into raw rows.
@@ -180,9 +178,9 @@ export function serializeRowsToCsv(
     .join('\n');
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Validation
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /**
  * Validate a single row in-place.
@@ -214,7 +212,7 @@ export function validateRow(row: BatchRow, assetKey: StellarAssetKey): BatchRow 
   if (!row.amountRaw) {
     return { ...row, status: 'invalid', error: 'Amount is required' };
   }
-  if (!/^(?:\d+|\d*\.\d+)$/.test(row.amountRaw)) {
+  if (!/^(?:\w+|\d*\.\d+)$/.test(row.amountRaw)) {
     return { ...row, status: 'invalid', error: `Invalid ${assetKey} amount` };
   }
 
@@ -258,9 +256,9 @@ export function validateRows(rows: BatchRow[], assetKey: StellarAssetKey): Batch
   return rows.map((row) => validateRow(row, assetKey));
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Horizon account helpers
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 interface HorizonAccount {
   sequence: string;
@@ -275,7 +273,7 @@ interface HorizonAccount {
 async function loadAccount(address: string): Promise<HorizonAccount> {
   const res = await fetchWithRetry(`${STELLAR_NETWORK.horizonUrl}/accounts/${address}`);
   if (!res.ok) throw new Error(`Failed to load account ${address} (HTTP ${res.status})`);
-  return res.json() as Promise<HorizonAccount>;
+  return (await res.json()) as HorizonAccount;
 }
 
 async function accountExists(address: string): Promise<boolean> {
@@ -287,9 +285,9 @@ async function accountExists(address: string): Promise<boolean> {
   }
 }
 
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Batch transaction builder
-// ---------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 /**
  * Build a single Stellar transaction containing one payment/createAccount
@@ -371,94 +369,4 @@ export async function buildBatchTransaction(
 
   const tx = builder.build();
   return { xdr: tx.toXDR(), operationMap };
-}
-
-// ---------------------------------------------------------------------------
-// Submission
-// ---------------------------------------------------------------------------
-
-/**
- * Submit a signed XDR to Horizon.
- * Returns the transaction hash on success; throws with a descriptive message
- * on failure.
- */
-export async function submitBatchTransaction(signedXdr: string): Promise<string> {
-  const res = await fetch(`${STELLAR_NETWORK.horizonUrl}/transactions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `tx=${encodeURIComponent(signedXdr)}`,
-  });
-
-  const data = (await res.json()) as {
-    hash?: string;
-    title?: string;
-    extras?: { result_codes?: { transaction?: string; operations?: string[] } };
-  };
-
-  if (!res.ok) {
-    const txCode = data.extras?.result_codes?.transaction ?? data.title ?? 'Transaction failed';
-    const opCodes = data.extras?.result_codes?.operations;
-    const opDetail = opCodes ? ` (operations: ${opCodes.join(', ')})` : '';
-    throw new Error(`${txCode}${opDetail}`);
-  }
-
-  return data.hash ?? '';
-}
-
-// ---------------------------------------------------------------------------
-// High-level orchestrator
-// ---------------------------------------------------------------------------
-
-/**
- * Build, sign, and submit a batch stealth-send transaction.
- *
- * Because Stellar transactions are all-or-nothing at the protocol level there
- * is no partial success scenario — the whole batch either lands or is rolled
- * back. Partial failures are surfaced as a thrown Error with operation-level
- * result codes in the message when available.
- */
-export async function sendBatch(params: BatchSendParams): Promise<BatchSendResult> {
-  const { senderAddress, rows, assetKey, signTransaction, onProgress } = params;
-
-  const validRows = rows.filter((r) => r.status === 'valid');
-  if (validRows.length === 0) {
-    throw new Error('No valid rows to send');
-  }
-
-  // Mark all valid rows as pending
-  validRows.forEach((r) => onProgress?.(r.index, 'pending'));
-
-  // Build unsigned transaction
-  const { xdr, operationMap } = await buildBatchTransaction(senderAddress, validRows, assetKey);
-
-  // Sign with connected wallet
-  const signedXdr = await signTransaction(xdr);
-
-  // Derive tx hash from the unsigned tx for activity tracking
-  const { Transaction: StellarTx } = await import('@stellar/stellar-sdk');
-  const tx: Transaction | FeeBumpTransaction = new StellarTx(
-    xdr,
-    STELLAR_NETWORK.networkPassphrase,
-  );
-  const txHashHex = (tx as Transaction).hash().toString('hex');
-
-  // Submit
-  let horizonHash: string;
-  try {
-    horizonHash = await submitBatchTransaction(signedXdr);
-  } catch (err) {
-    // All-or-nothing: mark every row as failed
-    validRows.forEach((r) => onProgress?.(r.index, 'failed', (err as Error).message));
-    throw err;
-  }
-
-  // Success: mark all rows
-  operationMap.forEach(({ rowIndex }) => onProgress?.(rowIndex, 'success'));
-
-  return {
-    txHash: txHashHex,
-    horizonHash: horizonHash || txHashHex,
-    successCount: validRows.length,
-    failedCount: 0,
-  };
 }
