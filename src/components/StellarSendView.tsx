@@ -90,7 +90,9 @@ export function StellarSendView({
   if (!isConnected) {
     return (
       <section className="flex flex-col gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+        <span
+          className="font-mono text-[10px] uppercase tracking-widest text-outline"
+        >
           Stellar Testnet / {assetKey}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
@@ -232,6 +234,7 @@ export function StellarSendView({
               Memo (optional)
             </label>
             <input
+              id="stellar-memo"
               id="stellar-memo"
               type="text"
               onChange={(e) => onMemoChange?.(e.target.value)}

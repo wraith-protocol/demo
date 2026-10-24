@@ -48,7 +48,10 @@ export async function buildSendStellarAsset(
   const assetInfo = getAssetByKey(assetKey);
   const asset = assetInfo.toAsset();
   const decoded = decodeStealthMetaAddress(recipientMetaAddress);
-  const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+  const result = generateStealthAddress(
+    decoded.spendingPubKey,
+    decoded.viewingPubKey,
+  );
   const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
   const accountData = await fetchHorizonAccount(senderAddress);

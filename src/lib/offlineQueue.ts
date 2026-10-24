@@ -334,61 +334,7 @@ function oldestTerminalIds(entries: OfflineQueueEntry[], count: number): Set<str
     entries
       .filter((e) => isTerminalStatus(e.status))
       .sort((a, b) => a.updatedAt - b.updatedAt)
-      .slice(0, count)
+      .slice(0, Math.max(0, count))
       .map((e) => e.id),
   );
-}
-
-/**
- * Adds an entry, enforcing dedupe (by id, and by txHash for signed
- * envelopes) and the collection cap.
- *
- * Full-but-actionable queues reject explicitly instead of dropping work:
- * with 50 actionable entries, the 51st returns `{ accepted: false }` and the
- * input list untouched — never 51 items, never a silent tail-drop at save.
- */
-export function addEntry(entries: OfflineQueueEntry[], entry: OfflineQueueEntry): AddEntryResult {
-  if (entries.some((e) => e.id === entry.id)) return { entries, accepted: true, evicted: 0 };
-  if (
-    (entry.kind === 'payment-intent' || entry.kind === 'signed-submit') &&
-    entries.some(
-      (e) =>
-        e.kind === entry.kind &&
-        (e.payload as PaymentIntentPayload | SignedSubmitPayload).operationId ===
-          (entry.payload as PaymentIntentPayload | SignedSubmitPayload).operationId,
-    )
-  ) {
-    return { entries, accepted: true, evicted: 0 };
-  }
-  if (
-    entry.kind === 'signed-submit' &&
-    entries.some(
-      (e) =>
-        e.kind === 'signed-submit' &&
-        (e.payload as SignedSubmitPayload).txHash === (entry.payload as SignedSubmitPayload).txHash,
-    )
-  ) {
-    return { entries, accepted: true, evicted: 0 };
-  }
-
-  if (entries.length < MAX_OFFLINE_QUEUE_ITEMS) {
-    return { entries: [...entries, entry], accepted: true, evicted: 0 };
-  }
-
-  const evictCount = entries.length - MAX_OFFLINE_QUEUE_ITEMS + 1;
-  const evictIds = oldestTerminalIds(entries, evictCount);
-  if (evictIds.size < evictCount) {
-    return { entries, accepted: false, evicted: 0 };
-  }
-
-  const remaining = entries.filter((e) => !evictIds.has(e.id));
-  return { entries: [...remaining, entry], accepted: true, evicted: evictIds.size };
-}
-
-export function enforceQueueCap(entries: OfflineQueueEntry[]): OfflineQueueEntry[] {
-  if (entries.length <= MAX_OFFLINE_QUEUE_ITEMS) return entries;
-  const evictCount = entries.length - MAX_OFFLINE_QUEUE_ITEMS;
-  const evictIds = oldestTerminalIds(entries, evictCount);
-  if (evictIds.size === 0) return entries;
-  return entries.filter((e) => !evictIds.has(e.id));
 }
