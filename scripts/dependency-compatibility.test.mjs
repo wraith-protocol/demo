@@ -3,7 +3,7 @@
 // replaced with path-scoped overrides because they forced consumers onto a
 // version outside the major range they declare:
 //
-//   - `@stellar/stellar-sdk` declares `toml: ^3` but needs a patched major 4.
+//   - `@stellar/stellar-sdk` declares `toml: ^3` but needs a patched major 5.
 //   - `metro` declares `image-size: ^1` but needs a patched major 2.
 //
 // These tests exercise the exact code path each consumer relies on with the

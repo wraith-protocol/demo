@@ -23,13 +23,13 @@ must be re-checked. CI enforces the baseline described here.
 | Severity  | Before | After |
 | --------- | -----: | ----: |
 | Critical  |      1 |     0 |
-| High      |     53 |     3 |
+| High      |     53 |     0 |
 | Moderate  |     86 |     8 |
 | Low       |      7 |     2 |
-| **Total** |    147 |    11 |
+| **Total** |    147 |    10 |
 
-The single remaining high finding (`braces`) has no patched release upstream and
-is documented below. The critical (`shell-quote`) was removed by an override.
+All high findings have been remediated. The critical (`shell-quote`) was removed
+by an override.
 
 ## How to run the audit
 
@@ -92,11 +92,10 @@ different consumer:
   `react-devtools-core`, `@walletconnect/jsonrpc-ws-connection`) resolve to the
   patched `7.5.13` from their own range. Only the exact/tilde-pinned `ws` 8
   consumers (`engine.io-client`, `ethers`, `viem`) are bumped, within major 8.
-- **`image-size` and `toml` have no patched release inside the major the
-  consumer declares** (`image-size` 1.x, `toml` 3.x), so those two overrides do
-  cross a major. They are scoped to `metro` and `@stellar/stellar-sdk`
-  respectively, and `scripts/dependency-compatibility.test.mjs` exercises each
-  affected path so the bump cannot regress silently.
+- **`image-size` has no patched release inside the major the consumer
+  declares** (`image-size` 1.x), so that override does cross a major. It is
+  scoped to `metro`, and `scripts/dependency-compatibility.test.mjs` exercises
+  the affected path so the bump cannot regress silently.
 
 The `toml` override is safe because `@stellar/stellar-sdk` only uses `toml`
 inside `StellarToml.Resolver`, which the demo never calls (`@stellar/stellar-sdk`
@@ -114,29 +113,16 @@ consumer declares, and would require a breaking major bump of a package we do
 not control. All are accepted with an owner and an expiry; re-check on or before
 the expiry.
 
-| Package                | Severity | Advisory                                                      | Dependency path                                                                                                   | Owner                          | Expiry     |
-| ---------------------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
-| `braces`               | high     | GHSA-vfj7-8cjw-p6xm                                           | `@solana/wallet-adapter-react` → `@solana-mobile/wallet-adapter-mobile` → `react-native` → `metro` → `micromatch` | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `zod`                  | high     | GHSA-mrhx-c7xc-m3w5                                           | `wagmi` / `@ckb-ccc/ccc` → `abitype` / `viem` → `zod`                                                             | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`                                        | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse`                            | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`                                   | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                                                      | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`                               | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`                                         | `@wraith-protocol/maintainers` | 2027-01-15 |
+| Package                | Severity | Advisory                                                      | Dependency path                                                                        | Owner                          | Expiry     |
+| ---------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
+| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`             | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse` | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`        | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                           | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`    | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`              | `@wraith-protocol/maintainers` | 2027-01-15 |
 
 Notes:
-
-- `braces` is reached only through the React Native/Metro tooling pulled in by
-  the Solana Mobile wallet adapter; it is build-time code and is not part of the
-  browser bundle shipped by `vite build`.
-- `braces` is currently unfixable: the latest published release (`3.0.3`) is the
-  affected version. This entry should be removed as soon as a patched release is
-  published.
-- `zod` is pulled in transitively by `wagmi`, `viem`, and `@ckb-ccc/ccc` via
-  dependencies declaring `zod: ^3 >=3.19.1`. The vulnerability GHSA-mrhx-c7xc-m3w5
-  is patched in `>=4.6.6` (a breaking major bump). No patched release exists on
-  the 3.x line.
 
 ## CI gate
 
@@ -145,7 +131,8 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 1** — the single accepted `braces` finding above.
+- **high ≤ 0** — all high findings have been remediated; any new high finding
+  fails CI.
 
 Raising either baseline requires a matching entry (owner + expiry) in the table
 above.

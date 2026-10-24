@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useContacts } from '@/store/contactsStore';
 import { useNameHistory } from '@/store/nameHistoryStore';
-import { useNameWatchlistStore } from '@/store/nameWatchlistStore';
+import { useNameWatchlistStore, type AuctionBid } from '@/store/nameWatchlistStore';
 import { stellarTxUrl } from '@/lib/explorer';
+import { submitBidWithRecovery } from '@/lib/stellar/auctionBidSubmission';
+import { reconcileUnknownBids } from '@/lib/stellar/auctionBidReconciliation';
 import { tryGetStellarContractId } from '@/lib/stellar/deployments';
 import {
   MIN_AUCTION_BID_INCREMENT,
@@ -20,12 +22,11 @@ import {
   getNameAuction,
   getNameAuctionConfig,
   submitTransaction,
+  getNameBidTransactionStatus,
   type NameAuction,
   type NameAuctionConfig,
 } from '@/lib/stellar/names';
 
-// Display-only label lookup: an undisployed names contract resolves to an empty
-// address so the page still renders, while every auction call fails closed.
 const NAMES_CONTRACT_ID = tryGetStellarContractId('names');
 
 const STROOPS_PER_XLM = 10_000_000n;
@@ -40,6 +41,13 @@ function formatXlm(stroops: bigint) {
   const whole = stroops / STROOPS_PER_XLM;
   const fraction = (stroops % STROOPS_PER_XLM).toString().padStart(7, '0').replace(/0+$/, '');
   return fraction ? `${whole}.${fraction} XLM` : `${whole} XLM`;
+}
+
+function formatXlmInput(stroops: string) {
+  const amount = BigInt(stroops);
+  const whole = amount / STROOPS_PER_XLM;
+  const fraction = (amount % STROOPS_PER_XLM).toString().padStart(7, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
 function formatEndsAt(timestamp: number) {
@@ -61,13 +69,26 @@ export default function NamesAuctions() {
   const { stellarMetaAddress } = useStealthKeys();
   const { isKnownAddress } = useContacts();
   const { isKnownRecipient } = useNameHistory();
+
   const watchedAuctions = useNameWatchlistStore((state) => state.watchedAuctions);
   const bids = useNameWatchlistStore((state) => state.bids);
   const watchAuction = useNameWatchlistStore((state) => state.watchAuction);
   const unwatchAuction = useNameWatchlistStore((state) => state.unwatchAuction);
   const saveBid = useNameWatchlistStore((state) => state.saveBid);
+  const updateBidSubmission = useNameWatchlistStore((state) => state.updateBidSubmission);
   const markBidRevealed = useNameWatchlistStore((state) => state.markBidRevealed);
   const removeBid = useNameWatchlistStore((state) => state.removeBid);
+
+  const status = useNameWatchlistStore((state) => state.status);
+  const hasLegacyPlaintext = useNameWatchlistStore((state) => state.hasLegacyPlaintext);
+  const hasEncryptedVault = useNameWatchlistStore((state) => state.hasEncryptedVault);
+  const inspectStorage = useNameWatchlistStore((state) => state.inspectStorage);
+  const setPassphrase = useNameWatchlistStore((state) => state.setPassphrase);
+  const unlock = useNameWatchlistStore((state) => state.unlock);
+  const lock = useNameWatchlistStore((state) => state.lock);
+  const exportBackup = useNameWatchlistStore((state) => state.exportBackup);
+  const importBackup = useNameWatchlistStore((state) => state.importBackup);
+  const clearLegacy = useNameWatchlistStore((state) => state.clearLegacy);
 
   const [auctions, setAuctions] = useState<NameAuction[]>([]);
   const [config, setConfig] = useState<NameAuctionConfig | null>(null);
@@ -80,6 +101,16 @@ export default function NamesAuctions() {
   const [selectedAuction, setSelectedAuction] = useState<NameAuction | null>(null);
   const [bidAmount, setBidAmount] = useState('');
 
+  // Vault UI state
+  const [vaultError, setVaultError] = useState('');
+  const [passphrase, setPassphraseValue] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [revealPending, setRevealPending] = useState<NameAuction | null>(null);
+  const [backupReady, setBackupReady] = useState<string | null>(null);
+  const importFileInput = useRef<HTMLInputElement>(null);
+
   const trackedNames = useMemo(
     () => [...new Set([...watchedAuctions.map((item) => item.name), ...Object.keys(bids)])],
     [bids, watchedAuctions],
@@ -87,6 +118,7 @@ export default function NamesAuctions() {
   const trackedNamesKey = trackedNames.join('|');
   const isUnknownContract =
     !isKnownAddress(NAMES_CONTRACT_ID) && !isKnownRecipient(NAMES_CONTRACT_ID);
+  const unlocked = status === 'unlocked';
 
   const refreshAuctions = useCallback(async () => {
     setIsLoading(true);
@@ -106,6 +138,10 @@ export default function NamesAuctions() {
   }, [trackedNamesKey]);
 
   useEffect(() => {
+    inspectStorage();
+  }, [inspectStorage]);
+
+  useEffect(() => {
     void refreshAuctions();
   }, [refreshAuctions]);
 
@@ -113,6 +149,33 @@ export default function NamesAuctions() {
     const timer = globalThis.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000);
     return () => globalThis.clearInterval(timer);
   }, []);
+
+  // Reconcile ambiguous submissions after unlock/reload and retry periodically.
+  // Only authoritative Soroban SUCCESS/FAILED results change persisted state.
+  useEffect(() => {
+    if (!unlocked) return;
+    let active = true;
+    const reconcile = async () => {
+      try {
+        await reconcileUnknownBids(
+          bids,
+          getNameBidTransactionStatus,
+          async (name, nextStatus, hash) => {
+            if (active) await updateBidSubmission(name, nextStatus, hash);
+          },
+        );
+      } catch {
+        // Keep unknown/pending state on RPC or persistence errors; the next
+        // interval retries without enabling reveal, refund, or another bid.
+      }
+    };
+    void reconcile();
+    const timer = globalThis.setInterval(() => void reconcile(), 15_000);
+    return () => {
+      active = false;
+      globalThis.clearInterval(timer);
+    };
+  }, [bids, unlocked, updateBidSubmission]);
 
   const trackAuction = async () => {
     const name = lookupName
@@ -168,43 +231,92 @@ export default function NamesAuctions() {
       : parsedBid !== null && parsedBid < minimumBid
         ? `Minimum bid is ${formatXlm(minimumBid)}.`
         : '';
+  const selectedBid = selectedAuction ? bids[selectedAuction.name] : undefined;
+  const retryingBid = selectedBid?.submissionStatus === 'failed';
+  const selectedBidCannotRetry =
+    selectedBid?.submissionStatus === 'pending' || selectedBid?.submissionStatus === 'unknown';
 
   const placeBid = async () => {
+    if (!unlocked) {
+      setError('Set a passphrase to secure your bid recovery material before placing a bid.');
+      return;
+    }
     if (!address || !selectedAuction || parsedBid === null || bidError) return;
     const action = `bid:${selectedAuction.name}`;
     setPendingAction(action);
     setError('');
+    setTxHash('');
     try {
-      const salt = globalThis.crypto.getRandomValues(new Uint8Array(32));
-      const saltHex = Array.from(salt, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      const existingBid = bids[selectedAuction.name];
+      if (existingBid && existingBid.submissionStatus !== 'failed') {
+        throw new Error('This bid cannot be retried until its submission status is confirmed.');
+      }
+      if (
+        existingBid &&
+        existingBid.submissionStatus === 'failed' &&
+        parsedBid.toString() !== existingBid.amountStroops
+      ) {
+        throw new Error('A retry must use the original bid amount and recovery secret.');
+      }
+      const saltHex =
+        existingBid?.submissionStatus === 'failed'
+          ? existingBid.saltHex
+          : Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+              byte.toString(16).padStart(2, '0'),
+            ).join('');
+      const bid: AuctionBid =
+        existingBid?.submissionStatus === 'failed'
+          ? existingBid
+          : {
+              name: selectedAuction.name,
+              amountStroops: parsedBid.toString(),
+              depositStroops: parsedBid.toString(),
+              saltHex,
+              revealed: false,
+            };
       const commitmentHex = await computeNameBidCommitment(
         address,
         selectedAuction.name,
-        parsedBid,
+        BigInt(bid.amountStroops),
         saltHex,
       );
-      const submitted = await submitAuctionTransaction(action, () =>
-        buildCommitNameBidTransaction(address, {
-          name: selectedAuction.name,
-          commitmentHex,
-          deposit: parsedBid,
-        }),
-      );
-      if (submitted) {
-        saveBid({
-          name: selectedAuction.name,
-          amountStroops: parsedBid.toString(),
-          depositStroops: parsedBid.toString(),
-          saltHex,
-          revealed: false,
-        });
+      const result = await submitBidWithRecovery(bid, {
+        saveBid,
+        updateBidSubmission,
+        buildTransaction: () =>
+          buildCommitNameBidTransaction(address, {
+            name: selectedAuction.name,
+            commitmentHex,
+            deposit: BigInt(bid.depositStroops),
+          }),
+        signTransaction,
+        submitTransaction,
+      });
+      if (result.status === 'committed') {
+        setTxHash(result.transactionHash);
         watchAuction({ name: selectedAuction.name, endsAt: selectedAuction.revealEnd });
         setSelectedAuction(null);
         setBidAmount('');
+        await refreshAuctions();
+      } else if (result.status === 'failed') {
+        const message = result.error instanceof Error ? result.error.message : 'Transaction failed';
+        setError(
+          `Bid was not submitted: ${message} Your encrypted secret is saved; retry is safe.`,
+        );
+      } else {
+        const message =
+          result.error instanceof Error
+            ? result.error.message
+            : 'The submission outcome is unknown.';
+        setError(
+          `${message} Your encrypted secret is preserved. Do not retry until you confirm the transaction was not submitted.`,
+        );
       }
     } catch (commitmentError) {
       setError(
-        commitmentError instanceof Error ? commitmentError.message : 'Failed to prepare bid',
+        commitmentError instanceof Error
+          ? commitmentError.message
+          : 'Failed to prepare or persist bid recovery material.',
       );
     } finally {
       setPendingAction('');
@@ -212,9 +324,15 @@ export default function NamesAuctions() {
   };
 
   const revealBid = async (auction: NameAuction) => {
+    if (!unlocked) {
+      setRevealPending(auction);
+      setError('Unlock your vault with your passphrase before revealing a bid.');
+      return;
+    }
     if (!address) return;
     const bid = bids[auction.name];
     if (!bid) return;
+    setRevealPending(auction);
     const submitted = await submitAuctionTransaction(`reveal:${auction.name}`, () =>
       buildRevealNameBidTransaction(address, {
         name: auction.name,
@@ -222,7 +340,14 @@ export default function NamesAuctions() {
         saltHex: bid.saltHex,
       }),
     );
-    if (submitted) markBidRevealed(auction.name);
+    setRevealPending(null);
+    if (submitted) {
+      try {
+        await markBidRevealed(auction.name);
+      } catch {
+        // reveal transaction submitted; marking revealed is best-effort local state
+      }
+    }
   };
 
   const settleAuction = async (auction: NameAuction) => {
@@ -244,7 +369,13 @@ export default function NamesAuctions() {
     const submitted = await submitAuctionTransaction(`claim:${auction.name}`, () =>
       buildClaimAuctionNameTransaction(address, auction.name, metaAddress),
     );
-    if (submitted) removeBid(auction.name);
+    if (submitted) {
+      try {
+        await removeBid(auction.name);
+      } catch {
+        // claim submitted; local bid removal is best-effort
+      }
+    }
   };
 
   const refundBid = async (auction: NameAuction) => {
@@ -252,8 +383,123 @@ export default function NamesAuctions() {
     const submitted = await submitAuctionTransaction(`refund:${auction.name}`, () =>
       buildRefundNameBidTransaction(address, auction.name),
     );
-    if (submitted) removeBid(auction.name);
+    if (submitted) {
+      try {
+        await removeBid(auction.name);
+      } catch {
+        // refund submitted; local bid removal is best-effort
+      }
+    }
   };
+
+  // Vault actions
+  const handleSetPassphrase = async () => {
+    setVaultError('');
+    try {
+      if (passphrase !== confirmPassphrase) {
+        throw new Error('Passphrases do not match.');
+      }
+      if (status === 'legacy') {
+        await setPassphrase(passphrase); // migrates legacy plaintext
+      } else {
+        await setPassphrase(passphrase); // creates new vault
+      }
+      setPassphraseValue('');
+      setConfirmPassphrase('');
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Failed to set up encryption.');
+    }
+  };
+
+  const handleUnlock = async () => {
+    setVaultError('');
+    try {
+      await unlock(passphrase);
+      setPassphraseValue('');
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Unable to unlock vault.');
+    }
+  };
+
+  const handleBackup = async () => {
+    setVaultError('');
+    setBackupReady(null);
+    try {
+      const json = await exportBackup();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `wraith-name-auction-backup-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setBackupReady(json);
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Backup failed.');
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setVaultError('');
+    setImporting(true);
+    try {
+      const text = await file.text();
+      // Never silently replace a non-empty current vault. Require explicit
+      // confirmation before importing overwrites the current recovery secrets.
+      let replace = false;
+      if (hasEncryptedVault) {
+        const confirmed = window.confirm(
+          'Your current vault already contains bid recovery secrets. Importing this backup will replace it. Export your current vault first, or click OK to confirm replacement.',
+        );
+        if (!confirmed) {
+          setImporting(false);
+          return;
+        }
+        replace = true;
+      }
+      await importBackup(text, passphrase, { replace });
+      setPassphraseValue('');
+      setImportFile(null);
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Import failed.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleClearLegacy = async () => {
+    setVaultError('');
+    if (!hasLegacyPlaintext) return;
+    if (
+      !confirm(
+        'This will permanently delete the unencrypted legacy bid recovery material from localStorage. The encrypted vault must already exist. Continue?',
+      )
+    ) {
+      return;
+    }
+    try {
+      const cleared = await clearLegacy();
+      if (!cleared) {
+        setVaultError('No legacy plaintext found to clear.');
+      }
+    } catch (err) {
+      setVaultError(err instanceof Error ? err.message : 'Failed to clear legacy plaintext.');
+    }
+  };
+
+  const bidCount = Object.keys(bids).length;
+  const statusLabel =
+    status === 'empty'
+      ? 'No vault'
+      : status === 'legacy'
+        ? 'Legacy plaintext (unmigrated)'
+        : status === 'locked'
+          ? 'Vault locked'
+          : status === 'unlocked'
+            ? 'Vault unlocked'
+            : 'Error';
 
   if (!isConnected) {
     return (
@@ -285,9 +531,161 @@ export default function NamesAuctions() {
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
           Bid privately during the commit phase, reveal your bid, then claim the name or refund your
-          deposit after the auction.
+          deposit after the auction. Bid recovery material (salt, amount, deposit) is encrypted with
+          your passphrase and never written to localStorage in plaintext.
         </p>
       </div>
+
+      {/* Recovery vault controls */}
+      <div className="border border-outline-variant bg-surface-container p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
+              Recovery vault
+            </span>
+            <span
+              className={`font-mono text-[10px] uppercase tracking-widest ml-2 ${
+                status === 'unlocked'
+                  ? 'text-tertiary'
+                  : status === 'legacy'
+                    ? 'text-error'
+                    : 'text-outline'
+              }`}
+            >
+              [{statusLabel}]
+            </span>
+          </div>
+          {status === 'unlocked' && (
+            <button
+              type="button"
+              onClick={lock}
+              className="h-9 border border-outline-variant px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-outline transition-colors hover:bg-surface-bright"
+            >
+              Lock
+            </button>
+          )}
+        </div>
+
+        {vaultError && (
+          <p role="alert" className="mt-2 font-mono text-xs text-error">
+            {vaultError}
+          </p>
+        )}
+
+        {status === 'empty' || status === 'legacy' || status === 'locked' ? (
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <label className="block font-mono text-[10px] uppercase tracking-widest text-outline mb-1">
+                {status === 'empty'
+                  ? 'Set passphrase'
+                  : status === 'locked'
+                    ? 'Unlock passphrase'
+                    : 'Migration passphrase'}
+              </label>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphraseValue(e.target.value)}
+                placeholder="••••••••"
+                className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary focus:border-primary"
+              />
+            </div>
+            {status !== 'empty' && (
+              <div className="flex-1">
+                <label className="block font-mono text-[10px] uppercase tracking-widest text-outline mb-1">
+                  Confirm passphrase
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassphrase}
+                  onChange={(e) => setConfirmPassphrase(e.target.value)}
+                  placeholder="••••••••"
+                  className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary focus:border-primary"
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={status === 'locked' ? handleUnlock : handleSetPassphrase}
+              disabled={!passphrase || (status !== 'locked' && passphrase !== confirmPassphrase)}
+              className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+            >
+              {status === 'locked'
+                ? 'Unlock'
+                : status === 'legacy'
+                  ? 'Migrate & encrypt'
+                  : 'Set up encryption'}
+            </button>
+          </div>
+        ) : null}
+
+        {status === 'unlocked' && (
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+            <p className="font-mono text-xs text-outline">
+              {bidCount} bid recovery secret(s) held in memory only.
+            </p>
+            <button
+              type="button"
+              onClick={handleBackup}
+              disabled={!hasEncryptedVault}
+              className="h-9 border border-primary px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary disabled:opacity-30 transition-colors hover:bg-surface-bright"
+            >
+              Backup encrypted vault
+            </button>
+            <input
+              type="file"
+              accept=".json"
+              hidden
+              ref={importFileInput}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setImportFile(file);
+                if (file) void handleImportFile(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => importFileInput.current?.click()}
+              className="h-9 border border-outline-variant px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-outline transition-colors hover:bg-surface-bright"
+            >
+              Import / Recover backup
+            </button>
+            {hasLegacyPlaintext && (
+              <button
+                type="button"
+                onClick={handleClearLegacy}
+                className="h-9 border border-error text-error px-3 font-heading text-[10px] font-semibold uppercase tracking-widest transition-colors hover:bg-surface-bright"
+              >
+                Clear legacy plaintext
+              </button>
+            )}
+            {backupReady && (
+              <p className="font-mono text-xs text-tertiary">
+                Backup exported (encrypted, passphrase required to restore).
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <p role="alert" className="font-body text-sm text-error">
+          {error}
+        </p>
+      )}
+      {txHash && (
+        <p className="font-body text-sm text-tertiary">
+          Transaction submitted.{' '}
+          <a
+            href={stellarTxUrl(txHash)}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono underline"
+          >
+            View transaction
+          </a>
+        </p>
+      )}
 
       <div className="flex gap-2">
         <input
@@ -311,22 +709,10 @@ export default function NamesAuctions() {
         </button>
       </div>
 
-      {error && (
-        <p role="alert" className="font-body text-sm text-error">
-          {error}
-        </p>
-      )}
-      {txHash && (
-        <p className="font-body text-sm text-tertiary">
-          Transaction submitted.{' '}
-          <a
-            href={stellarTxUrl(txHash)}
-            target="_blank"
-            rel="noreferrer"
-            className="font-mono underline"
-          >
-            View transaction
-          </a>
+      {revealPending && (
+        <p className="font-mono text-xs text-outline">
+          Ready to reveal {revealPending.name}.wraith. Unlock the vault above, then select Reveal
+          bid again.
         </p>
       )}
 
@@ -343,6 +729,8 @@ export default function NamesAuctions() {
           auctions.map((auction) => {
             const phase = phaseFor(auction, now);
             const bid = bids[auction.name];
+            const bidStatus = bid?.submissionStatus ?? 'committed';
+            const hasCommittedBid = Boolean(bid && bidStatus === 'committed');
             const isWinner = auction.highestBidder === address;
             const isWatched = watchedAuctions.some((item) => item.name === auction.name);
             return (
@@ -395,10 +783,42 @@ export default function NamesAuctions() {
                       Your bid
                     </dt>
                     <dd className="mt-1 font-mono text-xs text-on-surface">
-                      {bid ? formatXlm(BigInt(bid.amountStroops)) : '—'}
+                      {hasCommittedBid
+                        ? formatXlm(BigInt(bid.amountStroops))
+                        : bid
+                          ? 'Not committed'
+                          : '—'}
                     </dd>
                   </div>
                 </dl>
+
+                {bidStatus === 'pending' && (
+                  <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Submission is pending or interrupted. Do not retry.
+                  </p>
+                )}
+                {bidStatus === 'unknown' && (
+                  <div className="mt-3">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-error">
+                      Submission outcome is unknown. Confirm transaction status before retrying.
+                    </p>
+                    {bid?.transactionHash && (
+                      <a
+                        href={stellarTxUrl(bid.transactionHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block font-mono text-[10px] uppercase tracking-widest text-primary underline"
+                      >
+                        Check transaction status
+                      </a>
+                    )}
+                  </div>
+                )}
+                {bidStatus === 'failed' && (
+                  <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Bid was not submitted. The saved secret is safe to retry.
+                  </p>
+                )}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   {phase === 'commit' && !bid && (
@@ -413,19 +833,35 @@ export default function NamesAuctions() {
                       Place bid
                     </button>
                   )}
-                  {phase === 'commit' && bid && (
+                  {phase === 'commit' && bidStatus === 'failed' && bid && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAuction(auction);
+                        setBidAmount(formatXlmInput(bid.amountStroops));
+                      }}
+                      className="h-9 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface"
+                    >
+                      Retry bid
+                    </button>
+                  )}
+                  {phase === 'commit' && hasCommittedBid && (
                     <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
                       Bid committed — return to reveal it
                     </span>
                   )}
-                  {phase === 'reveal' && bid && !bid.revealed && (
+                  {phase === 'reveal' && hasCommittedBid && bid && !bid.revealed && (
                     <button
                       type="button"
                       onClick={() => void revealBid(auction)}
-                      disabled={pendingAction === `reveal:${auction.name}`}
+                      disabled={pendingAction === `reveal:${auction.name}` || !unlocked}
                       className="h-9 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface disabled:opacity-40"
                     >
-                      {pendingAction === `reveal:${auction.name}` ? 'Revealing...' : 'Reveal bid'}
+                      {pendingAction === `reveal:${auction.name}`
+                        ? 'Revealing...'
+                        : !unlocked
+                          ? 'Unlock to reveal'
+                          : 'Reveal bid'}
                     </button>
                   )}
                   {phase === 'ended' && (
@@ -450,16 +886,19 @@ export default function NamesAuctions() {
                       {pendingAction === `claim:${auction.name}` ? 'Claiming...' : 'Claim name'}
                     </button>
                   )}
-                  {(phase === 'ended' || phase === 'settled') && bid && !isWinner && (
-                    <button
-                      type="button"
-                      onClick={() => void refundBid(auction)}
-                      disabled={pendingAction === `refund:${auction.name}`}
-                      className="h-9 border border-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary disabled:opacity-40"
-                    >
-                      {pendingAction === `refund:${auction.name}` ? 'Refunding...' : 'Refund bid'}
-                    </button>
-                  )}
+                  {(phase === 'ended' || phase === 'settled') &&
+                    hasCommittedBid &&
+                    bid &&
+                    !isWinner && (
+                      <button
+                        type="button"
+                        onClick={() => void refundBid(auction)}
+                        disabled={pendingAction === `refund:${auction.name}`}
+                        className="h-9 border border-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary disabled:opacity-40"
+                      >
+                        {pendingAction === `refund:${auction.name}` ? 'Refunding...' : 'Refund bid'}
+                      </button>
+                    )}
                 </div>
               </article>
             );
@@ -495,6 +934,14 @@ export default function NamesAuctions() {
               </button>
             </div>
 
+            {unlocked ? null : (
+              <div className="mb-4 p-3 border border-outline-variant/50 bg-surface-bright">
+                <p className="font-mono text-[10px] text-error">
+                  Set up your encryption passphrase in the vault section above before placing a bid.
+                </p>
+              </div>
+            )}
+
             <label className="mt-5 block font-mono text-[10px] uppercase tracking-widest text-outline">
               Bid amount (XLM)
             </label>
@@ -504,6 +951,7 @@ export default function NamesAuctions() {
               value={bidAmount}
               onChange={(event) => setBidAmount(event.target.value)}
               placeholder="0.0"
+              disabled={retryingBid}
               aria-invalid={Boolean(bidError)}
               className="mt-2 h-12 w-full border border-outline-variant bg-surface-container px-4 font-heading text-xl text-primary"
             />
@@ -527,8 +975,9 @@ export default function NamesAuctions() {
             )}
 
             <p className="mt-4 font-body text-xs leading-relaxed text-outline">
-              Your amount and recovery secret stay in this browser until reveal. Clearing site data
-              before revealing can make the bid unrecoverable.
+              Your amount and recovery secret stay encrypted in this browser until reveal. Clearing
+              site data before revealing can make the bid unrecoverable. Export a backup after
+              setting your passphrase.
             </p>
 
             {error && (
@@ -543,13 +992,17 @@ export default function NamesAuctions() {
               disabled={
                 parsedBid === null ||
                 Boolean(bidError) ||
-                pendingAction === `bid:${selectedAuction.name}`
+                pendingAction === `bid:${selectedAuction.name}` ||
+                selectedBidCannotRetry ||
+                !unlocked
               }
               className="mt-5 h-11 w-full bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface disabled:opacity-30"
             >
               {pendingAction === `bid:${selectedAuction.name}`
                 ? 'Confirm in wallet...'
-                : 'Place bid'}
+                : retryingBid
+                  ? 'Retry bid'
+                  : 'Place bid'}
             </button>
           </div>
         </div>

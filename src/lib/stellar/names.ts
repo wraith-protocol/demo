@@ -9,6 +9,7 @@ import {
 } from '@stellar/stellar-sdk';
 import { Buffer } from 'buffer';
 import { STELLAR_NETWORK } from '@/config';
+import { TransactionSubmissionError } from '@/lib/stellar/auctionBidSubmission';
 import { getStellarContractId } from './deployments';
 
 /**
@@ -708,16 +709,73 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
 /**
  * Submit a signed transaction to the network
  */
-export async function submitTransaction(signedXdr: string): Promise<string> {
-  const { rpc } = await import('@stellar/stellar-sdk');
-  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+export async function submitTransaction(
+  signedXdr: string,
+  onPrepared?: (transactionHash: string) => Promise<void>,
+): Promise<string> {
+  let server: InstanceType<(typeof import('@stellar/stellar-sdk'))['rpc']['Server']>;
+  let tx: ReturnType<typeof TransactionBuilder.fromXDR>;
+  let transactionHash: string;
+  try {
+    const { rpc } = await import('@stellar/stellar-sdk');
+    server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+    tx = TransactionBuilder.fromXDR(signedXdr, STELLAR_NETWORK.networkPassphrase);
+    transactionHash = tx.hash().toString('hex');
+  } catch (error) {
+    throw new TransactionSubmissionError(
+      error instanceof Error ? error.message : 'Failed to prepare transaction submission.',
+      'rejected',
+    );
+  }
 
-  const tx = TransactionBuilder.fromXDR(signedXdr, STELLAR_NETWORK.networkPassphrase);
-  const result = await server.sendTransaction(tx);
+  if (onPrepared) {
+    try {
+      await onPrepared(transactionHash);
+    } catch (error) {
+      throw new TransactionSubmissionError(
+        error instanceof Error
+          ? `Could not persist transaction recovery state: ${error.message}`
+          : 'Could not persist transaction recovery state.',
+        'rejected',
+      );
+    }
+  }
 
-  if (result.status === 'ERROR') {
-    throw new Error(result.errorResult?.toString() || 'Transaction failed');
+  let result: Awaited<ReturnType<typeof server.sendTransaction>>;
+  try {
+    result = await server.sendTransaction(tx);
+  } catch (error) {
+    throw new TransactionSubmissionError(
+      error instanceof Error ? error.message : 'Transaction submission outcome is unknown.',
+      'unknown',
+      transactionHash,
+    );
+  }
+
+  if (result.status === 'ERROR' || result.status === 'TRY_AGAIN_LATER') {
+    throw new TransactionSubmissionError(
+      result.errorResult?.toString() ||
+        (result.status === 'TRY_AGAIN_LATER'
+          ? 'The network did not accept the transaction; retry is safe.'
+          : 'Transaction was rejected before broadcast.'),
+      'rejected',
+    );
   }
 
   return result.hash;
+}
+
+/**
+ * Query Soroban RPC for an authoritative transaction result. NOT_FOUND is
+ * inconclusive and callers must leave the bid in its unknown state.
+ */
+export async function getNameBidTransactionStatus(
+  transactionHash: string,
+): Promise<'SUCCESS' | 'FAILED' | 'NOT_FOUND'> {
+  const { rpc } = await import('@stellar/stellar-sdk');
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+  const result = await server.getTransaction(transactionHash);
+  if (result.status === 'SUCCESS') return 'SUCCESS';
+  if (result.status === 'FAILED') return 'FAILED';
+  return 'NOT_FOUND';
 }
