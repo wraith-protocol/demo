@@ -82,6 +82,7 @@ behaviour is preserved:
 | `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv.                                                     |
 | `@stellar/stellar-sdk>toml`                   | `5.0.1`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64, GHSA-9qmh-m7c6-f92p. |
 | `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.                                                                |
+| `zod`                                         | `4.6.6`   | GHSA-mrhx-c7xc-m3w5.                                                                                     |
 
 Overrides that cross a declared major range are scoped to the single path that
 needs them with pnpm's `parent>child` syntax, so they cannot silently change a
