@@ -133,7 +133,8 @@
       "@stellar/stellar-sdk>toml": "5.0.1",
       "engine.io-client>ws": "8.22.0",
       "ethers>ws": "8.22.0",
-      "viem>ws": "8.22.0"
+      "viem>ws": "8.22.0",
+      "zod": "4.6.6"
     }
   },
   "packageManager": "pnpm@10.28.2"
