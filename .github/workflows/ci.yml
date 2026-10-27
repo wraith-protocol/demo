@@ -67,3 +67,40 @@ jobs:
           name: unit-test-report
           path: reports/unit/
           if-no-files-found: ignore
+
+  pwa-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # First-install / offline reload, SW update activation & cache migration,
+      # and bounded precache storage-pressure coverage.
+      - name: Run PWA E2E tests
+        run: pnpm test:pwa
+        env:
+          CI: true
+
+      - name: Upload PWA test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-test-report
+          path: playwright-report/
+          if-no-files-found: ignore

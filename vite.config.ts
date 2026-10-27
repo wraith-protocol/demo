@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { VitePWA } from 'vite-plugin-pwa';
+import { extractInitialLoadPaths } from './scripts/initial-load-paths.mjs';
 
 export default defineConfig({
   test: {
@@ -81,12 +83,52 @@ export default defineConfig({
 
       // injectManifest config: controls what gets injected into self.__WB_MANIFEST
       injectManifest: {
-        // Precache all built assets (JS, CSS, HTML, icons, fonts)
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // app-sw.ts is the service worker itself, not a prefetchable asset
-        globIgnores: ['**/app-sw*'],
-        // Raise file size limit — Stellar SDK + wagmi chunks exceed 2 MiB
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
+        // Precache only the application shell: HTML, critical CSS, web manifest,
+        // and app icons. JS chunks (route chunks, chain SDKs), images, and fonts
+        // are left for bounded runtime caches in app-sw.ts.
+        //
+        // The critical bootstrap JS (referenced directly from index.html) is
+        // deterministically identified via manifestTransforms below so only the
+        // true bootstrap is precached, avoiding broad globs that capture heavy
+        // vendor or route chunks.
+        globPatterns: [
+          'index.html',
+          'assets/*.css',
+          'favicon.ico',
+          'favicon-*.png',
+          'apple-touch-icon.png',
+          'manifest.webmanifest',
+        ],
+        // app-sw.ts is the service worker itself, not a prefetchable asset.
+        globIgnores: ['**/app-sw*', '**/stellar-notification-sw*'],
+        // Deterministically include only the critical bootstrap / app shell JS
+        // referenced synchronously from dist/index.html.
+        manifestTransforms: [
+          async (manifestEntries) => {
+            const htmlPath = path.resolve(__dirname, 'dist/index.html');
+            const html = await fs.promises.readFile(htmlPath, 'utf8');
+            const initialPaths = extractInitialLoadPaths(html);
+
+            for (const initialPath of initialPaths) {
+              const relPath = initialPath.replace(/^\/+/, '');
+              if (manifestEntries.some((entry) => entry.url === relPath)) continue;
+
+              const fullPath = path.resolve(__dirname, 'dist', relPath);
+              try {
+                const fileStat = await fs.promises.stat(fullPath);
+                manifestEntries.push({
+                  url: relPath,
+                  revision: null, // Vite hashes filenames for cache-busting
+                  size: fileStat.size,
+                });
+              } catch {
+                // Ignore missing files
+              }
+            }
+
+            return { manifest: manifestEntries };
+          },
+        ],
       },
 
       devOptions: {

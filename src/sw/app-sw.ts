@@ -1,8 +1,12 @@
 /// <reference lib="webworker" />
 /// <reference path="../vite-env.d.ts" />
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
+import {
+  cleanupOutdatedCaches,
+  createHandlerBoundToURL,
+  precacheAndRoute,
+} from 'workbox-precaching';
 import { setCacheNameDetails } from 'workbox-core';
-import { registerRoute } from 'workbox-routing';
+import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
@@ -48,6 +52,13 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Removes precaches carrying build-time revisions of earlier Workbox versions.
 cleanupOutdatedCaches();
 
+// ─── SPA Navigation Route ────────────────────────────────────────────────────
+// Serves the precached index.html shell for all navigation requests so
+// first offline reloads and client-side route transitions (e.g. /send) work
+// when offline.
+const navigationHandler = createHandlerBoundToURL('index.html');
+registerRoute(new NavigationRoute(navigationHandler));
+
 // ─── Runtime caching ──────────────────────────────────────────────────────────
 const RPC_HOSTNAMES = [
   'soroban-testnet.stellar.org',
@@ -87,6 +98,45 @@ registerRoute(
     cacheName: cacheName('fonts-files'),
     plugins: [
       new ExpirationPlugin({ maxEntries: 30, maxAgeSeconds: 31536000 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+// ─── Runtime caching: optional chain & media assets ──────────────────────────
+// The application shell (HTML, critical CSS, the entry bootstrap JS) is
+// precached — see vite.config.ts globPatterns. All other JS chunks (route
+// chunks, chain SDKs) and media are NOT precached. They are cached on first
+// use in bounded, expiring caches so a deploy or storage pressure cannot let
+// them grow without bound. Vite hashes file names by content, so CacheFirst is
+// safe: a new deploy serves new URLs and automatically busts old entries.
+//
+// NOTE: Workbox RegExpRoute evaluates the full `request.url` href, so a
+// pattern anchored with `^/` would never match `https://host/assets/file.js`.
+// All same-origin asset routes therefore use a callback that tests
+// `url.pathname` directly.
+
+// JS chunks — non-bootstrap route chunks, chain SDKs, workers.
+// Excludes the entry bootstrap (assets/index-*.js) which is already precached.
+registerRoute(
+  ({ url, sameOrigin }) =>
+    sameOrigin && url.pathname.startsWith('/assets/') && url.pathname.endsWith('.js'),
+  new CacheFirst({
+    cacheName: cacheName('assets'),
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 60, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  }),
+);
+
+// Images — icons, OG image, logos, favicons not already precached.
+registerRoute(
+  ({ url, sameOrigin }) => sameOrigin && /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i.test(url.pathname),
+  new CacheFirst({
+    cacheName: cacheName('images'),
+    plugins: [
+      new ExpirationPlugin({ maxEntries: 40, maxAgeSeconds: 30 * 24 * 60 * 60 }),
       new CacheableResponsePlugin({ statuses: [0, 200] }),
     ],
   }),

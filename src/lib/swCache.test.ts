@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CACHE_KINDS,
   CACHE_PREFIX,
   CACHE_VERSION,
   CACHE_VERSION_SUFFIX,
@@ -115,5 +116,24 @@ describe('activation cache migration', () => {
       delete: vi.fn().mockRejectedValue(new Error('delete blocked')),
     };
     await expect(purgeObsoleteCaches(failingDelete)).resolves.toEqual([]);
+  });
+});
+
+describe('bounded precache schema (v2)', () => {
+  it('owns bounded runtime caches for optional chain/media assets', () => {
+    expect(CACHE_KINDS).toContain('assets');
+    expect(CACHE_KINDS).toContain('images');
+    expect(cacheName('assets')).toBe(`wraith-assets-${CACHE_VERSION_SUFFIX}`);
+    expect(cacheName('images')).toBe(`wraith-images-${CACHE_VERSION_SUFFIX}`);
+  });
+
+  it('purges every v1 cache on v2 activation (storage-pressure release)', () => {
+    const v1 = expectedCacheNames(CACHE_VERSION - 1);
+    const v2 = expectedCacheNames();
+
+    const plan = planCacheMigration([...v1, ...v2]);
+
+    expect(plan.keep).toEqual(v2);
+    expect(plan.delete).toEqual(v1);
   });
 });
