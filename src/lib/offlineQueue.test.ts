@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_OFFLINE_QUEUE_ITEMS,
-  addEntry,
   actionableEntries,
   classifyOfflineWork,
   createOfflineEntry,
-  enforceQueueCap,
   isOfflineEntry,
   isSafeToQueue,
   isTerminalStatus,

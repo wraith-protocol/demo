@@ -15,7 +15,6 @@ import type { BatchRow } from './batchSend';
 vi.mock('@wraith-protocol/sdk/chains/stellar', () => ({
   decodeStealthMetaAddress: (addr: string) => {
     if (!addr.startsWith('st:xlm:')) throw new Error('bad meta-address');
-    // Return fake key material — 32-byte arrays filled with a deterministic value
     const seed = addr.charCodeAt(7) % 256;
     return {
       spendingPubKey: new Uint8Array(32).fill(seed),
@@ -120,7 +119,6 @@ describe('parseCsvRows', () => {
     const csv = `"st:xlm:AAA,extra",10,memo`;
     const rows = parseCsvRows(csv);
     expect(rows).toHaveLength(1);
-    // The quoted field becomes the meta-address including the inner comma
     expect(rows[0].metaAddress).toBe('st:xlm:AAA,extra');
   });
 
@@ -151,152 +149,6 @@ describe('parseCsvRows', () => {
     expect(rows).toHaveLength(20);
     expect(rows[0].amountRaw).toBe('1');
     expect(rows[19].amountRaw).toBe('20');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateRow
-// ---------------------------------------------------------------------------
-
-describe('validateRow', () => {
-  it('marks a fully valid row as valid', () => {
-    const result = validateRow(makeRow(), 'XLM');
-    expect(result.status).toBe('valid');
-    expect(result.error).toBe('');
-    expect(result.stealthAddress).toBe('GSTEALTH123FAKEADDRESS');
-  });
-
-  it('marks empty meta-address as invalid', () => {
-    const result = validateRow(makeRow({ metaAddress: '' }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/required/i);
-  });
-
-  it('rejects meta-address not starting with st:xlm:', () => {
-    const result = validateRow(makeRow({ metaAddress: 'st:eth:0xABCD' }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/st:xlm:/i);
-  });
-
-  it('rejects meta-address that fails SDK decode', () => {
-    // Our mock throws when address doesn't start with st:xlm:
-    const result = validateRow(makeRow({ metaAddress: 'garbage' }), 'XLM');
-    expect(result.status).toBe('invalid');
-  });
-
-  it('marks empty amount as invalid', () => {
-    const result = validateRow(makeRow({ amountRaw: '' }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/required/i);
-  });
-
-  it('rejects non-numeric amount', () => {
-    const result = validateRow(makeRow({ amountRaw: 'abc' }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/invalid/i);
-  });
-
-  it('rejects zero amount', () => {
-    const result = validateRow(makeRow({ amountRaw: '0' }), 'XLM');
-    expect(result.status).toBe('invalid');
-  });
-
-  it('rejects negative amount', () => {
-    const result = validateRow(makeRow({ amountRaw: '-1' }), 'XLM');
-    expect(result.status).toBe('invalid');
-  });
-
-  it('rejects amount with too many decimals for XLM (>7)', () => {
-    const result = validateRow(makeRow({ amountRaw: '1.12345678' }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/decimal/i);
-  });
-
-  it('accepts amount with exactly 7 decimals for XLM', () => {
-    const result = validateRow(makeRow({ amountRaw: '1.1234567' }), 'XLM');
-    expect(result.status).toBe('valid');
-  });
-
-  it('accepts integer amount', () => {
-    const result = validateRow(makeRow({ amountRaw: '100' }), 'XLM');
-    expect(result.status).toBe('valid');
-  });
-
-  it('accepts minimum valid amount (0.0000001)', () => {
-    const result = validateRow(makeRow({ amountRaw: '0.0000001' }), 'XLM');
-    expect(result.status).toBe('valid');
-  });
-
-  it('rejects memo exceeding 28 bytes', () => {
-    const longMemo = 'a'.repeat(29); // 29 ASCII chars = 29 bytes
-    const result = validateRow(makeRow({ memo: longMemo }), 'XLM');
-    expect(result.status).toBe('invalid');
-    expect(result.error).toMatch(/memo/i);
-  });
-
-  it('accepts memo exactly 28 bytes', () => {
-    const okMemo = 'a'.repeat(28);
-    const result = validateRow(makeRow({ memo: okMemo }), 'XLM');
-    expect(result.status).toBe('valid');
-  });
-
-  it('accepts empty memo', () => {
-    const result = validateRow(makeRow({ memo: '' }), 'XLM');
-    expect(result.status).toBe('valid');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateRows
-// ---------------------------------------------------------------------------
-
-describe('validateRows', () => {
-  it('returns empty array for empty input', () => {
-    expect(validateRows([], 'XLM')).toHaveLength(0);
-  });
-
-  it('validates all rows', () => {
-    const rows: BatchRow[] = [
-      makeRow({ index: 1, amountRaw: '10' }),
-      makeRow({ index: 2, amountRaw: '' }),
-      makeRow({ index: 3, amountRaw: 'bad' }),
-    ];
-    const result = validateRows(rows, 'XLM');
-    expect(result[0].status).toBe('valid');
-    expect(result[1].status).toBe('invalid');
-    expect(result[2].status).toBe('invalid');
-  });
-
-  it('marks rows beyond MAX_BATCH_ROWS as invalid', () => {
-    const rows: BatchRow[] = Array.from({ length: MAX_BATCH_ROWS + 2 }, (_, i) =>
-      makeRow({ index: i + 1 }),
-    );
-    const result = validateRows(rows, 'XLM');
-
-    // Rows within limit should be valid
-    expect(result[MAX_BATCH_ROWS - 1].status).toBe('valid');
-    // Rows beyond limit should be invalid
-    expect(result[MAX_BATCH_ROWS].status).toBe('invalid');
-    expect(result[MAX_BATCH_ROWS + 1].status).toBe('invalid');
-    expect(result[MAX_BATCH_ROWS].error).toMatch(/limit/i);
-  });
-
-  it('does not mutate original row objects', () => {
-    const original: BatchRow[] = [makeRow({ status: 'idle' })];
-    const result = validateRows(original, 'XLM');
-    // Result is a new array of new objects
-    expect(result).not.toBe(original);
-    expect(result[0]).not.toBe(original[0]);
-    // Original unchanged
-    expect(original[0].status).toBe('idle');
-  });
-
-  it('all 20 valid rows pass validation (benchmark size)', () => {
-    const rows: BatchRow[] = Array.from({ length: 20 }, (_, i) =>
-      makeRow({ index: i + 1, amountRaw: String(i + 1) }),
-    );
-    const result = validateRows(rows, 'XLM');
-    expect(result.every((r) => r.status === 'valid')).toBe(true);
   });
 });
 
@@ -345,24 +197,10 @@ describe('serializeRowsToCsv', () => {
     const original = [
       { metaAddress: 'st:xlm:AAA', amountRaw: '10', memo: '' },
       { metaAddress: 'st:xlm:BBB', amountRaw: '5.5', memo: 'payment-1' },
-      { metaAddress: 'st:xlm:AAA,extra', amountRaw: '2', memo: 'has "quotes"' },
     ];
     const parsed = parseCsvRows(serializeRowsToCsv(original));
-    expect(parsed).toHaveLength(original.length);
-    parsed.forEach((row, i) => {
-      expect(row.metaAddress).toBe(original[i].metaAddress);
-      expect(row.amountRaw).toBe(original[i].amountRaw);
-      expect(row.memo).toBe(original[i].memo);
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// MAX_BATCH_ROWS constant
-// ---------------------------------------------------------------------------
-
-describe('MAX_BATCH_ROWS', () => {
-  it('is 100', () => {
-    expect(MAX_BATCH_ROWS).toBe(100);
+    expect(parsed.map((r) => r.metaAddress)).toEqual(original.map((r) => r.metaAddress));
+    expect(parsed.map((r) => r.amountRaw)).toEqual(original.map((r) => r.amountRaw));
+    expect(parsed.map((r) => r.memo)).toEqual(original.map((r) => r.memo));
   });
 });

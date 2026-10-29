@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import {
-  addEntry,
   createOfflineEntry,
   enforceQueueCap,
   isOfflineEntry,
@@ -71,6 +70,20 @@ function readStoredEntries(): OfflineQueueEntry[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Adds an entry while respecting the queue cap. Returns accepted=false when
+ * the queue is full of actionable work and nothing terminal can be pruned.
+ */
+function addEntry(
+  current: OfflineQueueEntry[],
+  entry: OfflineQueueEntry,
+): { accepted: boolean; entries: OfflineQueueEntry[] } {
+  const capped = enforceQueueCap([...current, entry]);
+  const stillPresent = capped.entries.some((e) => e.id === entry.id);
+  if (!stillPresent) return { accepted: false, entries: current };
+  return { accepted: true, entries: capped.entries };
 }
 
 function persistEntries(entries: OfflineQueueEntry[]): void {
