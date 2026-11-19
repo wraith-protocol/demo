@@ -11,6 +11,8 @@
     "format:check": "prettier --check .",
     "audit:prod": "pnpm audit --prod",
     "audit:gate": "node scripts/audit-gate.mjs",
+    "secrets:scan": "node scripts/secret-scan-gate.mjs",
+    "secrets:gate": "node scripts/secret-scan-gate.mjs --ci",
     "build:budget-check": "node scripts/bundle-budget-gate.mjs",
     "prepare": "husky",
     "test:e2e": "playwright test",

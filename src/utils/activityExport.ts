@@ -1,3 +1,4 @@
+import { redactSecrets } from '@/lib/secretScan';
 import type { ActivityEntry } from '@/stores/activityStore';
 
 export const ACTIVITY_CSV_HEADERS = [
@@ -62,12 +63,12 @@ export function activityToCsv(entries: readonly ActivityEntry[]): string {
     ...entries.map((entry) => activityCsvRow(entry).map(escapeCsvCell).join(',')),
   ];
 
-  return rows.join('\r\n');
+  return redactSecrets(rows.join('\r\n'));
 }
 
 /** Serialize the filtered entries in the same shape as the shipped JSON schema. */
 export function activityToJson(entries: readonly ActivityEntry[]): string {
-  return JSON.stringify(entries, null, 2);
+  return redactSecrets(JSON.stringify(entries, null, 2));
 }
 
 function datedFilename(extension: 'csv' | 'json'): string {
