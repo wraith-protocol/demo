@@ -21,8 +21,9 @@ import { pathToFileURL } from 'node:url';
 // A new critical finding always fails CI: critical vulnerabilities are never
 // accepted, only upgraded or removed.
 export const MAX_CRITICAL = 0;
-// High findings that currently have no patched release (see the doc).
-export const MAX_HIGH = 0;
+// One high finding is accepted: decode-uri-component's only patched release is
+// ESM-only and cannot be required by query-string 7.x (see the doc).
+export const MAX_HIGH = 1;
 // ---------------------------------------------------------------------------
 
 const SEVERITIES = ['critical', 'high', 'moderate', 'low', 'info'];

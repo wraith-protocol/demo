@@ -23,13 +23,14 @@ must be re-checked. CI enforces the baseline described here.
 | Severity  | Before | After |
 | --------- | -----: | ----: |
 | Critical  |      1 |     0 |
-| High      |     53 |     0 |
+| High      |     53 |     1 |
 | Moderate  |     86 |     8 |
 | Low       |      7 |     2 |
 | **Total** |    147 |    10 |
 
-All high findings have been remediated. The critical (`shell-quote`) was removed
-by an override.
+One high finding remains accepted (`decode-uri-component`); all other high
+findings have been remediated. The critical (`shell-quote`) was removed by an
+override.
 
 ## How to run the audit
 
@@ -74,7 +75,7 @@ behaviour is preserved:
 | --------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
 | `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.                                                                |
 | `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                                                                     |
-| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.                                                                |
+| `follow-redirects`                            | `1.16.2`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c, GHSA-mrwp-f3q8-3g9p.                                           |
 | `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.                                                                |
 | `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                                                                     |
 | `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
@@ -118,12 +119,17 @@ the expiry.
 | ---------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
 | `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`             | `@wraith-protocol/maintainers` | 2027-01-15 |
 | `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse` | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`        | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `decode-uri-component` | high     | GHSA-vcc3-ghjq-m6fr, GHSA-qr28-fpjm-wq7f                      | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`        | `@wraith-protocol/maintainers` | 2027-01-15 |
 | `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                           | `@wraith-protocol/maintainers` | 2027-01-15 |
 | `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`    | `@wraith-protocol/maintainers` | 2027-01-15 |
 | `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`              | `@wraith-protocol/maintainers` | 2027-01-15 |
 
 Notes:
+
+- `decode-uri-component` is only patched in `0.5.1`, which is ESM-only;
+  `query-string` 7.x requires it as CommonJS, so that upgrade would break the
+  WalletConnect path. It stays accepted until a compatible patched release or a
+  non-breaking `query-string` upgrade is available.
 
 ## CI gate
 
@@ -132,8 +138,8 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 0** — all high findings have been remediated; any new high finding
-  fails CI.
+- **high ≤ 1** — the single accepted `decode-uri-component` finding is recorded
+  above; any additional high finding fails CI.
 
 Raising either baseline requires a matching entry (owner + expiry) in the table
 above.
