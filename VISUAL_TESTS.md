@@ -98,16 +98,16 @@ Deterministic fixtures for test isolation:
 
 ### Test Files
 
-Each chain has dedicated test files:
-- `e2e/horizen-send.spec.ts` - Horizen send states
-- `e2e/horizen-receive.spec.ts` - Horizen receive states
-- `e2e/stellar-send.spec.ts` - Stellar send states
-- `e2e/stellar-receive.spec.ts` - Stellar receive states
-- `e2e/solana-send.spec.ts` - Solana send states
-- `e2e/solana-receive.spec.ts` - Solana receive states
-- `e2e/ckb-send.spec.ts` - CKB send states
-- `e2e/ckb-receive.spec.ts` - CKB receive states
-- `e2e/error-states.spec.ts` - Error state coverage
+Each chain has dedicated test files (prefixed with `visual-` to distinguish from functional tests):
+- `e2e/visual-horizen-send.spec.ts` - Horizen send states
+- `e2e/visual-horizen-receive.spec.ts` - Horizen receive states
+- `e2e/visual-stellar-send.spec.ts` - Stellar send states
+- `e2e/visual-stellar-receive.spec.ts` - Stellar receive states
+- `e2e/visual-solana-send.spec.ts` - Solana send states
+- `e2e/visual-solana-receive.spec.ts` - Solana receive states
+- `e2e/visual-ckb-send.spec.ts` - CKB send states
+- `e2e/visual-ckb-receive.spec.ts` - CKB receive states
+- `e2e/visual-error-states.spec.ts` - Error state coverage
 
 ### Configuration (`playwright.config.ts`)
 

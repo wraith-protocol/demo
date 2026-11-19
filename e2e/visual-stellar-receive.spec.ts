@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { test, expect } from './visual-fixtures';
 
 test.describe('Stellar Receive - Visual Regression', () => {
   test.beforeEach(async ({ page }) => {

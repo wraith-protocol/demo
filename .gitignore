@@ -4,8 +4,17 @@ dist/
 .env.*
 reference/
 *.local
+
+# Playwright
 test-results/
 playwright-report/
+blob-report/
 playwright/.cache/
-e2e/screenshots/*.png
 package-lock.json
+public/mockServiceWorker.js
+
+# Unit test reports
+reports/
+
+# Visual regression specific
+e2e/screenshots/*.png

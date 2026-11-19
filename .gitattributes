@@ -1,3 +1,4 @@
+* text=auto eol=lf
 # Ensure consistent line endings for screenshot files
 *.png binary
 e2e/screenshots/*.png binary
