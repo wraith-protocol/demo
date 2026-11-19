@@ -1,10 +1,4 @@
-import {
-  findSecrets,
-  maskSecret,
-  redactSecrets,
-  redactValue,
-  toText,
-} from './secretPatterns.mjs';
+import { findSecrets, maskSecret, redactSecrets, redactValue, toText } from './secretPatterns.mjs';
 
 export * from './secretPatterns.mjs';
 

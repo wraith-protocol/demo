@@ -115,9 +115,7 @@ export function scanFile(filePath, source = filePath) {
   }
   const extension = path.extname(filePath).toLowerCase();
   if (extension === '.zip') {
-    return zipEntries(buffer).flatMap((entry) =>
-      scanText(entry.text, `${source}!${entry.name}`),
-    );
+    return zipEntries(buffer).flatMap((entry) => scanText(entry.text, `${source}!${entry.name}`));
   }
   return scanText(buffer.toString('utf8'), source);
 }

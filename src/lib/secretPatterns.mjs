@@ -7,7 +7,8 @@ export const SECRET_PATTERNS = Object.freeze([
   {
     id: 'pem-private-key',
     label: 'PEM private key',
-    regex: /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g,
+    regex:
+      /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----/g,
   },
   {
     id: 'jwt',
@@ -32,27 +33,32 @@ export const SECRET_PATTERNS = Object.freeze([
   {
     id: 'labeled-hex-secret',
     label: 'private key or scalar',
-    regex: /\b(?:private[_-]?key|private[_-]?scalar|spending[_-]?(?:key|scalar)|viewing[_-]?(?:key|scalar)|secret[_-]?(?:key|scalar|seed)|seed|mnemonic)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{64}\b/gi,
+    regex:
+      /\b(?:private[_-]?key|private[_-]?scalar|spending[_-]?(?:key|scalar)|viewing[_-]?(?:key|scalar)|secret[_-]?(?:key|scalar|seed)|seed|mnemonic)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{64}\b/gi,
   },
   {
     id: 'labeled-base58-secret',
     label: 'Solana secret key',
-    regex: /\b(?:secret[_-]?key|private[_-]?key|solana[_-]?secret)\b["']?\s*(?:[:=]|\s)\s*["']?[1-9A-HJ-NP-Za-km-z]{64,88}\b/gi,
+    regex:
+      /\b(?:secret[_-]?key|private[_-]?key|solana[_-]?secret)\b["']?\s*(?:[:=]|\s)\s*["']?[1-9A-HJ-NP-Za-km-z]{64,88}\b/gi,
   },
   {
     id: 'kdf-salt',
     label: 'KDF salt',
-    regex: /\b(?:salt|kdf[_-]?salt)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/]{24,}={0,2})/gi,
+    regex:
+      /\b(?:salt|kdf[_-]?salt)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?(?:[0-9a-fA-F]{32,}|[A-Za-z0-9+/]{24,}={0,2})/gi,
   },
   {
     id: 'signature-material',
     label: 'signature material',
-    regex: /\b(?:signature|signed[_-]?xdr|authorization)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{100,}|AAAA[A-Za-z0-9+/=]{80,}/gi,
+    regex:
+      /\b(?:signature|signed[_-]?xdr|authorization)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{100,}|\b0x[0-9a-fA-F]{100,}\b|AAAA[A-Za-z0-9+/=]{80,}/gi,
   },
   {
     id: 'secret-assignment',
     label: 'secret assignment',
-    regex: /\b(?:api[_-]?key|auth[_-]?token|access[_-]?token|password|passphrase|bearer)\b["']?\s*[:=]\s*["']?([^\s"',;}\]]{6,})/gi,
+    regex:
+      /\b(?:api[_-]?key|auth[_-]?token|access[_-]?token|password|passphrase|bearer)\b["']?\s*[:=]\s*["']?([^\s"',;}\]]{6,})/gi,
   },
 ]);
 
