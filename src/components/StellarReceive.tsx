@@ -45,6 +45,8 @@ import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModa
 import { createStellarQrUri } from '@/utils/qr';
 import { readScanCursor, writeScanCursor, type RetentionGap } from '@/lib/stellar/scannerCursor';
 import { fetchAnnouncementEvents } from '@/lib/stellar/announcementRpc';
+import { useWalletSession } from '@/wallets/useWalletSession';
+import type { WalletOperation } from '@/wallets/session';
 
 // Fetches announcements on the main thread. Only used to support the
 // `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
@@ -578,8 +580,14 @@ function StellarMatchCardContainer({
 
 export function StellarReceive() {
   const { t } = useTranslation();
-  const { address, isConnected, signMessage, signTransaction, isNetworkMismatch } =
-    useStellarWallet();
+  const {
+    address,
+    isConnected,
+    signMessage,
+    signTransaction,
+    isNetworkMismatch,
+    freighterNetwork,
+  } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
   const { strategy: scanStrategy } = useScanStrategy();
@@ -587,11 +595,23 @@ export function StellarReceive() {
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const notifications = useStellarNotifications();
 
+  const walletSession = useWalletSession(
+    isConnected && address
+      ? {
+          chain: 'stellar',
+          provider: 'freighter',
+          account: address,
+          network: freighterNetwork ?? STELLAR_NETWORK.name,
+        }
+      : null,
+  );
+
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const workerRef = useRef<Worker | null>(null);
+  const scanOperationRef = useRef<WalletOperation | null>(null);
 
   useEffect(() => {
     return () => {
@@ -600,6 +620,26 @@ export function StellarReceive() {
       }
     };
   }, []);
+
+  useEffect(
+    () =>
+      walletSession.subscribe((transition) => {
+        const scanOperation = scanOperationRef.current;
+        if (scanOperation) {
+          scanOperation.abort(transition.reason);
+          walletSession.finish(scanOperation);
+          scanOperationRef.current = null;
+        }
+        workerRef.current?.terminate();
+        workerRef.current = null;
+        setMatched([]);
+        setHasScanned(false);
+        setRetentionGap(null);
+        setIsScanning(false);
+        setError('');
+      }),
+    [walletSession],
+  );
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
   const [retentionGap, setRetentionGap] = useState<RetentionGap | null>(null);
@@ -1110,6 +1150,15 @@ export function StellarReceive() {
       // Test hook: e2e/fixtures.ts injects a mock scan function on `window` so
       // specs can control match results without real crypto. It runs on the
       // main thread since a Worker doesn't share `window` with the page.
+      const scanOperation = walletSession.begin('stellar-scan-announcements');
+      scanOperationRef.current = scanOperation;
+      const finishScan = () => {
+        walletSession.finish(scanOperation);
+        if (scanOperationRef.current === scanOperation) {
+          scanOperationRef.current = null;
+        }
+      };
+
       const mockScan = (window as any).scanAnnouncementsMock;
       if (mockScan) {
         try {
@@ -1117,6 +1166,7 @@ export function StellarReceive() {
             STELLAR_NETWORK.rpcUrl,
             announcerContract,
           );
+          scanOperation.assertActive();
           const results = mockScan(
             announcements,
             stellarKeys.viewingKey,
@@ -1129,6 +1179,7 @@ export function StellarReceive() {
         } catch (err) {
           setError(err instanceof Error ? err.message : t('common.scanFailed'));
         } finally {
+          finishScan();
           setIsScanning(false);
         }
         return;
@@ -1148,6 +1199,14 @@ export function StellarReceive() {
       workerRef.current = worker;
 
       worker.onmessage = (event: MessageEvent) => {
+        if (!scanOperation.active) {
+          finishScan();
+          worker.terminate();
+          if (workerRef.current === worker) {
+            workerRef.current = null;
+          }
+          return;
+        }
         const {
           type,
           results,
@@ -1176,6 +1235,7 @@ export function StellarReceive() {
           return;
         }
         if (type === 'SUCCESS') {
+          scanOperation.assertActive();
           setMatched(results ?? []);
           setHasScanned(true);
           setRetentionGap(null);
@@ -1188,6 +1248,7 @@ export function StellarReceive() {
         } else {
           setError(workerError || t('common.scanFailed'));
         }
+        finishScan();
         setIsScanning(false);
         worker.terminate();
         if (workerRef.current === worker) {
@@ -1196,6 +1257,7 @@ export function StellarReceive() {
       };
 
       worker.onerror = () => {
+        finishScan();
         setError(t('common.scanFailed'));
         setIsScanning(false);
         worker.terminate();
@@ -1215,7 +1277,7 @@ export function StellarReceive() {
           recoveryStartLedger ?? (address ? readScanCursor(localStorage, address) : undefined),
       });
     },
-    [stellarKeys, scanStrategy, address, t],
+    [stellarKeys, scanStrategy, address, t, walletSession],
   );
 
   useEffect(() => {
