@@ -227,12 +227,22 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     page,
     freighter,
     horizon,
-    browserName,
   }) => {
-    // Clipboard reading via navigator.clipboard API is only standard/supported on Chromium in headless E2E
-    if (browserName !== 'chromium') {
-      test.skip();
-    }
+    // Deterministic on every browser: stub the Clipboard API in the page and record
+    // what the app writes, instead of reading the real clipboard (Chromium-only).
+    await page.addInitScript(() => {
+      const w = window as unknown as { __copied: string[] };
+      w.__copied = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            w.__copied.push(text);
+          },
+          readText: async () => w.__copied[w.__copied.length - 1] ?? '',
+        },
+      });
+    });
 
     const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
     await freighter.mock({ isConnected: true, address: mockAddress });
@@ -245,9 +255,15 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     // Click the copy button
     await page.getByRole('button', { name: 'Copy' }).first().click();
 
-    // Verify clipboard content
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clipboardText).toContain('st:xlm:');
+    // Verify what the app copied (recorded by the clipboard stub above)
+    const copied = await page.evaluate(
+      () => (window as unknown as { __copied: string[] }).__copied,
+    );
+    expect(
+      copied.length,
+      'Copy button never called navigator.clipboard.writeText (clipboard stub recorded nothing)',
+    ).toBeGreaterThan(0);
+    expect(copied[copied.length - 1]).toContain('st:xlm:');
   });
 
   test('Receive - 12. Registers derived stealth keys on-chain', async ({
