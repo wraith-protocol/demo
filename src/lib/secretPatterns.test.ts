@@ -37,6 +37,16 @@ describe('secret patterns', () => {
     expect(hasSecrets(`tx=${TX_HASH} to=${EVM_ADDRESS}`)).toBe(false);
     expect(hasSecrets(`account=${STELLAR_PUBLIC}`)).toBe(false);
   });
+
+  it('distinguishes XDR signatures from base64 data embedded in other tokens', () => {
+    const imageData = `iVBORw0KGgoAAAANSUhEUg${'A'.repeat(120)}I=`;
+    expect(hasSecrets(`<img src="data:image/png;base64,${imageData}">`)).toBe(false);
+
+    const xdr = `AAAA${'z'.repeat(120)}=`;
+    expect(findSecrets(`signedXdr=${xdr}`).map((finding) => finding.id)).toContain(
+      'signature-material',
+    );
+  });
 });
 
 describe('redaction', () => {

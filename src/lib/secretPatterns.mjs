@@ -52,7 +52,7 @@ export const SECRET_PATTERNS = Object.freeze([
     id: 'signature-material',
     label: 'signature material',
     regex:
-      /\b(?:signature|signed[_-]?xdr|authorization)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{100,}|\b0x[0-9a-fA-F]{100,}\b|AAAA[A-Za-z0-9+/=]{80,}/gi,
+      /\b(?:signature|signed[_-]?xdr|authorization)\b["']?\s*(?:[:=]|\s)\s*["']?(?:0x)?[0-9a-fA-F]{100,}|\b0x[0-9a-fA-F]{100,}\b|(?<![A-Za-z0-9+/])AAAA[A-Za-z0-9+/=]{80,}/gi,
   },
   {
     id: 'secret-assignment',
