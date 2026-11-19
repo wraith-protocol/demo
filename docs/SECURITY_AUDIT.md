@@ -11,9 +11,10 @@ must be re-checked. CI enforces the baseline described here.
 - **No critical findings are ever accepted.** `pnpm audit:gate` (run in CI)
   fails the build as soon as a critical production finding appears.
 - Direct dependencies are kept on patched releases.
-- When a transitive finding has no patched release (or upgrading would break a
-  supported chain integration), it is recorded in [Accepted findings](#accepted-findings)
-  with an owner and an expiry date instead of being silently ignored.
+- When a transitive finding has no patched release that the consumer can load
+  (or upgrading would break a supported chain integration), it is recorded in
+  [Accepted findings](#accepted-findings) with an owner and an expiry date
+  instead of being silently ignored.
 - The accepted baseline is small and is expected to shrink, never grow.
 
 ## Result
@@ -28,8 +29,9 @@ must be re-checked. CI enforces the baseline described here.
 | Low       |      7 |     2 |
 | **Total** |    147 |    10 |
 
-All high findings have been remediated. The critical (`shell-quote`) was removed
-by an override.
+High findings are at zero except for `decode-uri-component`, which is accepted
+below because its only patched release is ESM-only and its consumer is
+CommonJS. The critical (`shell-quote`) was removed by an override.
 
 ## How to run the audit
 
@@ -74,7 +76,7 @@ behaviour is preserved:
 | --------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
 | `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.                                                                |
 | `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                                                                     |
-| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.                                                                |
+| `follow-redirects`                            | `1.16.3`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c, GHSA-mrwp-f3q8-3g9p.                                           |
 | `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.                                                                |
 | `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                                                                     |
 | `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
@@ -109,21 +111,29 @@ receive a constructable `ws` 7 module.
 
 ## Accepted findings
 
-Everything below is transitive, has no patched release inside the range the
-consumer declares, and would require a breaking major bump of a package we do
-not control. All are accepted with an owner and an expiry; re-check on or before
-the expiry.
+Everything below is transitive and lacks a patched release that the consumer
+can load within its declared range; fixing it would require a breaking bump of a
+package we do not control. All are accepted with an owner and an expiry;
+re-check on or before the expiry.
 
-| Package                | Severity | Advisory                                                      | Dependency path                                                                        | Owner                          | Expiry     |
-| ---------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
-| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`             | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse` | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`        | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                           | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`    | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`              | `@wraith-protocol/maintainers` | 2027-01-15 |
+| Package                | Severity | Advisory                                                      | Dependency path                                                                                       | Owner                          | Expiry     |
+| ---------------------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
+| `decode-uri-component` | high     | GHSA-qr28-fpjm-wq7f                                           | `wagmi` → `@wagmi/connectors` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string` | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`                            | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse`                | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`                       | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                                          | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`                   | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`                             | `@wraith-protocol/maintainers` | 2027-01-15 |
 
 Notes:
+
+- The patched `decode-uri-component` 0.5.1 release is ESM-only, while its only
+  consumer, `query-string@7.1.3`, is CommonJS and loads it with `require()` as a
+  default function export. Forcing 0.5.1 would break WalletConnect URL parsing at
+  runtime. Revisit when `@reown/appkit`/`@walletconnect/*` ships a `query-string`
+  version that can load the patched module, or when the WalletConnect 2.21
+  transitive path can be removed.
 
 ## CI gate
 
@@ -132,8 +142,8 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 0** — all high findings have been remediated; any new high finding
-  fails CI.
+- **high ≤ 1** — the single accepted `decode-uri-component` finding; any
+  additional high finding fails CI.
 
 Raising either baseline requires a matching entry (owner + expiry) in the table
 above.

@@ -31,6 +31,7 @@ import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { computePrivacyScore } from '@/lib/privacy-score';
 import { useActivity } from '@/context/ActivityContext';
 import { horizenTestnet } from '@/config';
+import { useWalletSession } from '@/wallets/useWalletSession';
 
 function StealthRow({
   match,
@@ -225,15 +226,36 @@ function StealthRow({
 export function HorizenReceive() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, connector, chainId } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, evmMetaAddress, setEvmKeys, setEvmMetaAddress } = useStealthKeys();
+
+  const walletSession = useWalletSession(
+    isConnected && address
+      ? {
+          chain: 'horizen',
+          provider: `evm:${connector?.uid ?? connector?.name ?? 'unknown'}`,
+          account: address,
+          network: String(chainId ?? horizenTestnet.id),
+        }
+      : null,
+  );
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setMatched([]);
+        setHasScanned(false);
+        setError('');
+      }),
+    [walletSession],
+  );
 
   const deployment = getDeployment('horizen');
 
@@ -267,8 +289,10 @@ export function HorizenReceive() {
   const deriveKeys = async () => {
     setIsDerivingKeys(true);
     setError('');
+    const operation = walletSession.begin('horizen-derive-stealth-keys');
     try {
       const signature = await signMessageAsync({ message: STEALTH_SIGNING_MESSAGE });
+      operation.assertActive();
       const derived = deriveStealthKeys(signature as HexString);
       setEvmKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
@@ -276,6 +300,7 @@ export function HorizenReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsDerivingKeys(false);
     }
   };
@@ -295,8 +320,10 @@ export function HorizenReceive() {
     if (!evmKeys) return;
     setIsScanning(true);
     setError('');
+    const operation = walletSession.begin('horizen-scan-announcements');
     try {
       const announcements = await fetchAnnouncements('horizen');
+      operation.assertActive();
       const results = scanAnnouncements(
         announcements,
         evmKeys.viewingKey,
@@ -309,6 +336,7 @@ export function HorizenReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsScanning(false);
     }
   };

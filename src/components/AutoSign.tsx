@@ -27,6 +27,7 @@ import type { HexString as CkbHexString } from '@wraith-protocol/sdk/chains/ckb'
 import { useStealthKeys } from '@/context/StealthKeysContext';
 import { useStellarWallet } from '@/context/StellarWalletContext';
 import { useChain } from '@/context/ChainContext';
+import { providerInstanceId } from '@/wallets/session';
 
 function HorizenAutoSign() {
   const { isConnected, address, connector } = useAccount();
@@ -34,8 +35,28 @@ function HorizenAutoSign() {
   const { signMessageAsync } = useSignMessage();
   const { evmKeys, setEvmKeys, setEvmMetaAddress, clearEvm } = useStealthKeys();
   const prompted = useRef<string | null>(null);
+  const previousAddress = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
+
+  useEffect(() => {
+    const previous = previousAddress.current;
+    previousAddress.current = address ?? null;
+
+    if (!isConnected) {
+      prompted.current = null;
+      setReady(false);
+      clearEvm();
+      return;
+    }
+
+    if (previous && address && previous !== address) {
+      // A switch inside the wallet must not leave keys derived by the
+      // previous account visible to the new one.
+      prompted.current = null;
+      clearEvm();
+    }
+  }, [address, isConnected, clearEvm]);
 
   useEffect(() => {
     if (isConnected && connector && connectorClient) {
@@ -69,23 +90,16 @@ function HorizenAutoSign() {
     })();
   }, [ready, address, evmKeys, signMessageAsync, setEvmKeys, setEvmMetaAddress]);
 
-  useEffect(() => {
-    if (!isConnected) {
-      prompted.current = null;
-      setReady(false);
-      clearEvm();
-    }
-  }, [isConnected, clearEvm]);
-
   return null;
 }
 
 function StellarAutoSign() {
-  const { isConnected, address, signMessage } = useStellarWallet();
+  const { isConnected, address, signMessage, freighterNetwork } = useStellarWallet();
   const { stellarKeys, setStellarKeys, setStellarMetaAddress, clearStellar } = useStealthKeys();
   const prompted = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
+  const walletKey = `${address ?? ''}:${freighterNetwork ?? ''}`;
 
   useEffect(() => {
     if (isConnected && address) {
@@ -99,9 +113,9 @@ function StellarAutoSign() {
     if (!ready || !address) return;
     if (stellarKeys) return;
     if (isLoading.current) return;
-    if (prompted.current === address) return;
+    if (prompted.current === walletKey) return;
 
-    prompted.current = address;
+    prompted.current = walletKey;
     isLoading.current = true;
 
     (async () => {
@@ -117,7 +131,7 @@ function StellarAutoSign() {
         isLoading.current = false;
       }
     })();
-  }, [ready, address, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
+  }, [ready, address, walletKey, stellarKeys, signMessage, setStellarKeys, setStellarMetaAddress]);
 
   useEffect(() => {
     if (!isConnected) {
@@ -134,8 +148,27 @@ function SolanaAutoSign() {
   const { connected, publicKey, signMessage } = useWallet();
   const { solanaKeys, setSolanaKeys, setSolanaMetaAddress, clearSolana } = useStealthKeys();
   const prompted = useRef<string | null>(null);
+  const previousAddress = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
+  const account = publicKey?.toBase58() ?? null;
+
+  useEffect(() => {
+    const previous = previousAddress.current;
+    previousAddress.current = account;
+
+    if (!connected) {
+      prompted.current = null;
+      setReady(false);
+      clearSolana();
+      return;
+    }
+
+    if (previous && account && previous !== account) {
+      prompted.current = null;
+      clearSolana();
+    }
+  }, [connected, account, clearSolana]);
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -171,14 +204,6 @@ function SolanaAutoSign() {
     })();
   }, [ready, publicKey, solanaKeys, signMessage, setSolanaKeys, setSolanaMetaAddress]);
 
-  useEffect(() => {
-    if (!connected) {
-      prompted.current = null;
-      setReady(false);
-      clearSolana();
-    }
-  }, [connected, clearSolana]);
-
   return null;
 }
 
@@ -187,8 +212,27 @@ function CkbAutoSign() {
   const signer = ccc.useSigner();
   const { ckbKeys, setCkbKeys, setCkbMetaAddress, clearCkb } = useStealthKeys();
   const prompted = useRef(false);
+  const previousWalletKey = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const isLoading = useRef(false);
+  const walletKey = signer ? `${wallet?.name ?? ''}:${providerInstanceId(signer)}` : null;
+
+  useEffect(() => {
+    const previous = previousWalletKey.current;
+    previousWalletKey.current = walletKey;
+
+    if (!wallet || !signer) {
+      prompted.current = false;
+      setReady(false);
+      clearCkb();
+      return;
+    }
+
+    if (previous && walletKey && previous !== walletKey) {
+      prompted.current = false;
+      clearCkb();
+    }
+  }, [wallet, signer, walletKey, clearCkb]);
 
   useEffect(() => {
     if (wallet && signer) {
@@ -223,14 +267,6 @@ function CkbAutoSign() {
       }
     })();
   }, [ready, signer, ckbKeys, setCkbKeys, setCkbMetaAddress]);
-
-  useEffect(() => {
-    if (!wallet) {
-      prompted.current = false;
-      setReady(false);
-      clearCkb();
-    }
-  }, [wallet, clearCkb]);
 
   return null;
 }

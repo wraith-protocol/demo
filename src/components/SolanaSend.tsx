@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Connection,
   PublicKey,
@@ -13,10 +13,22 @@ import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
+import { useWalletSession } from '@/wallets/useWalletSession';
 
 export function SolanaSend() {
   const { t } = useTranslation();
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, sendTransaction, wallet } = useWallet();
+
+  const walletSession = useWalletSession(
+    connected && publicKey
+      ? {
+          chain: 'solana',
+          provider: `phantom:${wallet?.adapter.name ?? 'wallet'}`,
+          account: publicKey.toBase58(),
+          network: 'solana-devnet',
+        }
+      : null,
+  );
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -29,6 +41,17 @@ export function SolanaSend() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setStealthResult(null);
+        setTxHash(null);
+        setIsSuccess(false);
+        setError('');
+      }),
+    [walletSession],
+  );
+
   const handleSend = useCallback(async () => {
     if (!connected || !publicKey) {
       setError(t('common.walletNotConnected'));
@@ -37,6 +60,7 @@ export function SolanaSend() {
 
     setError('');
     setIsPending(true);
+    const operation = walletSession.begin('solana-send-stealth-payment');
 
     try {
       if (!recipient.startsWith('st:sol:')) {
@@ -52,11 +76,6 @@ export function SolanaSend() {
         senderPubkey: publicKey.toBase58(),
       });
       trackEvent('send_submitted');
-      setStealthResult({
-        stealthAddress: result.stealthAddress,
-        ephemeralPubKey: result.ephemeralPubKey,
-        viewTag: result.viewTag,
-      });
 
       const connection = new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed');
       const ix = result.instruction;
@@ -72,17 +91,27 @@ export function SolanaSend() {
         }),
       );
 
+      operation.assertActive();
       const signature = await sendTransaction(tx, connection);
+      operation.assertActive();
+
+      setStealthResult({
+        stealthAddress: result.stealthAddress,
+        ephemeralPubKey: result.ephemeralPubKey,
+        viewTag: result.viewTag,
+      });
       setTxHash(signature);
 
       await connection.confirmTransaction(signature, 'confirmed');
+      operation.assertActive();
       setIsSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsPending(false);
     }
-  }, [connected, publicKey, sendTransaction, recipient, amount, t]);
+  }, [connected, publicKey, sendTransaction, recipient, amount, t, walletSession]);
 
   const reset = () => {
     setRecipient('');
