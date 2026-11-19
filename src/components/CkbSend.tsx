@@ -1,6 +1,6 @@
 import { useSendDraft } from '@/hooks/useSendDraft';
 import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
   generateStealthAddress,
@@ -10,6 +10,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
+import { useWalletSession } from '@/wallets/useWalletSession';
+import { providerInstanceId } from '@/wallets/session';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
 
@@ -17,6 +19,17 @@ export function CkbSend() {
   const { t } = useTranslation();
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
+  const walletSession = useWalletSession(
+    signer
+      ? {
+          chain: 'ckb',
+          provider: `ccc:${wallet?.name ?? 'wallet'}:${providerInstanceId(signer)}`,
+          account: wallet?.name ?? 'ckb-account',
+          network: 'ckb-testnet',
+        }
+      : null,
+  );
+
   const [recipient, setRecipient] = useSendDraft<string>('ckb:recipient', '');
   const [amount, setAmount] = useSendDraft<string>('ckb:amount', '');
   const [error, setError] = useState('');
@@ -26,6 +39,16 @@ export function CkbSend() {
     stealthPubKey: string;
     lockArgs: string;
   } | null>(null);
+
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setStealthInfo(null);
+        setTxHash(null);
+        setError('');
+      }),
+    [walletSession],
+  );
 
   const handleSend = useCallback(async () => {
     const blocked = transactionBlockReason();
@@ -41,6 +64,7 @@ export function CkbSend() {
     setError('');
     const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
+    const operation = walletSession.begin('ckb-send-stealth-cell');
 
     try {
       if (!recipient.startsWith('st:ckb:')) {
@@ -79,16 +103,19 @@ export function CkbSend() {
       await tx.completeInputsByCapacity(signer);
       await tx.completeFeeBy(signer, 1000);
 
+      operation.assertActive();
       const hash = await signer.sendTransaction(tx);
+      operation.assertActive();
       trackEvent('send_submitted');
       setTxHash(hash);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      walletSession.finish(operation);
       finishTransaction();
       setIsPending(false);
     }
-  }, [signer, recipient, amount, t]);
+  }, [signer, recipient, amount, t, walletSession]);
 
   const reset = () => {
     setRecipient('');

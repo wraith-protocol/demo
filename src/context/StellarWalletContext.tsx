@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { STELLAR_NETWORK } from '@/config';
 import { useChain } from '@/context/ChainContext';
+import { useWalletSession } from '@/wallets/useWalletSession';
+import { WalletContextChangedError } from '@/wallets/session';
 
 const CHANNEL_NAME = 'wraith:stellar-wallet';
 
@@ -26,6 +28,38 @@ async function getFreighter() {
   return await import('@stellar/freighter-api');
 }
 
+function decodeSignedMessage(signedMessage: unknown): Uint8Array {
+  if (!signedMessage) throw new Error('Signing failed: no signature returned');
+
+  if (signedMessage instanceof Uint8Array) {
+    return signedMessage;
+  }
+
+  if (typeof signedMessage === 'string') {
+    const binaryString = atob(signedMessage);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  if (
+    typeof signedMessage === 'object' &&
+    'data' in signedMessage &&
+    Array.isArray((signedMessage as Record<string, unknown>).data)
+  ) {
+    return new Uint8Array((signedMessage as { data: number[] }).data);
+  }
+
+  throw new Error(
+    `Unexpected signedMessage type: ${typeof signedMessage} — ${JSON.stringify(signedMessage).slice(
+      0,
+      200,
+    )}`,
+  );
+}
+
 export function StellarWalletProvider({ children }: { children: React.ReactNode }) {
   const { chain } = useChain();
   const [address, setAddress] = useState<string | null>(null);
@@ -40,6 +74,20 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   // Tracks explicit user-initiated disconnects so WatchWalletChanges cannot silently
   // re-connect after the user clicks Disconnect (Freighter has no revoke API).
   const manuallyDisconnected = useRef(false);
+
+  // In-flight signing is invalidated as soon as Freighter reports a different
+  // account or network. Nothing signed under the previous identity is returned
+  // to the caller.
+  const walletSession = useWalletSession(
+    address
+      ? {
+          chain: 'stellar',
+          provider: 'freighter',
+          account: address,
+          network: freighterPassphrase ?? STELLAR_NETWORK.networkPassphrase,
+        }
+      : null,
+  );
 
   const isConnected = !!address;
   const isNetworkMismatch =
@@ -266,59 +314,50 @@ export function StellarWalletProvider({ children }: { children: React.ReactNode 
   const signMessage = useCallback(
     async (message: string): Promise<Uint8Array> => {
       if (!address) throw new Error('Wallet not connected');
+      if (walletSession.identity?.account !== address) {
+        throw new WalletContextChangedError('stellar-sign-message', 'account-change');
+      }
 
-      const freighter = await getFreighter();
-      const { signedMessage } = await freighter.signMessage(message, {
-        address,
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+      return walletSession.run('stellar-sign-message', async (operation) => {
+        const requestAddress = operation.identity.account;
+        const freighter = await getFreighter();
+        operation.assertActive();
+
+        const { signedMessage } = await freighter.signMessage(message, {
+          address: requestAddress,
+          networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        });
+
+        operation.assertActive();
+        return decodeSignedMessage(signedMessage);
       });
-
-      if (!signedMessage) throw new Error('Signing failed: no signature returned');
-
-      const msg = signedMessage as unknown;
-
-      if (msg instanceof Uint8Array) {
-        return msg;
-      }
-
-      if (typeof msg === 'string') {
-        const binaryString = atob(msg);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes;
-      }
-
-      if (
-        msg &&
-        typeof msg === 'object' &&
-        'data' in msg &&
-        Array.isArray((msg as Record<string, unknown>).data)
-      ) {
-        return new Uint8Array((msg as { data: number[] }).data);
-      }
-
-      throw new Error(
-        `Unexpected signedMessage type: ${typeof msg} — ${JSON.stringify(msg).slice(0, 200)}`,
-      );
     },
-    [address],
+    [address, walletSession],
   );
 
   const signTransaction = useCallback(
     async (xdr: string): Promise<string> => {
       if (!address) throw new Error('Wallet not connected');
+      if (walletSession.identity?.account !== address) {
+        throw new WalletContextChangedError('stellar-sign-transaction', 'account-change');
+      }
 
-      const freighter = await getFreighter();
-      const { signedTxXdr } = await freighter.signTransaction(xdr, {
-        address,
-        networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+      return walletSession.run('stellar-sign-transaction', async (operation) => {
+        const requestAddress = operation.identity.account;
+        const freighter = await getFreighter();
+        operation.assertActive();
+
+        const { signedTxXdr } = await freighter.signTransaction(xdr, {
+          address: requestAddress,
+          networkPassphrase: STELLAR_NETWORK.networkPassphrase,
+        });
+
+        operation.assertActive();
+        if (!signedTxXdr) throw new Error('Signing failed: no transaction returned');
+        return signedTxXdr;
       });
-
-      return signedTxXdr;
     },
-    [address],
+    [address, walletSession],
   );
 
   return (

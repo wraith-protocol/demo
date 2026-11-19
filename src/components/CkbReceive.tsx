@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
@@ -15,6 +15,8 @@ import { useStealthKeys } from '@/context/StealthKeysContext';
 import { EmptyState } from '@/components/EmptyState';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
+import { useWalletSession } from '@/wallets/useWalletSession';
+import { providerInstanceId } from '@/wallets/session';
 
 function CkbStealthRow({ match }: { match: MatchedStealthCell }) {
   const { t } = useTranslation();
@@ -89,11 +91,32 @@ export function CkbReceive() {
   const signer = ccc.useSigner();
   const { ckbKeys, ckbMetaAddress, setCkbKeys, setCkbMetaAddress } = useStealthKeys();
 
+  const walletSession = useWalletSession(
+    signer
+      ? {
+          chain: 'ckb',
+          provider: `ccc:${wallet?.name ?? 'wallet'}:${providerInstanceId(signer)}`,
+          account: wallet?.name ?? 'ckb-account',
+          network: 'ckb-testnet',
+        }
+      : null,
+  );
+
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedStealthCell[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setMatched([]);
+        setHasScanned(false);
+        setError('');
+      }),
+    [walletSession],
+  );
 
   const deriveKeys = useCallback(async () => {
     if (!signer) {
@@ -102,8 +125,10 @@ export function CkbReceive() {
     }
     setIsDerivingKeys(true);
     setError('');
+    const operation = walletSession.begin('ckb-derive-stealth-keys');
     try {
       const sig = await (signer as any).signMessageRaw(STEALTH_SIGNING_MESSAGE);
+      operation.assertActive();
       const sigStr = typeof sig === 'string' ? sig : `0x${Buffer.from(sig).toString('hex')}`;
       const sigHex = sigStr.startsWith('0x') ? sigStr : `0x${sigStr}`;
 
@@ -120,16 +145,19 @@ export function CkbReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsDerivingKeys(false);
     }
-  }, [signer, setCkbKeys, setCkbMetaAddress, t]);
+  }, [signer, setCkbKeys, setCkbMetaAddress, t, walletSession]);
 
   const scanPayments = useCallback(async () => {
     if (!ckbKeys) return;
     setIsScanning(true);
     setError('');
+    const operation = walletSession.begin('ckb-scan-stealth-cells');
     try {
       const cells = await fetchStealthCells('ckb');
+      operation.assertActive();
       const results = scanStealthCells(
         cells,
         ckbKeys.viewingKey,
@@ -142,9 +170,10 @@ export function CkbReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsScanning(false);
     }
-  }, [ckbKeys, t]);
+  }, [ckbKeys, t, walletSession]);
 
   if (!wallet) {
     return (
