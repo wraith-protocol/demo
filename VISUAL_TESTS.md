@@ -15,22 +15,27 @@ Visual regression tests capture screenshots of critical transaction states acros
 ## Test Coverage
 
 ### Horizen (EVM)
+
 - **Send Page**: Not connected, empty form, recipient filled, wraith name, amount filled, max amount, invalid input error, pending transaction, success state
 - **Receive Page**: Not connected, derive keys, meta address displayed, registration pending, registration complete, scan button, scanning state, no transfers found, payment found, withdraw form, withdrawing state, withdrawn, private key revealed
 
 ### Stellar
+
 - **Send Page**: Not connected, form filled, success state
 - **Receive Page**: Not connected, meta address displayed, payment found
 
 ### Solana
+
 - **Send Page**: Not connected, form filled, success state
 - **Receive Page**: Not connected, meta address displayed, payment found
 
 ### CKB
+
 - **Send Page**: Not connected, form filled, stealth cell generated
 - **Receive Page**: Not connected, meta address displayed, stealth cell found
 
 ### Error States
+
 - Invalid meta-address error
 - Name not found error
 - Insufficient balance error
@@ -38,6 +43,7 @@ Visual regression tests capture screenshots of critical transaction states acros
 - Wallet connection error
 
 ### Viewports
+
 - Desktop: 1280x720
 - Mobile: 375x667
 - Tablet: 768x1024
@@ -99,6 +105,7 @@ Deterministic fixtures for test isolation:
 ### Test Files
 
 Each chain has dedicated test files (prefixed with `visual-` to distinguish from functional tests):
+
 - `e2e/visual-horizen-send.spec.ts` - Horizen send states
 - `e2e/visual-horizen-receive.spec.ts` - Horizen receive states
 - `e2e/visual-stellar-send.spec.ts` - Stellar send states
@@ -183,12 +190,14 @@ test('new transaction state', async ({ page }) => {
 ### Screenshots differ due to font rendering
 
 Font rendering can vary across platforms. If this causes false positives:
+
 - Use the same OS for baseline generation and CI (Ubuntu)
 - Consider using system fonts consistently
 
 ### Tests timeout
 
 Increase timeout in `playwright.config.ts`:
+
 ```typescript
 use: {
   actionTimeout: 10000,

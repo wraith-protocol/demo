@@ -32,7 +32,8 @@ test.describe('CKB Receive - Visual Regression', () => {
         spendingPubKey: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
         viewingPubKey: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
       };
-      (window as any).mockMetaAddress = 'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
     });
     await expect(page).toHaveScreenshot('ckb-receive-meta-address.png');
   });
@@ -44,7 +45,8 @@ test.describe('CKB Receive - Visual Regression', () => {
         spendingPubKey: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
         viewingPubKey: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
       };
-      (window as any).mockMetaAddress = 'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockMatchedCells = [
         {
           stealthAddress: 'ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k',
@@ -66,7 +68,8 @@ test.describe('CKB Receive - Visual Regression', () => {
         spendingPubKey: '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
         viewingPubKey: '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
       };
-      (window as any).mockMetaAddress = 'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:ckb:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockMatchedCells = [
         {
           stealthAddress: 'ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k',

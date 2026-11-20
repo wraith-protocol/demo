@@ -28,7 +28,9 @@ test.describe('Stellar Send - Visual Regression', () => {
   test('form with recipient and amount', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:xlm:...');
-    await recipientInput.fill('st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890');
+    await recipientInput.fill(
+      'st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('100');
     await expect(page).toHaveScreenshot('stellar-send-form-filled.png');
@@ -49,7 +51,9 @@ test.describe('Stellar Send - Visual Regression', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:xlm:...');
-    await recipientInput.fill('st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890');
+    await recipientInput.fill(
+      'st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('100');
     await expect(page).toHaveScreenshot('stellar-send-mobile-form-filled.png');

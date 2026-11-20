@@ -28,7 +28,9 @@ test.describe('CKB Send - Visual Regression', () => {
   test('form with recipient and amount', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:ckb:...');
-    await recipientInput.fill('st:ckb:ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k');
+    await recipientInput.fill(
+      'st:ckb:ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('1000');
     await expect(page).toHaveScreenshot('ckb-send-form-filled.png');
@@ -51,7 +53,9 @@ test.describe('CKB Send - Visual Regression', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:ckb:...');
-    await recipientInput.fill('st:ckb:ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k');
+    await recipientInput.fill(
+      'st:ckb:ckt1qyq2k5k5h5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k5k',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('1000');
     await expect(page).toHaveScreenshot('ckb-send-mobile-form-filled.png');

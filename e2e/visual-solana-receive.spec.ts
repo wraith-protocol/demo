@@ -32,7 +32,8 @@ test.describe('Solana Receive - Visual Regression', () => {
         spendingPubKey: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
         viewingPubKey: '5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
       };
-      (window as any).mockMetaAddress = 'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+      (window as any).mockMetaAddress =
+        'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
     });
     await expect(page).toHaveScreenshot('solana-receive-meta-address.png');
   });
@@ -44,7 +45,8 @@ test.describe('Solana Receive - Visual Regression', () => {
         spendingPubKey: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
         viewingPubKey: '5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
       };
-      (window as any).mockMetaAddress = 'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+      (window as any).mockMetaAddress =
+        'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
       (window as any).mockMatchedAnnouncements = [
         {
           stealthAddress: '3xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
@@ -66,7 +68,8 @@ test.describe('Solana Receive - Visual Regression', () => {
         spendingPubKey: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
         viewingPubKey: '5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
       };
-      (window as any).mockMetaAddress = 'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
+      (window as any).mockMetaAddress =
+        'st:sol:7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU5yKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU';
       (window as any).mockMatchedAnnouncements = [
         {
           stealthAddress: '3xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',

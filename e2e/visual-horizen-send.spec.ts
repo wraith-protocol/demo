@@ -31,7 +31,9 @@ test.describe('Horizen Send - Visual Regression', () => {
   test('form with recipient input', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     await expect(page).toHaveScreenshot('horizen-send-recipient-filled.png');
   });
 
@@ -45,7 +47,9 @@ test.describe('Horizen Send - Visual Regression', () => {
   test('form with amount input', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('0.5');
     await expect(page).toHaveScreenshot('horizen-send-amount-filled.png');
@@ -54,7 +58,9 @@ test.describe('Horizen Send - Visual Regression', () => {
   test('form with max amount', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const maxButton = page.getByText('Max');
     await maxButton.click();
     await expect(page).toHaveScreenshot('horizen-send-max-amount.png');
@@ -75,7 +81,9 @@ test.describe('Horizen Send - Visual Regression', () => {
   test('pending transaction state', async ({ page }) => {
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('0.5');
     await page.evaluate(() => {
@@ -107,7 +115,9 @@ test.describe('Horizen Send - Visual Regression', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.waitForLoadState('networkidle');
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('0.5');
     await expect(page).toHaveScreenshot('horizen-send-mobile-form-filled.png');

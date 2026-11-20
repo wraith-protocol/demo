@@ -37,7 +37,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
     });
     await expect(page).toHaveScreenshot('horizen-receive-meta-address.png');
   });
@@ -51,7 +52,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'pending';
     });
     await expect(page).toHaveScreenshot('horizen-receive-registration-pending.png');
@@ -66,9 +68,11 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
-      (window as any).mockRegistrationTx = '0x1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff';
+      (window as any).mockRegistrationTx =
+        '0x1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff';
     });
     await expect(page).toHaveScreenshot('horizen-receive-registration-complete.png');
   });
@@ -82,7 +86,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
     });
     await expect(page).toHaveScreenshot('horizen-receive-scan-button.png');
@@ -97,7 +102,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'scanning';
     });
@@ -113,7 +119,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [];
@@ -130,7 +137,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [
@@ -155,7 +163,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [
@@ -182,7 +191,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [
@@ -208,7 +218,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [
@@ -221,7 +232,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         },
       ];
       (window as any).mockWithdrawState = 'complete';
-      (window as any).mockWithdrawTx = '0x2222333344445555666677778888999900001111aaaabbbbccccddddeeeeffff';
+      (window as any).mockWithdrawTx =
+        '0x2222333344445555666677778888999900001111aaaabbbbccccddddeeeeffff';
     });
     await expect(page).toHaveScreenshot('horizen-receive-withdrawn.png');
   });
@@ -235,7 +247,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [
@@ -269,7 +282,8 @@ test.describe('Horizen Receive - Visual Regression', () => {
         spendingKey: '0x9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba',
         viewingKey: '0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
       };
-      (window as any).mockMetaAddress = 'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+      (window as any).mockMetaAddress =
+        'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdefabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
       (window as any).mockRegistrationState = 'complete';
       (window as any).mockScanState = 'complete';
       (window as any).mockMatchedAnnouncements = [

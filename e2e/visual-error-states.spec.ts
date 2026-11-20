@@ -48,7 +48,9 @@ test.describe('Error States - Visual Regression', () => {
       (window as any).mockBalance = '0';
     });
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('10');
     const sendButton = page.getByText('Send Privately');
@@ -63,7 +65,9 @@ test.describe('Error States - Visual Regression', () => {
       (window as any).mockTransactionError = 'Transaction reverted';
     });
     const recipientInput = page.getByPlaceholder('st:eth:0x... or name.wraith');
-    await recipientInput.fill('st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef');
+    await recipientInput.fill(
+      'st:eth:0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+    );
     const amountInput = page.getByPlaceholder('0.0');
     await amountInput.fill('0.5');
     const sendButton = page.getByText('Send Privately');
