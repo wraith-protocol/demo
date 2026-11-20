@@ -16,18 +16,20 @@ import {
 } from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
 import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
+import { STELLAR_ANNOUNCER_CONTRACT } from '@/lib/stellar/constants';
+import { buildStellarSendIntent, fingerprintIntent, type TransactionIntent } from '@/lib/txIntent';
 
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
 const CONTRACT_ERROR_PATTERN = /Error\(Contract, #(\d+)\)/;
 
 export type StellarSendSimulationState =
-  | { status: 'idle'; error: ''; fee: null; returnValue: null; events: [] }
+  | { status: 'idle'; error: ''; fee: null; returnValue: null; events: []; intent: null }
   | {
       status: 'loading';
       error: '';
       fee: null;
       returnValue: null;
       events: [];
+      intent: null;
     }
   | {
       status: 'success';
@@ -35,6 +37,7 @@ export type StellarSendSimulationState =
       fee: string;
       returnValue: string;
       events: string[];
+      intent: TransactionIntent;
     }
   | {
       status: 'error';
@@ -42,6 +45,7 @@ export type StellarSendSimulationState =
       fee: null;
       returnValue: null;
       events: [];
+      intent: null;
     };
 
 export const emptyStellarSendSimulation = (): StellarSendSimulationState => ({
@@ -50,6 +54,7 @@ export const emptyStellarSendSimulation = (): StellarSendSimulationState => ({
   fee: null,
   returnValue: null,
   events: [],
+  intent: null,
 });
 
 function stringifyNativeValue(value: unknown) {
@@ -91,8 +96,16 @@ function formatPredictedEvents(events: ReturnType<typeof humanizeEvents>) {
   });
 }
 
+export interface SimulateStellarSendParams {
+  address: string;
+  recipient: string;
+  amount: string;
+  asset: string;
+  memo?: string;
+}
+
 export async function simulateStellarSendAnnouncement(
-  params: { address: string; recipient: string },
+  params: SimulateStellarSendParams,
   opts?: Pick<RetryOptions, 'signal' | 'onRetry'>,
 ) {
   const decoded = decodeStealthMetaAddress(params.recipient);
@@ -109,12 +122,43 @@ export async function simulateStellarSendAnnouncement(
   const sourceAccount = new Account(params.address, accountData.sequence);
   const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
 
+  let stealthExists = false;
+  try {
+    const stealthRes = await fetchWithRetry(
+      `${STELLAR_NETWORK.horizonUrl}/accounts/${result.stealthAddress}`,
+      {},
+      opts,
+    );
+    stealthExists = stealthRes.ok;
+  } catch {
+    // A transient lookup failure means the account is treated as unpaid; the
+    // send flow repeats this check and invalidates the simulation if it differs.
+    stealthExists = false;
+  }
+
+  const ephemeralPubKeyHex = Buffer.from(result.ephemeralPubKey).toString('hex');
+  const intent = buildStellarSendIntent({
+    address: params.address,
+    metaAddress: params.recipient,
+    stealthAddress: result.stealthAddress,
+    amount: params.amount,
+    asset: params.asset,
+    memo: params.memo,
+    sequence: accountData.sequence,
+    operation: stealthExists ? 'payment' : params.asset === 'XLM' ? 'createAccount' : 'payment',
+    announcerContract: STELLAR_ANNOUNCER_CONTRACT,
+    schemeId: String(SCHEME_ID),
+    ephemeralPubKey: ephemeralPubKeyHex,
+    viewTag: result.viewTag,
+    networkPassphrase,
+  });
+
   const announceTx = new TransactionBuilder(sourceAccount, {
     fee: '100',
     networkPassphrase,
   })
     .addOperation(
-      new Contract(ANNOUNCER_CONTRACT).call(
+      new Contract(STELLAR_ANNOUNCER_CONTRACT).call(
         'announce',
         nativeToScVal(SCHEME_ID, { type: 'u32' }),
         new Address(result.stealthAddress).toScVal(),
@@ -142,5 +186,7 @@ export async function simulateStellarSendAnnouncement(
     fee,
     returnValue,
     events,
+    intent,
+    intentHash: fingerprintIntent(intent),
   };
 }

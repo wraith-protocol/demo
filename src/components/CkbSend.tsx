@@ -7,9 +7,21 @@ import {
 } from '@wraith-protocol/sdk/chains/ckb';
 import { useTranslation } from 'react-i18next';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
+import { buildCkbSendIntent, type TransactionIntent } from '@/lib/txIntent';
+import { CKB_NETWORK } from '@/config';
 import { trackEvent } from '@/lib/telemetry';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
+const CKB_INTENT_NETWORK = 'ckb:testnet';
+
+function outputSummary(tx: ccc.Transaction) {
+  return tx.outputs.map((output) => ({
+    capacity: output.capacity.toString(),
+    codeHash: output.lock.codeHash,
+    args: output.lock.args,
+  }));
+}
 
 export function CkbSend() {
   const { t } = useTranslation();
@@ -23,6 +35,10 @@ export function CkbSend() {
   const [stealthInfo, setStealthInfo] = useState<{
     stealthPubKey: string;
     lockArgs: string;
+  } | null>(null);
+  const [pendingCell, setPendingCell] = useState<{
+    intent: TransactionIntent;
+    transaction: ccc.Transaction;
   } | null>(null);
 
   const handleSend = useCallback(async () => {
@@ -71,9 +87,21 @@ export function CkbSend() {
       await tx.completeInputsByCapacity(signer);
       await tx.completeFeeBy(signer, 1000);
 
-      const hash = await signer.sendTransaction(tx);
-      trackEvent('send_submitted');
-      setTxHash(hash);
+      const account = await signer.getRecommendedAddress();
+      const fee = await tx.getFee(signer.client);
+      const intent = buildCkbSendIntent({
+        network: CKB_INTENT_NETWORK,
+        account,
+        stealthPubKey: stealth.stealthPubKey,
+        lockArgs: stealth.lockArgs,
+        lockCodeHash: STEALTH_LOCK_CODE_HASH,
+        capacityShannons,
+        feeShannons: fee,
+        txHash: tx.hash(),
+      });
+
+      setPendingCell({ intent, transaction: tx });
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
@@ -81,10 +109,59 @@ export function CkbSend() {
     }
   }, [signer, recipient, amount, t]);
 
+  const handleConfirm = useCallback(async () => {
+    if (!signer || !pendingCell) return;
+
+    setError('');
+    setIsPending(true);
+    trackEvent('send_submitted');
+
+    try {
+      const account = await signer.getRecommendedAddress();
+      if (account !== pendingCell.intent.account) {
+        setPendingCell(null);
+        setStealthInfo(null);
+        throw new Error(
+          'The wallet account changed since this cell was reviewed. Review it again.',
+        );
+      }
+
+      const signed = await signer.signTransaction(pendingCell.transaction);
+      const expectedOutputs = outputSummary(pendingCell.transaction);
+      const signedOutputs = outputSummary(signed);
+      const outputsMatch =
+        expectedOutputs.length === signedOutputs.length &&
+        expectedOutputs.every(
+          (output, index) =>
+            output.capacity === signedOutputs[index].capacity &&
+            output.codeHash === signedOutputs[index].codeHash &&
+            output.args === signedOutputs[index].args,
+        );
+
+      const signedFee = await signed.getFee(signer.client);
+      const feeMatches = signedFee.toString() === pendingCell.intent.fee;
+
+      if (!outputsMatch || !feeMatches) {
+        setPendingCell(null);
+        throw new Error(
+          'Your wallet signed a cell that does not match the confirmed intent. Nothing was submitted. Review and confirm again.',
+        );
+      }
+
+      const hash = await signer.client.sendTransaction(signed);
+      setTxHash(hash);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      setIsPending(false);
+    }
+  }, [pendingCell, signer, t]);
+
   const reset = () => {
     setRecipient('');
     setAmount('');
     setStealthInfo(null);
+    setPendingCell(null);
     setTxHash(null);
     setError('');
   };
@@ -130,7 +207,7 @@ export function CkbSend() {
         </p>
       </div>
 
-      {!txHash && (
+      {!stealthInfo && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -197,12 +274,12 @@ export function CkbSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review stealth cell
           </button>
         </div>
       )}
 
-      {txHash && stealthInfo && (
+      {stealthInfo && (
         <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
@@ -224,30 +301,68 @@ export function CkbSend() {
               </div>
             </div>
 
-            <div>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                {t('common.transactionHash')}
-              </span>
-              <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={`${deployment.explorerUrl}/transaction/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {txHash}
-                </a>
-                <CopyButton text={txHash} />
+            {txHash && (
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  {t('common.transactionHash')}
+                </span>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <a
+                    href={`${deployment.explorerUrl}/transaction/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block truncate font-mono text-xs text-primary underline"
+                  >
+                    {txHash}
+                  </a>
+                  <CopyButton text={txHash} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <button
-            onClick={reset}
-            className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
-          >
-            {t('common.newTransfer')}
-          </button>
+          {pendingCell && !txHash && (
+            <>
+              <IntentSummary intent={pendingCell.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {txHash && error && <p className="text-sm text-error">{error}</p>}
+
+          {!txHash && !pendingCell && error && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              Start over
+            </button>
+          )}
+
+          {txHash && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              {t('common.newTransfer')}
+            </button>
+          )}
         </div>
       )}
     </section>
