@@ -38,6 +38,14 @@ import {
   emptyStellarSendSimulation,
   simulateStellarSendAnnouncement,
 } from '@/lib/stellarSimulation';
+import { STELLAR_ANNOUNCER_CONTRACT } from '@/lib/stellar/constants';
+import {
+  assertStellarTransactionIntent,
+  buildStellarSendIntent,
+  describeIntent,
+  fingerprintIntent,
+  verifyStellarSignedTransaction,
+} from '@/lib/txIntent';
 import { useActivityStore } from '@/stores/activityStore';
 import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
 import {
@@ -51,6 +59,7 @@ import {
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
+const ANNOUNCER_CONTRACT = STELLAR_ANNOUNCER_CONTRACT;
 const STELLAR_BASE_FEE_XLM = 0.00001;
 const STELLAR_BASE_RESERVE_XLM = 1;
 
@@ -263,7 +272,9 @@ export function StellarSend() {
   const [isPending, setIsPending] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
   const [, setRetryStatus] = useState('');
-  const [, setSimulation] = useState<StellarSendSimulationState>(emptyStellarSendSimulation());
+  const [simulation, setSimulation] = useState<StellarSendSimulationState>(
+    emptyStellarSendSimulation(),
+  );
 
   useEffect(() => {
     if (paramExp) {
@@ -381,6 +392,14 @@ export function StellarSend() {
   }, [allBalances]);
   const validationError =
     recipientError || amountError || balanceLookupError || balanceError || trustlineError;
+  const simulationMatchesForm =
+    simulation.status === 'success' &&
+    simulation.intent.account === address &&
+    simulation.intent.network === STELLAR_NETWORK.networkPassphrase &&
+    simulation.intent.extra.metaAddress === metaAddress &&
+    simulation.intent.amount === amountValue &&
+    simulation.intent.asset === assetKey &&
+    simulation.intent.memo === (memo.trim() ? memo.trim() : null);
   const canSubmit =
     !!address &&
     !!metaAddress &&
@@ -389,7 +408,8 @@ export function StellarSend() {
     !isAwaitingBalance &&
     !isBalanceLoading &&
     !isPending &&
-    !isExpired;
+    !isExpired &&
+    simulationMatchesForm;
 
   useEffect(() => {
     if (simulationTimeoutRef.current) {
@@ -406,7 +426,13 @@ export function StellarSend() {
     simulationTimeoutRef.current = globalThis.setTimeout(async () => {
       try {
         const result = await simulateStellarSendAnnouncement(
-          { address, recipient: metaAddress },
+          {
+            address,
+            recipient: metaAddress,
+            amount: amountValue,
+            asset: assetKey,
+            memo,
+          },
           {
             onRetry: (attempt: number, _: unknown, err: unknown) => {
               const msg = err instanceof Error ? err.message : '';
@@ -421,6 +447,7 @@ export function StellarSend() {
           fee: result.fee,
           returnValue: result.returnValue,
           events: result.events,
+          intent: result.intent,
         });
       } catch (err) {
         setRetryStatus('');
@@ -431,6 +458,7 @@ export function StellarSend() {
           fee: null,
           returnValue: null,
           events: [],
+          intent: null,
         });
       }
     }, 500);
@@ -440,7 +468,7 @@ export function StellarSend() {
         globalThis.clearTimeout(simulationTimeoutRef.current);
       }
     };
-  }, [address, metaAddress, validationError, isPending, isExpired]);
+  }, [address, metaAddress, amountValue, assetKey, memo, validationError, isPending, isExpired]);
 
   useEffect(() => {
     setSourceBalance(null);
@@ -659,46 +687,19 @@ export function StellarSend() {
         return;
       }
 
-      const previousSubmission = getSubmissionRecord(operationId);
-      if (previousSubmission?.txHash && previousSubmission.signedEnvelope) {
-        txHashHex = previousSubmission.txHash;
-        signedXdr = previousSubmission.signedEnvelope;
-        const stealthAddress = previousSubmission.metadata?.stealthAddress;
-        if (typeof stealthAddress === 'string') {
-          setStealthResult({ stealthAddress, ephemeralPubKey: new Uint8Array(), viewTag: 0 });
-        }
-        setTxHash(txHashHex);
-        addActivity({
-          id: txHashHex,
-          chain: 'stellar',
-          wallet: address,
-          kind: 'stealth-send',
-          direction: 'out',
-          status: 'pending',
-          amount: amountValue,
-          recipient: metaAddress,
-          timestamp: Date.now(),
-        });
-        const submittedHash = await submitStellarTransactionOnce(
-          operationId,
-          txHashHex,
-          signedXdr,
-          () => broadcastStellarTransaction(signedXdr, txHashHex, STELLAR_NETWORK.horizonUrl),
-          previousSubmission.metadata,
-        );
-        setTxHash(submittedHash);
-        setIsSuccess(true);
-        updateActivity(txHashHex, 'confirmed');
-        try {
-          await releaseSubmissionDraft(draft, operationId);
-        } catch {
-          setError('Transaction submitted, but its retry state could not be cleared.');
-        }
+      if (simulation.status !== 'success') {
+        setError('Wait for a successful simulation before signing this transfer.');
+        setIsPending(false);
         return;
       }
 
-      const decoded = decodeStealthMetaAddress(metaAddress);
-      const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+      const result = {
+        stealthAddress: simulation.intent.recipient,
+        ephemeralPubKey: Uint8Array.from(
+          Buffer.from(simulation.intent.extra.ephemeralPubKey, 'hex'),
+        ),
+        viewTag: Number(simulation.intent.extra.viewTag),
+      };
       setStealthResult(result);
       trackEvent('send_submitted');
 
@@ -762,7 +763,53 @@ export function StellarSend() {
 
       const classicTx = builder.build();
 
-      signedXdr = await signTransaction(classicTx.toXDR());
+      const intent = buildStellarSendIntent({
+        address,
+        metaAddress,
+        stealthAddress: result.stealthAddress,
+        amount: amountValue,
+        asset: assetKey,
+        memo,
+        sequence: accountData.sequence,
+        operation: stealthExists
+          ? 'payment'
+          : currentAssetInfo.isNative
+            ? 'createAccount'
+            : 'payment',
+        announcerContract: ANNOUNCER_CONTRACT,
+        schemeId: String(SCHEME_ID),
+        ephemeralPubKey: Buffer.from(result.ephemeralPubKey).toString('hex'),
+        viewTag: result.viewTag,
+        networkPassphrase,
+      });
+
+      if (fingerprintIntent(intent) !== fingerprintIntent(simulation.intent)) {
+        setSimulation(emptyStellarSendSimulation());
+        setError(
+          'The network, account, recipient, asset, amount, fee, memo, or contract arguments changed since the simulation. Review a fresh simulation before signing.',
+        );
+        setIsPending(false);
+        return;
+      }
+
+      try {
+        assertStellarTransactionIntent(classicTx, intent);
+      } catch (intentError) {
+        setSimulation(emptyStellarSendSimulation());
+        throw intentError;
+      }
+
+      const signedXdr = await signTransaction(classicTx.toXDR());
+      const signedCheck = verifyStellarSignedTransaction(classicTx, signedXdr, networkPassphrase);
+      if (!signedCheck.ok) {
+        setSimulation(emptyStellarSendSimulation());
+        throw new Error(
+          `Your wallet returned a transaction that does not match the confirmed intent (${signedCheck.mismatches
+            .map((mismatch) => mismatch.field)
+            .join(', ')}). Nothing was submitted. Review a fresh simulation and confirm again.`,
+        );
+      }
+
       txHashHex = classicTx.hash().toString('hex');
       setTxHash(txHashHex);
 
@@ -839,6 +886,14 @@ export function StellarSend() {
             .build();
 
           const signedAnnounce = await signTransaction(assembled.toXDR());
+          const announceCheck = verifyStellarSignedTransaction(
+            assembled,
+            signedAnnounce,
+            networkPassphrase,
+          );
+          if (!announceCheck.ok) {
+            throw new Error('Announcer payload did not match the confirmed contract call');
+          }
           await soroban.sendTransaction(
             TransactionBuilder.fromXDR(signedAnnounce, networkPassphrase),
           );
@@ -882,7 +937,7 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, assetKey, memo, signTransaction, t, paramExp]);
+  }, [address, recipient, amount, assetKey, memo, simulation, signTransaction, t]);
 
   const reset = () => {
     const currentSubmission = submissionDraftRef.current;
@@ -1038,6 +1093,66 @@ export function StellarSend() {
             </div>
           </div>
 
+          {simulation.status === 'loading' && (
+            <div className="border border-outline-variant bg-surface-container p-4">
+              <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                Simulating transfer
+              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Simulating Soroban pre-flight...
+              </p>
+            </div>
+          )}
+
+          {simulation.status === 'error' && (
+            <p className="text-sm text-error">{simulation.error}</p>
+          )}
+
+          {simulation.status === 'success' && simulationMatchesForm && (
+            <div
+              data-testid="intent-confirmation"
+              className="border border-outline-variant bg-surface-container p-4"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <p className="font-heading text-[11px] uppercase tracking-widest text-on-surface">
+                  Confirm transaction
+                </p>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  Simulated
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-on-surface-variant">
+                These are the exact values the wallet will sign. Nothing is submitted unless the
+                signed payload matches this fingerprint.
+              </p>
+              <dl className="mt-4 grid gap-3 text-sm">
+                {describeIntent(simulation.intent).map((field) => (
+                  <div key={field.label} className="flex items-start justify-between gap-4">
+                    <dt className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                      {field.label}
+                    </dt>
+                    <dd
+                      data-testid={
+                        field.label === 'Intent fingerprint' ? 'intent-fingerprint' : undefined
+                      }
+                      className="max-w-[65%] min-w-0 break-all text-right font-mono text-xs text-on-surface-variant"
+                    >
+                      {field.value}
+                    </dd>
+                  </div>
+                ))}
+                <div className="flex items-start justify-between gap-4">
+                  <dt className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                    Predicted fee
+                  </dt>
+                  <dd className="text-right font-mono text-xs text-on-surface-variant">
+                    {simulation.fee}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          )}
+
           {error && <p className="text-sm text-error">{error}</p>}
 
           {queuedOffline && !error && (
@@ -1139,6 +1254,8 @@ export function StellarSend() {
               </div>
             </div>
 
+            {error && <p className="text-sm text-error">{error}</p>}
+
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -1162,6 +1279,15 @@ export function StellarSend() {
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
               {t('common.newTransfer')}
+            </button>
+          )}
+
+          {!isSuccess && !txHash && error && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              Start over
             </button>
           )}
         </div>

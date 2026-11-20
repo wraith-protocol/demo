@@ -1,22 +1,35 @@
-import { useState } from 'react';
-import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
+import { useEffect, useState } from 'react';
+import {
+  useAccount,
+  useBalance,
+  usePublicClient,
+  useSendTransaction,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
 import { useTranslation } from 'react-i18next';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
+import { buildEvmSendIntent, verifyEvmSubmittedTransaction } from '@/lib/txIntent';
 import { trackEvent } from '@/lib/telemetry';
 
 export function HorizenSend() {
   const { t } = useTranslation();
   const { isConnected, address } = useAccount();
   const { data: balanceData } = useBalance({ address });
+  const publicClient = usePublicClient();
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
+  const [pendingIntent, setPendingIntent] = useState<{
+    intent: ReturnType<typeof buildEvmSendIntent>;
+    request: { to: `0x${string}`; data: `0x${string}`; value?: bigint };
+  } | null>(null);
 
   const { sendTransaction, data: txHash, isPending } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
@@ -57,29 +70,93 @@ export function HorizenSend() {
         return;
       }
 
+      if (!address) {
+        setError(t('common.walletNotConnected'));
+        return;
+      }
+
       const result = buildSendStealth({
         recipientMetaAddress: metaAddress,
         amount,
         chain: 'horizen',
       });
 
-      setStealthResult(result);
-      trackEvent('send_submitted');
-
-      sendTransaction({
+      const request = {
         to: result.transaction.to as `0x${string}`,
         data: result.transaction.data as `0x${string}`,
         value: result.transaction.value,
+      };
+
+      setStealthResult(result);
+      setPendingIntent({
+        intent: buildEvmSendIntent({
+          chainId: horizenTestnet.id,
+          account: address,
+          to: request.to,
+          stealthAddress: result.stealthAddress,
+          data: request.data,
+          value: request.value ?? 0n,
+        }),
+        request,
       });
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     }
   };
 
+  const handleConfirm = () => {
+    if (!pendingIntent) return;
+    if (!address || pendingIntent.intent.account !== address.toLowerCase()) {
+      setPendingIntent(null);
+      setStealthResult(null);
+      setError('The wallet account changed since this transfer was reviewed. Review it again.');
+      return;
+    }
+
+    setError('');
+    trackEvent('send_submitted');
+    sendTransaction(pendingIntent.request);
+  };
+
+  useEffect(() => {
+    if (!txHash || !pendingIntent || !publicClient) return;
+
+    let cancelled = false;
+    publicClient
+      .getTransaction({ hash: txHash })
+      .then((submitted) => {
+        if (cancelled) return;
+        const verification = verifyEvmSubmittedTransaction(pendingIntent.intent, {
+          chainId: submitted.chainId,
+          from: submitted.from,
+          to: submitted.to,
+          value: submitted.value,
+          input: submitted.input,
+        });
+        if (!verification.ok) {
+          setError(
+            `The wallet submitted a transaction that does not match the confirmed intent (${verification.mismatches
+              .map((mismatch) => mismatch.field)
+              .join(', ')}). Do not retry without a fresh review.`,
+          );
+        }
+      })
+      .catch(() => {
+        // Receipt verification is best-effort; the pending state still reflects
+        // the wallet's reported hash.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [txHash, pendingIntent, publicClient]);
+
   const reset = () => {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setPendingIntent(null);
     setError('');
   };
 
@@ -221,7 +298,7 @@ export function HorizenSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review transfer
           </button>
         </div>
       )}
@@ -289,6 +366,31 @@ export function HorizenSend() {
               </p>
             </div>
           </div>
+
+          {pendingIntent && !txHash && (
+            <>
+              <IntentSummary intent={pendingIntent.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {txHash && error && <p className="text-sm text-error">{error}</p>}
 
           {isSuccess && (
             <button
