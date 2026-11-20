@@ -15,6 +15,7 @@ import {
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from '@/lib/stellar/deployments';
 import { fetchWithRetry, withRetry, type RetryOptions } from '@/lib/stellar/retry';
 import { STELLAR_ANNOUNCER_CONTRACT } from '@/lib/stellar/constants';
 import { buildStellarSendIntent, fingerprintIntent, type TransactionIntent } from '@/lib/txIntent';

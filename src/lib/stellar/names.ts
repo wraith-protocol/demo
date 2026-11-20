@@ -9,11 +9,18 @@ import {
 } from '@stellar/stellar-sdk';
 import { Buffer } from 'buffer';
 import { STELLAR_NETWORK } from '@/config';
+import { TransactionSubmissionError } from '@/lib/stellar/auctionBidSubmission';
+import { getStellarContractId } from './deployments';
 
-// Override for futurenet recordings or a new deployment without rebuilding this module.
-export const NAMES_CONTRACT_ID =
-  import.meta.env.VITE_WRAITH_NAMES_CONTRACT_ID ||
-  'CD3Z7J2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
+/**
+ * The Wraith Names contract for the selected network. Resolved per call so an
+ * environment override or a new deployment takes effect without a rebuild, and
+ * so an undisployed names contract fails closed instead of calling an address
+ * that cannot exist on-chain.
+ */
+export function getNamesContractId(): string {
+  return getStellarContractId('names');
+}
 
 export interface NameMetadata {
   avatar_url?: string;
@@ -300,7 +307,7 @@ function normalizeAuction(value: Record<string, unknown> | null): NameAuction | 
 }
 
 export async function getNameAuction(name: string): Promise<NameAuction | null> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const value = await simulateRead<Record<string, unknown> | null>(
     contract.call('get_auction', nativeToScVal(name.trim().toLowerCase())),
   );
@@ -308,7 +315,7 @@ export async function getNameAuction(name: string): Promise<NameAuction | null> 
 }
 
 export async function getNameAuctionConfig(): Promise<NameAuctionConfig | null> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const value = await simulateRead<Record<string, unknown> | null>(contract.call('auction_config'));
   if (!value) return null;
   return {
@@ -322,7 +329,7 @@ export async function getNameAuctionConfig(): Promise<NameAuctionConfig | null> 
 }
 
 export async function getActiveNameAuctions(names: string[]): Promise<NameAuction[]> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   try {
     const values = await simulateRead<Array<Record<string, unknown>>>(
       contract.call('get_active_auctions'),
@@ -356,7 +363,7 @@ export async function computeNameBidCommitment(
   amount: bigint,
   saltHex: string,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   const commitment = await simulateRead<Uint8Array>(
     contract.call(
       'compute_commitment',
@@ -373,7 +380,7 @@ export async function buildCommitNameBidTransaction(
   bidder: string,
   params: CommitBidParams,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -390,7 +397,7 @@ export async function buildRevealNameBidTransaction(
   bidder: string,
   params: RevealBidParams,
 ): Promise<string> {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -404,7 +411,7 @@ export async function buildRevealNameBidTransaction(
 }
 
 export async function buildSettleNameAuctionTransaction(fromAddress: string, name: string) {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     fromAddress,
     contract.call('settle_auction', nativeToScVal(name.trim().toLowerCase())),
@@ -412,7 +419,7 @@ export async function buildSettleNameAuctionTransaction(fromAddress: string, nam
 }
 
 export async function buildRefundNameBidTransaction(bidder: string, name: string) {
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     bidder,
     contract.call(
@@ -430,7 +437,7 @@ export async function buildClaimAuctionNameTransaction(
 ) {
   if (stealthMetaAddress.length !== 64)
     throw new Error('A 64-byte stealth meta-address is required');
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
   return buildAuctionTransaction(
     winner,
     contract.call(
@@ -449,7 +456,7 @@ export async function checkAvailability(name: string): Promise<boolean> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
@@ -491,7 +498,7 @@ export async function buildRegisterTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -522,7 +529,7 @@ export async function buildTransferTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -549,7 +556,7 @@ export async function buildRenewTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   const tx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
     .addOperation(
@@ -580,7 +587,7 @@ export async function buildSetMetadataTransaction(
   const accountData = await accountRes.json();
   const sourceAccount = new Account(fromAddress, accountData.sequence);
 
-  const contract = new Contract(NAMES_CONTRACT_ID);
+  const contract = new Contract(getNamesContractId());
 
   // Build metadata map
   const metadataMap: xdr.ScMapEntry[] = [
@@ -621,7 +628,7 @@ export async function getNameRecord(name: string): Promise<NameRecord | null> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
@@ -655,7 +662,7 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
   try {
     const { rpc } = await import('@stellar/stellar-sdk');
     const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
-    const contract = new Contract(NAMES_CONTRACT_ID);
+    const contract = new Contract(getNamesContractId());
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
@@ -702,16 +709,73 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
 /**
  * Submit a signed transaction to the network
  */
-export async function submitTransaction(signedXdr: string): Promise<string> {
-  const { rpc } = await import('@stellar/stellar-sdk');
-  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+export async function submitTransaction(
+  signedXdr: string,
+  onPrepared?: (transactionHash: string) => Promise<void>,
+): Promise<string> {
+  let server: InstanceType<(typeof import('@stellar/stellar-sdk'))['rpc']['Server']>;
+  let tx: ReturnType<typeof TransactionBuilder.fromXDR>;
+  let transactionHash: string;
+  try {
+    const { rpc } = await import('@stellar/stellar-sdk');
+    server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+    tx = TransactionBuilder.fromXDR(signedXdr, STELLAR_NETWORK.networkPassphrase);
+    transactionHash = tx.hash().toString('hex');
+  } catch (error) {
+    throw new TransactionSubmissionError(
+      error instanceof Error ? error.message : 'Failed to prepare transaction submission.',
+      'rejected',
+    );
+  }
 
-  const tx = TransactionBuilder.fromXDR(signedXdr, STELLAR_NETWORK.networkPassphrase);
-  const result = await server.sendTransaction(tx);
+  if (onPrepared) {
+    try {
+      await onPrepared(transactionHash);
+    } catch (error) {
+      throw new TransactionSubmissionError(
+        error instanceof Error
+          ? `Could not persist transaction recovery state: ${error.message}`
+          : 'Could not persist transaction recovery state.',
+        'rejected',
+      );
+    }
+  }
 
-  if (result.status === 'ERROR') {
-    throw new Error(result.errorResult?.toString() || 'Transaction failed');
+  let result: Awaited<ReturnType<typeof server.sendTransaction>>;
+  try {
+    result = await server.sendTransaction(tx);
+  } catch (error) {
+    throw new TransactionSubmissionError(
+      error instanceof Error ? error.message : 'Transaction submission outcome is unknown.',
+      'unknown',
+      transactionHash,
+    );
+  }
+
+  if (result.status === 'ERROR' || result.status === 'TRY_AGAIN_LATER') {
+    throw new TransactionSubmissionError(
+      result.errorResult?.toString() ||
+        (result.status === 'TRY_AGAIN_LATER'
+          ? 'The network did not accept the transaction; retry is safe.'
+          : 'Transaction was rejected before broadcast.'),
+      'rejected',
+    );
   }
 
   return result.hash;
+}
+
+/**
+ * Query Soroban RPC for an authoritative transaction result. NOT_FOUND is
+ * inconclusive and callers must leave the bid in its unknown state.
+ */
+export async function getNameBidTransactionStatus(
+  transactionHash: string,
+): Promise<'SUCCESS' | 'FAILED' | 'NOT_FOUND'> {
+  const { rpc } = await import('@stellar/stellar-sdk');
+  const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
+  const result = await server.getTransaction(transactionHash);
+  if (result.status === 'SUCCESS') return 'SUCCESS';
+  if (result.status === 'FAILED') return 'FAILED';
+  return 'NOT_FOUND';
 }

@@ -43,7 +43,10 @@ function intentLink(payload: PaymentIntentPayload): string | null {
   if (payload.chain !== 'stellar') return null;
   const params = new URLSearchParams({ to: payload.recipient });
   if (payload.amount) params.set('amount', payload.amount);
+  if (payload.asset) params.set('asset', payload.asset);
   if (payload.memo) params.set('memo', payload.memo);
+  if (payload.expiresAt != null) params.set('exp', String(Math.floor(payload.expiresAt / 1000)));
+  if (payload.operationId) params.set('operationId', payload.operationId);
   return `/send?${params.toString()}`;
 }
 
@@ -81,7 +84,10 @@ function EntryActions({ entry }: { entry: OfflineQueueEntry }) {
   }
 
   if (entry.kind === 'signed-submit') {
-    if (entry.status !== 'needs-review') {
+    const canBroadcast =
+      entry.status === 'needs-review' ||
+      (entry.status === 'conflict' && entry.conflictReason === 'broadcast-rejected');
+    if (!canBroadcast) {
       return (
         <button
           type="button"
@@ -111,7 +117,13 @@ function EntryActions({ entry }: { entry: OfflineQueueEntry }) {
           }}
           className="h-9 bg-primary px-3 font-heading text-[11px] font-semibold uppercase tracking-widest text-surface disabled:opacity-50"
         >
-          {busy ? 'Broadcasting…' : confirming ? 'Confirm broadcast' : 'Broadcast now'}
+          {busy
+            ? 'Broadcasting…'
+            : confirming
+              ? 'Confirm broadcast'
+              : entry.status === 'conflict'
+                ? 'Retry broadcast'
+                : 'Broadcast now'}
         </button>
         {!confirming && (
           <button
@@ -222,7 +234,7 @@ export function OfflineQueuePanel() {
               </div>
               <p className="mt-1 font-body text-xs text-on-surface-variant">
                 {entry.kind === 'signed-submit'
-                  ? 'Signed while offline — broadcast only happens here, with your confirmation.'
+                  ? 'Signed envelope — broadcast only happens after confirmation; retries reuse its operation ID.'
                   : entry.kind === 'payment-intent'
                     ? 'Unsigned intent — review and sign in Send after reconnect.'
                     : 'Scan captured offline.'}

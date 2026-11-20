@@ -180,9 +180,19 @@ describe('fetchVaultDepositEvents', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({
-        json: async () => ({ result: { events: [event] } }),
-      })),
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse((init?.body as string) ?? '{}');
+        if (body.method === 'getLatestLedger') {
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { sequence: 700 } }),
+          );
+        }
+        // The retention probe asks for a single event; the scan asks for a page.
+        const events = body.params?.pagination?.limit === 1 ? [] : [event];
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { events, latestLedger: 700 } }),
+        );
+      }),
     );
 
     const events = await fetchVaultDepositEvents(

@@ -30,6 +30,7 @@ interface ActivityState {
   addEntry: (entry: ActivityEntry) => void;
   updateStatus: (id: string, status: ActivityStatus) => void;
   clearHistory: (chain: string, wallet: string) => void;
+  clearAll: () => void;
   pollPending: () => Promise<void>;
 }
 
@@ -49,9 +50,15 @@ export const useActivityStore = create<ActivityState>()(
           entries: state.entries.map((e) => (e.id === id ? { ...e, status } : e)),
         })),
       clearHistory: (chain, wallet) =>
-        set((state) => ({
-          entries: state.entries.filter((e) => !(e.chain === chain && e.wallet === wallet)),
-        })),
+        set((state) => {
+          if (!wallet) return state;
+          return {
+            entries: state.entries.filter(
+              (e) => !(e.wallet === wallet && (chain === 'all' || !chain || e.chain === chain)),
+            ),
+          };
+        }),
+      clearAll: () => set({ entries: [] }),
       pollPending: async () => {
         const { entries, updateStatus } = get();
         const pendingTxs = entries.filter((e) => e.status === 'pending' && e.chain === 'stellar');

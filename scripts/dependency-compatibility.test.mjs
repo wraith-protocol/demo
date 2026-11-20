@@ -3,7 +3,7 @@
 // replaced with path-scoped overrides because they forced consumers onto a
 // version outside the major range they declare:
 //
-//   - `@stellar/stellar-sdk` declares `toml: ^3` but needs a patched major 4.
+//   - `@stellar/stellar-sdk` declares `toml: ^3` but needs a patched major 5.
 //   - `metro` declares `image-size: ^1` but needs a patched major 2.
 //
 // These tests exercise the exact code path each consumer relies on with the
@@ -121,8 +121,8 @@ describe('toml override compatibility', () => {
   it('keeps stellar-sdk on a patched toml that preserves its parse contract', () => {
     const sdk = requireFrom('@stellar/stellar-sdk');
     const version = installedVersion(sdk, 'toml');
-    expect(version).toMatch(/^4\./);
-    expect(versionAtLeast(version, '4.2.0')).toBe(true);
+    expect(version).toMatch(/^5\./);
+    expect(versionAtLeast(version, '5.0.1')).toBe(true);
 
     const toml = sdk('toml');
     // StellarToml.Resolver runs `toml.parse(response.data)` and returns the

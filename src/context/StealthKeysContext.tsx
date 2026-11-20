@@ -6,6 +6,7 @@ import type { StealthKeys as SolanaStealthKeys } from '@wraith-protocol/sdk/chai
 import type { StealthKeys as CKBStealthKeys } from '@wraith-protocol/sdk/chains/ckb';
 import { hexToBytes, type RecoveryKitData } from '@/lib/stellar/recoveryKit';
 import { importLabels } from '@/lib/stealthLabels';
+import { lockStellarScanKeys } from '@/sw/scanKeyLifecycle';
 
 interface StealthKeysContextValue {
   evmKeys: EVMStealthKeys | null;
@@ -72,6 +73,7 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     if (isRecoveryMode) return;
     setStellarKeys(null);
     setStellarMetaAddress(null);
+    void lockStellarScanKeys();
   }, [isRecoveryMode]);
 
   const clearSolana = useCallback(() => {
@@ -97,6 +99,7 @@ export function StealthKeysProvider({ children }: { children: React.ReactNode })
     setSolanaMetaAddress(null);
     setCkbKeys(null);
     setCkbMetaAddress(null);
+    void lockStellarScanKeys();
   }, []);
 
   const restoreFromRecoveryKit = useCallback((kitData: RecoveryKitData) => {

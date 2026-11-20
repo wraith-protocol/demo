@@ -34,13 +34,21 @@ export const CACHE_PREFIX = 'wraith';
  * Cache schema version. Increment to invalidate every cache this app owns.
  * Keep in sync with the release notes: a bump is a cache migration.
  */
-export const CACHE_VERSION = 1;
+export const CACHE_VERSION = 2;
 
 /** Suffix appended to every versioned cache name (`v1`, `v2`, …). */
 export const CACHE_VERSION_SUFFIX = `v${CACHE_VERSION}`;
 
 /** Cache kinds the app owns. `precache`/`runtime` match Workbox's own names. */
-export const CACHE_KINDS = ['precache', 'runtime', 'rpc', 'fonts-styles', 'fonts-files'] as const;
+export const CACHE_KINDS = [
+  'precache',
+  'runtime',
+  'rpc',
+  'fonts-styles',
+  'fonts-files',
+  'assets',
+  'images',
+] as const;
 
 export type CacheKind = (typeof CACHE_KINDS)[number];
 

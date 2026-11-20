@@ -83,6 +83,8 @@ const TERMINAL_STATUSES: OfflineEntryStatus[] = ['done', 'conflict', 'failed'];
 
 /** Unsigned intent to send; signing happens explicitly after reconnect. */
 export interface PaymentIntentPayload {
+  /** Stable operation ID carried from offline capture through submission. */
+  operationId?: string;
   chain: string;
   recipient: string;
   amount: string;
@@ -112,6 +114,8 @@ export interface ScanSessionPayload {
  * never broadcasts or re-signs on its own.
  */
 export interface SignedSubmitPayload {
+  /** Same operation ID used by the original direct submission, when present. */
+  operationId?: string;
   chain: string;
   /** Hex transaction hash (also used for dedupe). */
   txHash: string;
@@ -183,8 +187,13 @@ export function createOfflineEntry(
   payload: OfflineEntryPayload,
   now: number = Date.now(),
 ): OfflineQueueEntry {
+  const id = createId();
+  const operationId =
+    kind === 'payment-intent' || kind === 'signed-submit'
+      ? (payload as PaymentIntentPayload | SignedSubmitPayload).operationId || id
+      : undefined;
   return {
-    id: createId(),
+    id,
     kind,
     policy: classifyOfflineWork(kind),
     status: 'queued',
@@ -192,7 +201,10 @@ export function createOfflineEntry(
     updatedAt: now,
     attempts: 0,
     maxAttempts: MAX_RECONCILE_ATTEMPTS,
-    payload,
+    payload:
+      operationId && (kind === 'payment-intent' || kind === 'signed-submit')
+        ? { ...payload, operationId }
+        : payload,
   };
 }
 
@@ -206,6 +218,7 @@ function isValidPayload(kind: OfflineWorkKind, payload: unknown): boolean {
     const p = payload as Record<string, unknown>;
     return (
       isBoundedString(p['chain'], 32) &&
+      (p['operationId'] === undefined || isBoundedString(p['operationId'], 128)) &&
       isBoundedString(p['recipient'], 512) &&
       isBoundedString(p['amount'], 64) &&
       (p['asset'] === undefined || isBoundedString(p['asset'], 32)) &&
@@ -241,6 +254,7 @@ function isValidPayload(kind: OfflineWorkKind, payload: unknown): boolean {
   const p = payload as Record<string, unknown>;
   return (
     isBoundedString(p['chain'], 32) &&
+    (p['operationId'] === undefined || isBoundedString(p['operationId'], 128)) &&
     isBoundedString(p['txHash'], 128) &&
     isBoundedString(p['signedXdr'], 20000)
   );
@@ -335,6 +349,17 @@ function oldestTerminalIds(entries: OfflineQueueEntry[], count: number): Set<str
  */
 export function addEntry(entries: OfflineQueueEntry[], entry: OfflineQueueEntry): AddEntryResult {
   if (entries.some((e) => e.id === entry.id)) return { entries, accepted: true, evicted: 0 };
+  if (
+    (entry.kind === 'payment-intent' || entry.kind === 'signed-submit') &&
+    entries.some(
+      (e) =>
+        e.kind === entry.kind &&
+        (e.payload as PaymentIntentPayload | SignedSubmitPayload).operationId ===
+          (entry.payload as PaymentIntentPayload | SignedSubmitPayload).operationId,
+    )
+  ) {
+    return { entries, accepted: true, evicted: 0 };
+  }
   if (
     entry.kind === 'signed-submit' &&
     entries.some(

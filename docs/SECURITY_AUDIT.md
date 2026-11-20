@@ -23,13 +23,13 @@ must be re-checked. CI enforces the baseline described here.
 | Severity  | Before | After |
 | --------- | -----: | ----: |
 | Critical  |      1 |     0 |
-| High      |     53 |     1 |
+| High      |     53 |     0 |
 | Moderate  |     86 |     8 |
 | Low       |      7 |     2 |
-| **Total** |    147 |    11 |
+| **Total** |    147 |    10 |
 
-The single remaining high finding (`braces`) has no patched release upstream and
-is documented below. The critical (`shell-quote`) was removed by an override.
+All high findings have been remediated. The critical (`shell-quote`) was removed
+by an override.
 
 ## How to run the audit
 
@@ -70,17 +70,19 @@ version with `pnpm.overrides` (see `package.json`). Except where noted, every
 override stays within a range the consumer already declares, so runtime
 behaviour is preserved:
 
-| Override (package selector)                   | Forced to | Reported advisory                                    |
-| --------------------------------------------- | --------- | ---------------------------------------------------- |
-| `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.            |
-| `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                 |
-| `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.            |
-| `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                 |
-| `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.            |
-| `metro>image-size`                            | `2.0.4`   | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.            |
-| `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv. |
-| `@stellar/stellar-sdk>toml`                   | `4.2.0`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j.            |
-| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.            |
+| Override (package selector)                   | Forced to | Reported advisory                                                                                        |
+| --------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.                                                                |
+| `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                                                                     |
+| `follow-redirects`                            | `1.16.1`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c.                                                                |
+| `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.                                                                |
+| `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                                                                     |
+| `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
+| `metro>image-size`                            | `2.0.4`   | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.                                                                |
+| `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv.                                                     |
+| `@stellar/stellar-sdk>toml`                   | `5.0.1`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64, GHSA-9qmh-m7c6-f92p. |
+| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.                                                                |
+| `zod`                                         | `4.6.6`   | GHSA-mrhx-c7xc-m3w5.                                                                                     |
 
 Overrides that cross a declared major range are scoped to the single path that
 needs them with pnpm's `parent>child` syntax, so they cannot silently change a
@@ -91,11 +93,10 @@ different consumer:
   `react-devtools-core`, `@walletconnect/jsonrpc-ws-connection`) resolve to the
   patched `7.5.13` from their own range. Only the exact/tilde-pinned `ws` 8
   consumers (`engine.io-client`, `ethers`, `viem`) are bumped, within major 8.
-- **`image-size` and `toml` have no patched release inside the major the
-  consumer declares** (`image-size` 1.x, `toml` 3.x), so those two overrides do
-  cross a major. They are scoped to `metro` and `@stellar/stellar-sdk`
-  respectively, and `scripts/dependency-compatibility.test.mjs` exercises each
-  affected path so the bump cannot regress silently.
+- **`image-size` has no patched release inside the major the consumer
+  declares** (`image-size` 1.x), so that override does cross a major. It is
+  scoped to `metro`, and `scripts/dependency-compatibility.test.mjs` exercises
+  the affected path so the bump cannot regress silently.
 
 The `toml` override is safe because `@stellar/stellar-sdk` only uses `toml`
 inside `StellarToml.Resolver`, which the demo never calls (`@stellar/stellar-sdk`
@@ -113,24 +114,16 @@ consumer declares, and would require a breaking major bump of a package we do
 not control. All are accepted with an owner and an expiry; re-check on or before
 the expiry.
 
-| Package                | Severity | Advisory                                                      | Dependency path                                                                                                   | Owner                          | Expiry     |
-| ---------------------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
-| `braces`               | high     | GHSA-vfj7-8cjw-p6xm                                           | `@solana/wallet-adapter-react` → `@solana-mobile/wallet-adapter-mobile` → `react-native` → `metro` → `micromatch` | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`                                        | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse`                            | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`                                   | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                                                      | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`                               | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`                                         | `@wraith-protocol/maintainers` | 2027-01-15 |
+| Package                | Severity | Advisory                                                      | Dependency path                                                                        | Owner                          | Expiry     |
+| ---------------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
+| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`             | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse` | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`        | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                           | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`    | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`              | `@wraith-protocol/maintainers` | 2027-01-15 |
 
 Notes:
-
-- `braces` is reached only through the React Native/Metro tooling pulled in by
-  the Solana Mobile wallet adapter; it is build-time code and is not part of the
-  browser bundle shipped by `vite build`.
-- `braces` is currently unfixable: the latest published release (`3.0.3`) is the
-  affected version. This entry should be removed as soon as a patched release is
-  published.
 
 ## CI gate
 
@@ -139,7 +132,8 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 1** — the single accepted `braces` finding above.
+- **high ≤ 0** — all high findings have been remediated; any new high finding
+  fails CI.
 
 Raising either baseline requires a matching entry (owner + expiry) in the table
 above.

@@ -11,9 +11,11 @@
     "format:check": "prettier --check .",
     "audit:prod": "pnpm audit --prod",
     "audit:gate": "node scripts/audit-gate.mjs",
+    "build:budget-check": "node scripts/bundle-budget-gate.mjs",
     "prepare": "husky",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:pwa": "playwright test --project=pwa-chromium",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:unit": "vitest run",
@@ -123,14 +125,16 @@
       "axios": "1.20.0",
       "browserslist": "4.29.3",
       "form-data": "4.0.6",
+      "follow-redirects": "1.16.1",
       "hono": "4.13.13",
       "metro>image-size": "2.0.4",
       "shell-quote": "1.12.0",
       "socket.io-parser": "4.2.7",
-      "@stellar/stellar-sdk>toml": "4.2.0",
+      "@stellar/stellar-sdk>toml": "5.0.1",
       "engine.io-client>ws": "8.22.0",
       "ethers>ws": "8.22.0",
-      "viem>ws": "8.22.0"
+      "viem>ws": "8.22.0",
+      "zod": "4.6.6"
     }
   },
   "packageManager": "pnpm@10.28.2"
