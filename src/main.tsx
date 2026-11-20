@@ -1,11 +1,15 @@
 import { Buffer } from 'buffer';
 (window as unknown as Record<string, unknown>).Buffer = Buffer;
 
+import '@/i18n';
 import { StrictMode, useState, useMemo, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
+
+// The unified app-sw.ts merges PWA precache/routing with Stellar notification sync.
+// It is registered in prompt mode by useAppUpdate (see src/hooks/useAppUpdate.ts).
 import { BrowserRouter } from 'react-router-dom';
 import { WagmiProvider } from 'wagmi';
-import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
+import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ConnectionProvider,
@@ -18,6 +22,11 @@ import { ccc } from '@ckb-ccc/connector-react';
 import { ChainProvider } from '@/context/ChainContext';
 import { StealthKeysProvider } from '@/context/StealthKeysContext';
 import { StellarWalletProvider } from '@/context/StellarWalletContext';
+import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { ScanStrategyProvider } from '@/context/ScanStrategyContext';
+import { ContactsProvider } from '@/store/contactsStore';
+import { SplitTemplatesProvider } from '@/store/splitTemplatesStore';
+import { NameHistoryProvider } from '@/store/nameHistoryStore';
 import { wagmiConfig } from '@/config';
 import { App } from './App';
 import '@rainbow-me/rainbowkit/styles.css';
@@ -29,57 +38,72 @@ function Providers({ children }: { children: React.ReactNode }) {
   const solanaEndpoint = useMemo(() => clusterApiUrl('devnet'), []);
   const solanaWallets = useMemo(() => [new PhantomWalletAdapter()], []);
   const ckbClient = useMemo(() => new ccc.ClientPublicTestnet(), []);
+  const { theme } = useTheme();
+
+  const rainbowKitTheme = useMemo(() => {
+    const baseTheme = theme === 'dark' ? darkTheme : lightTheme;
+    return baseTheme({
+      accentColor: theme === 'dark' ? '#c6c6c7' : '#1a1a1a',
+      accentColorForeground: theme === 'dark' ? '#0e0e0e' : '#ffffff',
+      borderRadius: 'none',
+      fontStack: 'system',
+    });
+  }, [theme]);
 
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: '#c6c6c7',
-            accentColorForeground: '#0e0e0e',
-            borderRadius: 'none',
-            fontStack: 'system',
-          })}
-        >
-          <ConnectionProvider endpoint={solanaEndpoint}>
-            <SolanaWalletProvider wallets={solanaWallets} autoConnect>
-              <WalletModalProvider>
-                <ccc.Provider
-                  defaultClient={ckbClient}
-                  connectorProps={{
-                    style: {
-                      '--background': '#141414',
-                      '--divider': '#444444',
-                      '--btn-primary': '#c6c6c7',
-                      '--btn-primary-hover': '#e6e1e5',
-                      '--btn-secondary': '#0e0e0e',
-                      '--wallet-selected': '#1a1a1a',
-                      color: '#e6e1e5',
-                      borderRadius: '0px',
-                    } as CSSProperties,
-                  }}
-                >
-                  <ChainProvider>
-                    <StellarWalletProvider>
-                      <StealthKeysProvider>{children}</StealthKeysProvider>
-                    </StellarWalletProvider>
-                  </ChainProvider>
-                </ccc.Provider>
-              </WalletModalProvider>
-            </SolanaWalletProvider>
-          </ConnectionProvider>
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <ThemeProvider>
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <RainbowKitProvider theme={rainbowKitTheme}>
+            <ConnectionProvider endpoint={solanaEndpoint}>
+              <SolanaWalletProvider wallets={solanaWallets} autoConnect>
+                <WalletModalProvider>
+                  <ccc.Provider
+                    defaultClient={ckbClient}
+                    connectorProps={{
+                      style: {
+                        '--background': theme === 'dark' ? '#141414' : '#f5f5f5',
+                        '--divider': theme === 'dark' ? '#444444' : '#e0e0e0',
+                        '--btn-primary': theme === 'dark' ? '#c6c6c7' : '#1a1a1a',
+                        '--btn-primary-hover': theme === 'dark' ? '#e6e1e5' : '#4a4a4a',
+                        '--btn-secondary': theme === 'dark' ? '#0e0e0e' : '#ffffff',
+                        '--wallet-selected': theme === 'dark' ? '#1a1a1a' : '#fafafa',
+                        color: theme === 'dark' ? '#e6e1e5' : '#1a1a1a',
+                        borderRadius: '0px',
+                      } as CSSProperties,
+                    }}
+                  >
+                    <ChainProvider>
+                      <StellarWalletProvider>
+                        <ContactsProvider>
+                          <NameHistoryProvider>
+                            <SplitTemplatesProvider>
+                              <StealthKeysProvider>
+                                <ScanStrategyProvider>{children}</ScanStrategyProvider>
+                              </StealthKeysProvider>
+                            </SplitTemplatesProvider>
+                          </NameHistoryProvider>
+                        </ContactsProvider>
+                      </StellarWalletProvider>
+                    </ChainProvider>
+                  </ccc.Provider>
+                </WalletModalProvider>
+              </SolanaWalletProvider>
+            </ConnectionProvider>
+          </RainbowKitProvider>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </ThemeProvider>
   );
 }
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <Providers>
-        <App />
-      </Providers>
+      <ThemeProvider>
+        <Providers>
+          <App />
+        </Providers>
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 );

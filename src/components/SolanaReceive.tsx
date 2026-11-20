@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
 import {
@@ -10,8 +11,11 @@ import {
   STEALTH_SIGNING_MESSAGE,
 } from '@wraith-protocol/sdk/chains/solana';
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/solana';
+import { useTranslation } from 'react-i18next';
 import { useStealthKeys } from '@/context/StealthKeysContext';
+import { EmptyState } from '@/components/EmptyState';
 import { CopyButton } from '@/components/CopyButton';
+import { trackEvent } from '@/lib/telemetry';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 
@@ -22,6 +26,7 @@ function SolanaStealthRow({
   match: MatchedAnnouncement;
   onWithdrawn: () => void;
 }) {
+  const { t } = useTranslation();
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
@@ -92,9 +97,10 @@ function SolanaStealthRow({
       await connection.confirmTransaction(txId, 'confirmed');
 
       setWithdrawHash(txId);
+      trackEvent('withdraw');
       onWithdrawn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Withdraw failed');
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setWithdrawing(false);
     }
@@ -105,7 +111,7 @@ function SolanaStealthRow({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Stealth Address
+            {t('common.stealthAddress')}
           </span>
           <div className="mt-0.5 flex items-center gap-2">
             <a
@@ -128,7 +134,7 @@ function SolanaStealthRow({
               <span className="font-heading text-lg font-bold text-on-surface">{balance} SOL</span>
             </>
           ) : (
-            <span className="font-mono text-xs text-outline">Empty</span>
+            <span className="font-mono text-xs text-outline">{t('common.empty')}</span>
           )}
         </div>
       </div>
@@ -136,14 +142,14 @@ function SolanaStealthRow({
       {!withdrawHash && balance && parseFloat(balance) > 0 && (
         <div className="flex flex-col gap-1.5">
           <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-            Withdraw to
+            {t('common.withdrawTo')}
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={dest}
               onChange={(e) => setDest(e.target.value)}
-              placeholder="Destination address (base58)"
+              placeholder={t('solana.destinationPlaceholder')}
               className="h-10 flex-1 border border-outline-variant bg-surface px-3 font-mono text-xs text-primary placeholder:text-outline focus:border-primary"
             />
             <button
@@ -151,7 +157,7 @@ function SolanaStealthRow({
               disabled={!dest || withdrawing}
               className="h-10 bg-primary px-4 font-heading text-[10px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {withdrawing ? '...' : 'Withdraw'}
+              {withdrawing ? '...' : t('common.withdraw')}
             </button>
           </div>
         </div>
@@ -163,7 +169,7 @@ function SolanaStealthRow({
         <div className="flex items-center gap-2">
           <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
           <span className="font-mono text-[10px] text-on-surface-variant">
-            Withdrawn —{' '}
+            {t('common.withdrawn')} —{' '}
             <a
               href={solanaTxUrl(withdrawHash)}
               target="_blank"
@@ -182,13 +188,13 @@ function SolanaStealthRow({
             onClick={() => setShowKey(true)}
             className="font-mono text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
           >
-            Reveal secret key
+            {t('common.revealSecretKey')}
           </button>
         ) : (
           <div className="border border-error/20 bg-error/5 p-3">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-mono text-[9px] font-semibold uppercase tracking-widest text-error">
-                Stealth Key
+                {t('common.stealthKey')}
               </span>
               <CopyButton text={scalarHex} />
             </div>
@@ -201,6 +207,8 @@ function SolanaStealthRow({
 }
 
 export function SolanaReceive() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const { connected, signMessage } = useWallet();
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
 
@@ -212,7 +220,7 @@ export function SolanaReceive() {
 
   const deriveKeys = useCallback(async () => {
     if (!signMessage) {
-      setError('Wallet does not support message signing');
+      setError(t('solana.walletSigningNotSupported'));
       return;
     }
     setIsDerivingKeys(true);
@@ -225,11 +233,11 @@ export function SolanaReceive() {
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
       setSolanaMetaAddress(meta);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Key derivation failed');
+      setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setSolanaKeys, setSolanaMetaAddress]);
+  }, [signMessage, setSolanaKeys, setSolanaMetaAddress, t]);
 
   const scanPayments = useCallback(async () => {
     if (!solanaKeys) return;
@@ -245,24 +253,25 @@ export function SolanaReceive() {
       );
       setMatched(results);
       setHasScanned(true);
+      trackEvent('scan_triggered');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Scan failed');
+      setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
       setIsScanning(false);
     }
-  }, [solanaKeys]);
+  }, [solanaKeys, t]);
 
   if (!connected) {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Solana Devnet / SOL
+          {t('solana.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('solana.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Solana wallet to scan for stealth payments.
+          {t('solana.receiveConnectPrompt')}
         </p>
       </section>
     );
@@ -272,13 +281,13 @@ export function SolanaReceive() {
     <section className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Solana Devnet / SOL
+          {t('solana.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Receive
+          {t('solana.receiveTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Derive your stealth keys, then scan for payments on Solana Devnet.
+          {t('solana.receiveDescription')}
         </p>
       </div>
 
@@ -289,7 +298,7 @@ export function SolanaReceive() {
             disabled={isDerivingKeys}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isDerivingKeys ? 'Sign in wallet...' : 'Derive Keys'}
+            {isDerivingKeys ? t('common.signingInWallet') : t('common.deriveKeys')}
           </button>
           {error && <p className="text-sm text-error">{error}</p>}
         </div>
@@ -300,7 +309,7 @@ export function SolanaReceive() {
           <div className="border border-outline-variant bg-surface-container p-5">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Your Stealth Meta-Address
+                {t('common.yourStealthMetaAddress')}
               </span>
               <CopyButton text={solanaMetaAddress} />
             </div>
@@ -315,11 +324,11 @@ export function SolanaReceive() {
               disabled={isScanning}
               className="h-12 bg-primary px-6 font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
             >
-              {isScanning ? 'Scanning...' : 'Scan for Payments'}
+              {isScanning ? t('common.scanning') : t('common.scanForPayments')}
             </button>
             {hasScanned && (
               <span className="font-mono text-xs text-on-surface-variant">
-                {matched.length} transfer{matched.length !== 1 ? 's' : ''} found
+                {t('common.transfersFound', { count: matched.length })}
               </span>
             )}
           </div>
@@ -335,14 +344,32 @@ export function SolanaReceive() {
           )}
 
           {hasScanned && matched.length === 0 && (
-            <div className="py-12 text-center">
-              <p className="font-heading text-sm uppercase tracking-widest text-outline">
-                No transfers found
-              </p>
-              <p className="mt-2 font-body text-xs text-on-surface-variant">
-                No stealth transfers matched your keys.
-              </p>
-            </div>
+            <EmptyState
+              illustration={
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 48 48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="16" cy="16" r="6" />
+                  <circle cx="32" cy="16" r="6" />
+                  <path d="M6 38c0-5.523 4.477-10 10-10" />
+                  <path d="M42 38c0-5.523-4.477-10-10-10" />
+                  <path d="M16 28c-5.523 0-10 4.477-10 10" strokeDasharray="2 2" />
+                  <path d="M32 28c5.523 0 10 4.477 10 10" strokeDasharray="2 2" />
+                  <line x1="16" y1="22" x2="16" y2="28" />
+                  <line x1="32" y1="22" x2="32" y2="28" />
+                </svg>
+              }
+              title={t('common.noTransfersFound')}
+              description={t('common.noTransfersMatchedKeys')}
+              primaryCTA={{ label: t('common.send'), onClick: () => navigate('/send') }}
+            />
           )}
         </>
       )}

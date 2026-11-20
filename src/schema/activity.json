@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wraith.finance/schema/activity.json",
+  "title": "Wraith activity export",
+  "description": "A filtered list of client-side Wraith activity entries.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["id", "chain", "wallet", "kind", "direction", "status", "timestamp"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "chain": {
+        "type": "string",
+        "minLength": 1
+      },
+      "wallet": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string",
+        "enum": ["stealth-send", "stealth-receive", "withdrawal", "name-registration"]
+      },
+      "direction": {
+        "type": "string",
+        "enum": ["in", "out"]
+      },
+      "status": {
+        "type": "string",
+        "enum": ["pending", "confirmed", "failed"]
+      },
+      "amount": {
+        "type": "string"
+      },
+      "token": {
+        "type": "string"
+      },
+      "recipient": {
+        "type": "string"
+      },
+      "metadata": true,
+      "timestamp": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}

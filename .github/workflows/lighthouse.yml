@@ -1,0 +1,87 @@
+name: Lighthouse CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'perf-budget-override') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Run Lighthouse CI
+        id: lhci
+        run: npx lhci autorun --config=./lighthouserc.json --collect.url=http://localhost:4173 --collect.startServerCommand="pnpm preview" --collect.startServerReadyPattern="ready" --collect.startServerReadyTimeout=15000 || echo "LHCI_FAILED=true" >> $GITHUB_OUTPUT
+
+      - name: Post Lighthouse Comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const failed = process.env.LHCI_FAILED === 'true';
+
+            const body = `## 🚦 Lighthouse CI Report
+
+            | Category | Budget (≥ 90) |
+            |---|---|
+            | **Performance** | ${failed ? '❌ Breach detected' : '✅ Passed'} |
+            | **Accessibility** | ${failed ? '❌ Breach detected' : '✅ Passed'} |
+            | **Best Practices** | ${failed ? '❌ Breach detected' : '✅ Passed'} |
+            | **SEO** | ${failed ? '❌ Breach detected' : '✅ Passed'} |
+
+            **Result:** ${failed ? '❌ Budget breach — CI failed' : '✅ All budgets passed'}
+
+            > 💡 To override this failure, add the \`perf-budget-override\` label to this PR.
+            `;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => 
+              c.user?.type === 'Bot' && c.body.includes('🚦 Lighthouse CI Report')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }

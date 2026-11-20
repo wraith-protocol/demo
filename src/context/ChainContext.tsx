@@ -7,7 +7,7 @@ interface ChainContextValue {
   setChain: (chain: Chain) => void;
 }
 
-const ChainContext = createContext<ChainContextValue | null>(null);
+export const ChainContext = createContext<ChainContextValue | null>(null);
 
 export function ChainProvider({ children }: { children: React.ReactNode }) {
   const [chain, setChain] = useState<Chain>('horizen');

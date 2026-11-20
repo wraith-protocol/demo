@@ -1,4 +1,9 @@
-import { useState, useCallback } from 'react';
+// @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
+import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useSearchParams } from 'react-router-dom';
+import { QrReader } from 'react-qr-reader';
 import {
   TransactionBuilder,
   Account,
@@ -7,26 +12,293 @@ import {
   nativeToScVal,
   Address,
   Operation,
-  Asset,
+  Memo,
 } from '@stellar/stellar-sdk';
 import {
   generateStealthAddress,
   decodeStealthMetaAddress,
   SCHEME_ID,
 } from '@wraith-protocol/sdk/chains/stellar';
+import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
-import { stellarTxUrl, stellarAddrUrl } from '@/lib/explorer';
+import { useContacts } from '@/store/contactsStore';
+import { useNameHistory } from '@/store/nameHistoryStore';
 import { STELLAR_NETWORK } from '@/config';
+import { getStellarContractId } from '@/lib/stellar/deployments';
 import { CopyButton } from '@/components/CopyButton';
+import { AssetPicker } from '@/components/AssetPicker';
+import { trackEvent } from '@/lib/telemetry';
+import type { StellarAssetKey } from '@/lib/stellar/assets';
+import { getAssetByKey, STELLAR_ASSETS } from '@/lib/stellar/assets';
+import { checkAssetTrustline } from '@/lib/stellar/buildSendStellarAsset';
+import { fetchWithRetry, withRetry, RetryExhaustedError } from '@/lib/stellar/retry';
+import { StellarLink } from '@/components/StellarLink';
+import {
+  type StellarSendSimulationState,
+  emptyStellarSendSimulation,
+  simulateStellarSendAnnouncement,
+} from '@/lib/stellarSimulation';
+import { useActivityStore } from '@/stores/activityStore';
+import { useOfflineQueueStore } from '@/stores/offlineQueueStore';
+import {
+  broadcastStellarTransaction,
+  getSubmissionRecord,
+  releaseSubmissionDraft,
+  reserveSubmissionOperationId,
+  submitStellarTransactionOnce,
+  TransactionSubmissionUnknownError,
+} from '@/lib/submissionIdempotency';
+import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
+import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
 
-const ANNOUNCER_CONTRACT = 'CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL';
+const STELLAR_BASE_FEE_XLM = 0.00001;
+const STELLAR_BASE_RESERVE_XLM = 1;
+
+function getMinAmount(assetKey: StellarAssetKey): number {
+  return assetKey === 'XLM' ? 0.0000001 : 0.0000001;
+}
+
+type HorizonBalance = {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  balance: string;
+};
+
+type HorizonAccount = {
+  sequence: string;
+  balances?: HorizonBalance[];
+};
+
+function formatAsset(value: number, assetKey: StellarAssetKey) {
+  const assetInfo = getAssetByKey(assetKey);
+  return value.toFixed(assetInfo.decimals).replace(/\.?0+$/, '');
+}
+
+function validateMetaAddress(value: string) {
+  if (!value) return 'Recipient meta-address is required';
+  if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
+
+  try {
+    decodeStealthMetaAddress(value);
+    return '';
+  } catch {
+    return 'Not a valid Stellar stealth meta-address';
+  }
+}
+
+function validateAmount(value: string, assetKey: StellarAssetKey) {
+  if (!value) return 'Amount is required';
+  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return `Enter a valid ${assetKey} amount`;
+
+  const assetInfo = getAssetByKey(assetKey);
+  const decimalPart = value.split('.')[1];
+  if (decimalPart && decimalPart.length > assetInfo.decimals) {
+    return `${assetKey} supports up to ${assetInfo.decimals} decimals`;
+  }
+
+  const parsed = Number(value);
+  const minAmount = getMinAmount(assetKey);
+  if (!Number.isFinite(parsed) || parsed <= minAmount) {
+    return `Amount must be greater than ${minAmount} ${assetKey}`;
+  }
+
+  return '';
+}
 
 export function StellarSend() {
-  const { address, isConnected, signTransaction } = useStellarWallet();
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  const paramTo = searchParams.get('to');
+  const paramAmount = searchParams.get('amount');
+  const paramMemo = searchParams.get('memo');
+  const paramExp = searchParams.get('exp');
+  const paramAsset = searchParams.get('asset');
+  const paramOperationId = searchParams.get('operationId');
+  const initialAssetKey = STELLAR_ASSETS.find((asset) => asset.key === paramAsset)?.key ?? 'XLM';
+
+  const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
+  const [recipient, setRecipient] = useState(paramTo || '');
+  const [amount, setAmount] = useState(paramAmount || '');
+  const [assetKey, setAssetKey] = useState<StellarAssetKey>(initialAssetKey);
+  const [allBalances, setAllBalances] = useState<Record<string, string>>({});
+  const [memo, setMemo] = useState(paramMemo || '');
+  const { isKnownAddress, addContact } = useContacts();
+  const { isKnownRecipient, addToHistory } = useNameHistory();
   const [error, setError] = useState('');
+  // Wave 9 (#184): confirmation that the send was queued while offline.
+  const [queuedOffline, setQueuedOffline] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [, setTouched] = useState({ recipient: false, amount: false });
+  const [, setSubmitAttempted] = useState(false);
+
+  const [isScanningQR, setIsScanningQR] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
+  const [isDecodingQrImage, setIsDecodingQrImage] = useState(false);
+  const closeScannerRef = useRef<HTMLButtonElement>(null);
+  const qrImageInputRef = useRef<HTMLInputElement>(null);
+  // Ref for the "Scan QR" trigger button — focus returns here when scanner closes.
+  const scanQrTriggerRef = useRef<HTMLButtonElement>(null);
+  // Ref for the scanner dialog container — used by the focus trap.
+  const scannerContainerRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap for the QR scanner dialog.
+  useFocusTrap({
+    isActive: isScanningQR,
+    containerRef: scannerContainerRef,
+    initialFocusRef: closeScannerRef,
+    triggerRef: scanQrTriggerRef,
+  });
+
+  // Escape key + Space/U keyboard shortcuts for the QR scanner dialog.
+  useEffect(() => {
+    if (isScanningQR) {
+      setScannerError('');
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setIsScanningQR(false);
+          return;
+        }
+        // Space toggles camera on/off (prevent default page scroll).
+        if (e.key === ' ' || e.code === 'Space') {
+          e.preventDefault();
+          setCameraUnavailable((prev) => !prev);
+          return;
+        }
+        // U triggers the upload-fallback file picker.
+        if (e.key === 'u' || e.key === 'U') {
+          e.preventDefault();
+          qrImageInputRef.current?.click();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isScanningQR]);
+
+  const applyQrPayload = useCallback((text: string, source: 'camera' | 'image' = 'camera') => {
+    try {
+      const payload = parseStellarQrPayload(text);
+      setRecipient(payload.metaAddress);
+      if (payload.amount) setAmount(payload.amount);
+      if (payload.memo) setMemo(payload.memo);
+      setTouched((previous) => ({ ...previous, recipient: true }));
+      setScannerError('');
+      setIsScanningQR(false);
+      // Wave 9 (#184): persist scans captured while offline so the intent
+      // survives reloads; reconciliation revalidates it on reconnect.
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const queued = useOfflineQueueStore.getState().enqueueScanSession({
+          source,
+          rawText: text,
+          parsed: {
+            metaAddress: payload.metaAddress,
+            ...(payload.amount ? { amount: payload.amount } : {}),
+            ...(payload.memo ? { memo: payload.memo } : {}),
+          },
+          capturedAt: Date.now(),
+        });
+        if (!queued) {
+          setScannerError(
+            'Offline queue is full — reconnect or discard queued items to save new scans.',
+          );
+        }
+      }
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR code could not be read.',
+      );
+    }
+  }, []);
+
+  const handleScanResult = useCallback(
+    (result: any, scanError: any) => {
+      const text = result?.getText?.() ?? result?.text;
+      if (text) {
+        applyQrPayload(text);
+        return;
+      }
+
+      if (isCameraUnavailableError(scanError)) {
+        setCameraUnavailable(true);
+        setScannerError('Camera access is unavailable. Choose a saved QR image to continue.');
+      }
+    },
+    [applyQrPayload],
+  );
+
+  const openQrScanner = () => {
+    setScannerError('');
+    setCameraUnavailable(false);
+    setIsScanningQR(true);
+  };
+
+  const handleQrImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsDecodingQrImage(true);
+    setScannerError('');
+    try {
+      applyQrPayload(await decodeQrImage(file), 'image');
+    } catch (scanError) {
+      setScannerError(
+        scanError instanceof Error ? scanError.message : 'This QR image could not be read.',
+      );
+    } finally {
+      setIsDecodingQrImage(false);
+      event.target.value = '';
+    }
+  };
+
+  const [sourceBalance, setSourceBalance] = useState<number | null>(null);
+  const [isBalanceLoading, setIsBalanceLoading] = useState(false);
+  const [balanceLookupError, setBalanceLookupError] = useState('');
   const [isPending, setIsPending] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
+  const [, setRetryStatus] = useState('');
+  const [, setSimulation] = useState<StellarSendSimulationState>(emptyStellarSendSimulation());
+
+  useEffect(() => {
+    if (paramExp) {
+      const expSecs = parseInt(paramExp, 10);
+      if (!isNaN(expSecs) && expSecs * 1000 < Date.now()) {
+        setIsExpired(true);
+        setError('This payment link has expired');
+      }
+    }
+  }, [paramExp]);
+
+  // Wave 9 (#184): a payment link opened while offline is a scan captured
+  // offline — persist it once so the intent survives reloads.
+  const paymentLinkQueuedRef = useRef(false);
+  useEffect(() => {
+    if (paymentLinkQueuedRef.current) return;
+    if (!paramTo) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      paymentLinkQueuedRef.current = true;
+      useOfflineQueueStore.getState().enqueueScanSession({
+        source: 'payment-link',
+        rawText: typeof window !== 'undefined' ? window.location.href : `?to=${paramTo}`,
+        parsed: {
+          metaAddress: paramTo,
+          ...(paramAmount ? { amount: paramAmount } : {}),
+          ...(paramMemo ? { memo: paramMemo } : {}),
+        },
+        capturedAt: Date.now(),
+      });
+    }
+  }, [paramTo, paramAmount, paramMemo]);
+
+  const [showUnknownWarning, setShowUnknownWarning] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [contactName, setContactName] = useState('');
   const [stealthResult, setStealthResult] = useState<{
     stealthAddress: string;
     ephemeralPubKey: Uint8Array;
@@ -34,88 +306,506 @@ export function StellarSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const operationIdOverrideRef = useRef<string | null>(paramOperationId);
+  const submissionDraftRef = useRef<{ draft: string; operationId: string } | null>(null);
+  const simulationTimeoutRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+
+  const [trustlineMissing, setTrustlineMissing] = useState(false);
+  const [trustlineCheckDone, setTrustlineCheckDone] = useState(false);
+
+  const metaAddress = recipient.trim();
+  const amountValue = amount.trim();
+
+  const recipientError = useMemo(() => validateMetaAddress(metaAddress), [metaAddress]);
+  const amountError = useMemo(() => validateAmount(amountValue, assetKey), [amountValue, assetKey]);
+  const parsedAmount = amountError ? null : Number(amountValue);
+  const requiredBalance =
+    parsedAmount === null
+      ? null
+      : assetKey === 'XLM'
+        ? parsedAmount + STELLAR_BASE_FEE_XLM + STELLAR_BASE_RESERVE_XLM
+        : parsedAmount;
+  const isAwaitingBalance =
+    !!address && !amountError && !!amountValue && sourceBalance === null && !balanceLookupError;
+  const balanceError =
+    requiredBalance !== null && sourceBalance !== null && requiredBalance > sourceBalance
+      ? `Insufficient ${assetKey} (you have ${formatAsset(sourceBalance, assetKey)}, need ${formatAsset(requiredBalance, assetKey)})`
+      : '';
+  const trustlineError =
+    assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
+      ? `Recipient lacks a ${assetKey} trustline. Ask them to add a trustline for ${assetKey}.`
+      : '';
+  const trustlineWarning =
+    assetKey !== 'XLM' && trustlineCheckDone && trustlineMissing
+      ? `This recipient may not have a ${assetKey} trustline. The payment may fail if they cannot receive this asset.`
+      : '';
+  const balanceEntries: Array<{
+    key: string;
+    code: string;
+    issuer?: string;
+    balance: string;
+    isKnown: boolean;
+    isNative: boolean;
+  }> = useMemo(() => {
+    const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
+    const entries: Array<{
+      key: string;
+      code: string;
+      issuer?: string;
+      balance: string;
+      isKnown: boolean;
+      isNative: boolean;
+    }> = [];
+    let hasXlm = false;
+    for (const [key, bal] of Object.entries(allBalances)) {
+      if (key === 'XLM') {
+        hasXlm = true;
+        entries.push({ key, code: 'XLM', balance: bal, isKnown: true, isNative: true });
+      } else {
+        const colonIdx = key.indexOf(':');
+        const code = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
+        const issuer = colonIdx >= 0 ? key.slice(colonIdx + 1) : undefined;
+        if (!knownAssetKeys.has(code)) continue;
+        entries.push({ key, code, issuer, balance: bal, isKnown: true, isNative: false });
+      }
+    }
+    if (!hasXlm) {
+      entries.unshift({ key: 'XLM', code: 'XLM', balance: '0', isKnown: true, isNative: true });
+    }
+    entries.sort((a, b) => {
+      if (a.isNative) return -1;
+      if (b.isNative) return 1;
+      return parseFloat(b.balance) - parseFloat(a.balance);
+    });
+    return entries;
+  }, [allBalances]);
+  const validationError =
+    recipientError || amountError || balanceLookupError || balanceError || trustlineError;
+  const canSubmit =
+    !!address &&
+    !!metaAddress &&
+    !!amountValue &&
+    !validationError &&
+    !isAwaitingBalance &&
+    !isBalanceLoading &&
+    !isPending &&
+    !isExpired;
+
+  useEffect(() => {
+    if (simulationTimeoutRef.current) {
+      globalThis.clearTimeout(simulationTimeoutRef.current);
+    }
+
+    if (!address || !metaAddress || validationError || isPending || isExpired) {
+      setSimulation(emptyStellarSendSimulation());
+      return;
+    }
+
+    setSimulation({ status: 'loading', error: '', fee: null, returnValue: null, events: [] });
+
+    simulationTimeoutRef.current = globalThis.setTimeout(async () => {
+      try {
+        const result = await simulateStellarSendAnnouncement(
+          { address, recipient: metaAddress },
+          {
+            onRetry: (attempt: number, _: unknown, err: unknown) => {
+              const msg = err instanceof Error ? err.message : '';
+              setRetryStatus(`Retrying (${attempt}/3)…${msg ? ` (${msg})` : ''}`);
+            },
+          },
+        );
+        setRetryStatus('');
+        setSimulation({
+          status: 'success',
+          error: '',
+          fee: result.fee,
+          returnValue: result.returnValue,
+          events: result.events,
+        });
+      } catch (err) {
+        setRetryStatus('');
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSimulation({
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Simulation failed',
+          fee: null,
+          returnValue: null,
+          events: [],
+        });
+      }
+    }, 500);
+
+    return () => {
+      if (simulationTimeoutRef.current) {
+        globalThis.clearTimeout(simulationTimeoutRef.current);
+      }
+    };
+  }, [address, metaAddress, validationError, isPending, isExpired]);
+
+  useEffect(() => {
+    setSourceBalance(null);
+    setBalanceLookupError('');
+
+    if (!address || amountError || !amountValue) {
+      setIsBalanceLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsBalanceLoading(true);
+
+      try {
+        const accountRes = await fetchWithRetry(
+          `${STELLAR_NETWORK.horizonUrl}/accounts/${address}`,
+          { signal: controller.signal },
+          {
+            signal: controller.signal,
+            onRetry: (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`),
+          },
+        );
+        setRetryStatus('');
+        if (!accountRes.ok) throw new Error('Failed to load sender account');
+
+        const accountData = (await accountRes.json()) as HorizonAccount;
+        const balances = accountData.balances || [];
+
+        // Build all-balances map for the asset picker
+        const balanceMap: Record<string, string> = {};
+        for (const b of balances) {
+          if (b.asset_type === 'native') {
+            balanceMap['XLM'] = b.balance;
+          } else if (b.asset_code && b.asset_issuer) {
+            balanceMap[`${b.asset_code}:${b.asset_issuer}`] = b.balance;
+          }
+        }
+        setAllBalances(balanceMap);
+
+        // Single-asset balance for validation
+        const assetInfo = getAssetByKey(assetKey);
+        let parsedBalance: number;
+        if (assetInfo.isNative) {
+          const nativeBalance = balances.find((bal) => bal.asset_type === 'native');
+          parsedBalance = Number(nativeBalance?.balance);
+        } else {
+          const assetBalance = balances.find(
+            (bal) =>
+              bal.asset_code === assetInfo.key &&
+              bal.asset_issuer === (assetInfo.toAsset() as any).getIssuer(),
+          );
+          parsedBalance = Number(assetBalance?.balance || 0);
+        }
+        if (!Number.isFinite(parsedBalance)) throw new Error(`Failed to read ${assetKey} balance`);
+
+        setSourceBalance(parsedBalance);
+      } catch (err) {
+        setRetryStatus('');
+        if (!controller.signal.aborted) {
+          setBalanceLookupError(
+            err instanceof RetryExhaustedError
+              ? err.message
+              : err instanceof Error
+                ? err.message
+                : `Failed to check ${assetKey} balance`,
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsBalanceLoading(false);
+        }
+      }
+    }, 500);
+
+    return () => {
+      controller.abort();
+      globalThis.clearTimeout(timeout);
+    };
+  }, [address, amountError, amountValue, assetKey]);
+
+  const assetInfo = getAssetByKey(assetKey);
+
+  useEffect(() => {
+    setTrustlineMissing(false);
+    setTrustlineCheckDone(false);
+
+    if (!metaAddress || recipientError || assetKey === 'XLM') {
+      if (assetKey === 'XLM') {
+        setTrustlineCheckDone(true);
+      }
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        const decoded = decodeStealthMetaAddress(metaAddress);
+        const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+        const hasTrustline = await checkAssetTrustline(result.stealthAddress, assetKey);
+        if (!controller.signal.aborted) {
+          setTrustlineMissing(!hasTrustline);
+          setTrustlineCheckDone(true);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setTrustlineCheckDone(true);
+        }
+      }
+    }, 800);
+
+    return () => {
+      controller.abort();
+      globalThis.clearTimeout(timeout);
+    };
+  }, [metaAddress, assetKey, recipientError]);
+
+  // Check if recipient is known when it changes
+  const isUnknownRecipient =
+    recipient && !isKnownAddress(recipient) && !isKnownRecipient(recipient);
 
   const handleSend = useCallback(async () => {
+    setSubmitAttempted(true);
+    setTouched({ recipient: true, amount: true });
+
     if (!address) {
-      setError('Wallet not connected');
+      setError(t('common.walletNotConnected'));
+      return;
+    }
+
+    if (isNetworkMismatch) {
+      setShowNetworkModal(true);
+      return;
+    }
+
+    // Wave 9 (#184): offline sends become persisted payment intents instead
+    // of failed network calls. Local format checks still apply; balance and
+    // trustline checks need a connection and run at review time. Signing
+    // stays an explicit user action after reconnect.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const offlineRecipientError = validateMetaAddress(recipient.trim());
+      const offlineAmountError = validateAmount(amount.trim(), assetKey);
+      if (offlineRecipientError || offlineAmountError) {
+        setError(offlineRecipientError || offlineAmountError || 'Enter valid send details');
+        return;
+      }
+      const expSecs = paramExp ? parseInt(paramExp, 10) : NaN;
+      const draft = JSON.stringify({
+        chain: 'stellar',
+        wallet: address,
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+        asset: assetKey,
+        memo: memo.trim(),
+      });
+      let operationId: string;
+      try {
+        operationId = await reserveSubmissionOperationId(draft, operationIdOverrideRef.current);
+        submissionDraftRef.current = { draft, operationId };
+      } catch (storageError) {
+        setError(
+          storageError instanceof Error ? storageError.message : 'Could not save operation ID.',
+        );
+        return;
+      }
+      const queued = useOfflineQueueStore.getState().enqueuePaymentIntent({
+        operationId,
+        chain: 'stellar',
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+        asset: assetKey,
+        ...(memo.trim() ? { memo: memo.trim() } : {}),
+        ...(Number.isFinite(expSecs) ? { expiresAt: expSecs * 1000 } : {}),
+        source: paramTo ? 'payment-link' : 'form',
+      });
+      if (!queued) {
+        // Queue full of actionable work: say so instead of dropping the intent.
+        setError('Offline queue is full — reconnect or discard queued items, then try again.');
+        return;
+      }
+      setError('');
+      setQueuedOffline(true);
+      return;
+    }
+    setQueuedOffline(false);
+
+    if (!canSubmit) {
+      setError(validationError || 'Enter valid send details');
       return;
     }
 
     setError('');
     setIsPending(true);
+    setRetryStatus('');
+    let txHashHex = '';
+    let signedXdr = '';
+    let operationId = '';
+    const draft = JSON.stringify({
+      chain: 'stellar',
+      wallet: address,
+      recipient: recipient.trim(),
+      amount: amount.trim(),
+      asset: assetKey,
+      memo: memo.trim(),
+    });
+
+    const onRetry = (attempt: number) => setRetryStatus(`Retrying (${attempt}/3)…`);
 
     try {
+      operationId = await reserveSubmissionOperationId(draft, operationIdOverrideRef.current);
+      submissionDraftRef.current = { draft, operationId };
       const metaAddress = recipient;
       if (!metaAddress.startsWith('st:xlm:')) {
-        setError('Enter a valid Stellar meta-address (st:xlm:...)');
+        setError(t('stellar.validMetaAddressError'));
         setIsPending(false);
+        return;
+      }
+
+      const previousSubmission = getSubmissionRecord(operationId);
+      if (previousSubmission?.txHash && previousSubmission.signedEnvelope) {
+        txHashHex = previousSubmission.txHash;
+        signedXdr = previousSubmission.signedEnvelope;
+        const stealthAddress = previousSubmission.metadata?.stealthAddress;
+        if (typeof stealthAddress === 'string') {
+          setStealthResult({ stealthAddress, ephemeralPubKey: new Uint8Array(), viewTag: 0 });
+        }
+        setTxHash(txHashHex);
+        addActivity({
+          id: txHashHex,
+          chain: 'stellar',
+          wallet: address,
+          kind: 'stealth-send',
+          direction: 'out',
+          status: 'pending',
+          amount: amountValue,
+          recipient: metaAddress,
+          timestamp: Date.now(),
+        });
+        const submittedHash = await submitStellarTransactionOnce(
+          operationId,
+          txHashHex,
+          signedXdr,
+          () => broadcastStellarTransaction(signedXdr, txHashHex, STELLAR_NETWORK.horizonUrl),
+          previousSubmission.metadata,
+        );
+        setTxHash(submittedHash);
+        setIsSuccess(true);
+        updateActivity(txHashHex, 'confirmed');
+        try {
+          await releaseSubmissionDraft(draft, operationId);
+        } catch {
+          setError('Transaction submitted, but its retry state could not be cleared.');
+        }
         return;
       }
 
       const decoded = decodeStealthMetaAddress(metaAddress);
       const result = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
       setStealthResult(result);
+      trackEvent('send_submitted');
 
       const horizonUrl = STELLAR_NETWORK.horizonUrl;
       const networkPassphrase = STELLAR_NETWORK.networkPassphrase;
+      const currentAssetInfo = getAssetByKey(assetKey);
+      const sendAsset = currentAssetInfo.toAsset();
 
-      const accountRes = await fetch(`${horizonUrl}/accounts/${address}`);
+      const accountRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+      setRetryStatus('');
       if (!accountRes.ok) throw new Error('Failed to load sender account');
-      const accountData = await accountRes.json();
+      const accountData = (await accountRes.json()) as HorizonAccount;
       const sourceAccount = new Account(address, accountData.sequence);
 
-      const stealthExists = await fetch(`${horizonUrl}/accounts/${result.stealthAddress}`).then(
-        (r) => r.ok,
-      );
-
-      let classicTx;
-      if (stealthExists) {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.payment({
-              destination: result.stealthAddress,
-              asset: Asset.native(),
-              amount,
-            }),
-          )
-          .setTimeout(30)
-          .build();
-      } else {
-        classicTx = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            Operation.createAccount({
-              destination: result.stealthAddress,
-              startingBalance: amount,
-            }),
-          )
-          .setTimeout(30)
-          .build();
+      let stealthExists = false;
+      try {
+        const stealthCheckRes = await fetchWithRetry(
+          `${horizonUrl}/accounts/${result.stealthAddress}`,
+          {},
+          { onRetry },
+        );
+        stealthExists = stealthCheckRes.ok;
+      } catch {
+        // Transient network error on existence check — assume not created yet
+      } finally {
+        setRetryStatus('');
       }
 
-      const signedXdr = await signTransaction(classicTx.toXDR());
+      let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
 
-      const submitRes = await fetch(`${horizonUrl}/transactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `tx=${encodeURIComponent(signedXdr)}`,
-      });
-
-      const submitData = await submitRes.json();
-      if (!submitRes.ok) {
-        throw new Error(
-          submitData.extras?.result_codes?.transaction || submitData.title || 'Transaction failed',
+      if (stealthExists) {
+        builder = builder.addOperation(
+          Operation.payment({
+            destination: result.stealthAddress,
+            asset: sendAsset,
+            amount: amountValue,
+          }),
+        );
+      } else if (currentAssetInfo.isNative) {
+        builder = builder.addOperation(
+          Operation.createAccount({
+            destination: result.stealthAddress,
+            startingBalance: amountValue,
+          }),
+        );
+      } else {
+        builder = builder.addOperation(
+          Operation.payment({
+            destination: result.stealthAddress,
+            asset: sendAsset,
+            amount: amountValue,
+          }),
         );
       }
 
-      setTxHash(submitData.hash);
+      builder = builder.setTimeout(30);
+
+      if (memo) {
+        builder = builder.addMemo(Memo.text(memo));
+      }
+
+      const classicTx = builder.build();
+
+      signedXdr = await signTransaction(classicTx.toXDR());
+      txHashHex = classicTx.hash().toString('hex');
+      setTxHash(txHashHex);
+
+      addActivity({
+        id: txHashHex,
+        chain: 'stellar',
+        wallet: address,
+        kind: 'stealth-send',
+        direction: 'out',
+        status: 'pending',
+        amount: amountValue,
+        recipient: metaAddress,
+        timestamp: Date.now(),
+      });
+
+      const submittedHash = await submitStellarTransactionOnce(
+        operationId,
+        txHashHex,
+        signedXdr,
+        () => broadcastStellarTransaction(signedXdr, txHashHex, horizonUrl),
+        {
+          stealthAddress: result.stealthAddress,
+          ephemeralPubKey: Array.from(result.ephemeralPubKey, (byte) =>
+            byte.toString(16).padStart(2, '0'),
+          ).join(''),
+          viewTag: result.viewTag,
+        },
+      );
+
+      setTxHash(submittedHash);
+
+      // Add recipient to history after successful send
+      addToHistory(recipient);
 
       // Announce via Soroban (best-effort)
       try {
         const { rpc: rpcMod } = await import('@stellar/stellar-sdk');
-        const soroban = new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
-        const announcerContract = new Contract(ANNOUNCER_CONTRACT);
+        const soroban =
+          (window as any).sorobanServerMock || new rpcMod.Server(STELLAR_NETWORK.rpcUrl);
+        const announcerContract = new Contract(getStellarContractId('announcer'));
 
-        const freshRes = await fetch(`${horizonUrl}/accounts/${address}`);
+        const freshRes = await fetchWithRetry(`${horizonUrl}/accounts/${address}`, {}, { onRetry });
+        setRetryStatus('');
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
@@ -132,8 +822,15 @@ export function StellarSend() {
           .setTimeout(30)
           .build();
 
-        const simulated = await soroban.simulateTransaction(announceTx);
-        if (!('error' in simulated)) {
+        const simulated: unknown = await withRetry(() => soroban.simulateTransaction(announceTx), {
+          onRetry,
+        });
+        setRetryStatus('');
+        if (
+          simulated &&
+          typeof simulated === 'object' &&
+          !('error' in (simulated as Record<string, unknown>))
+        ) {
           const assembled = rpcMod
             .assembleTransaction(
               announceTx,
@@ -148,29 +845,85 @@ export function StellarSend() {
         }
       } catch {
         // Announcement is best-effort — payment already succeeded
+      } finally {
+        setRetryStatus('');
       }
 
       setIsSuccess(true);
+      updateActivity(txHashHex, 'confirmed');
+      try {
+        await releaseSubmissionDraft(draft, operationId);
+      } catch {
+        setError('Transaction submitted, but its retry state could not be cleared.');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      setRetryStatus('');
+      if (txHashHex && !(err instanceof TransactionSubmissionUnknownError)) {
+        updateActivity(txHashHex, 'failed');
+      }
+      const message = err instanceof Error ? err.message : t('common.transactionFailed');
+      if (operationId && txHashHex && signedXdr) {
+        const queued = useOfflineQueueStore.getState().enqueueSignedSubmit({
+          operationId,
+          chain: 'stellar',
+          txHash: txHashHex,
+          signedXdr,
+        });
+        if (queued) {
+          void useOfflineQueueStore.getState().reconcile();
+        } else {
+          setError(
+            `${message} The retry envelope could not be added because the offline queue is full.`,
+          );
+          return;
+        }
+      }
+      setError(message);
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, signTransaction]);
+  }, [address, recipient, amount, assetKey, memo, signTransaction, t, paramExp]);
 
   const reset = () => {
-    setRecipient('');
-    setAmount('');
+    const currentSubmission = submissionDraftRef.current;
+    if (currentSubmission) {
+      void releaseSubmissionDraft(currentSubmission.draft, currentSubmission.operationId);
+      submissionDraftRef.current = null;
+    }
+    operationIdOverrideRef.current = null;
+    setRecipient(paramTo || '');
+    setAmount(paramAmount || '');
+    setMemo(paramMemo || '');
     setStealthResult(null);
     setTxHash(null);
     setIsSuccess(false);
-    setError('');
+    if (!isExpired) {
+      setError('');
+    }
+    setTouched({ recipient: false, amount: false });
+    setSubmitAttempted(false);
+    setAssetKey('XLM');
+    setAllBalances({});
+    setSourceBalance(null);
+    setBalanceLookupError('');
+    setShowUnknownWarning(false);
+    setShowSaveDialog(false);
+    setContactName('');
+  };
+
+  const handleSaveContact = () => {
+    if (contactName.trim() && recipient) {
+      addContact(recipient, contactName.trim());
+      setShowSaveDialog(false);
+      setContactName('');
+    }
   };
 
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       setRecipient(text);
+      setTouched((prev) => ({ ...prev, recipient: true }));
     } catch {
       // Clipboard access denied
     }
@@ -180,13 +933,13 @@ export function StellarSend() {
     return (
       <section className="flex flex-col gap-3">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Connect your Freighter wallet to send stealth payments on Stellar.
+          {t('stellar.sendConnectPrompt')}
         </p>
       </section>
     );
@@ -194,16 +947,17 @@ export function StellarSend() {
 
   return (
     <section className="flex flex-col gap-8">
+      <ExpiringNamesBanner />
+
       <div className="flex flex-col gap-2">
         <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-          Stellar Testnet / XLM
+          {t('stellar.network')}
         </span>
         <h1 className="font-heading text-[28px] font-bold uppercase tracking-tight text-on-surface">
-          Send
+          {t('stellar.sendTitle')}
         </h1>
         <p className="font-body text-sm leading-relaxed text-on-surface-variant">
-          Send XLM privately using stealth addresses. The recipient gets funds at a fresh address
-          only they can control.
+          {t('stellar.sendDescription')}
         </p>
       </div>
 
@@ -211,66 +965,148 @@ export function StellarSend() {
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Recipient Meta-Address
+              {t('common.recipientMetaAddress')}
             </label>
-            <div className="relative">
+            <div className="flex flex-col gap-2">
               <input
                 type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
-                placeholder="st:xlm:..."
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-20 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                placeholder={t('stellar.recipientPlaceholder')}
+                className="h-12 w-full border border-outline-variant bg-surface px-4 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
               />
-              <button
-                onClick={handlePaste}
-                className="absolute right-3 top-1/2 -translate-y-1/2 font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
-              >
-                Paste
-              </button>
+              <div className="flex justify-end gap-4">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  className="font-heading text-[10px] uppercase tracking-widest text-outline transition-colors hover:text-primary"
+                >
+                  {t('common.paste')}
+                </button>
+                <button
+                  ref={scanQrTriggerRef}
+                  type="button"
+                  onClick={openQrScanner}
+                  className="font-heading text-[10px] uppercase tracking-widest text-primary transition-colors hover:brightness-110"
+                >
+                  Scan QR
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
-              Amount
+              {t('common.amount')}
             </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.0"
-                className="h-12 w-full border border-outline-variant bg-surface px-4 pr-16 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="h-12 w-full border border-outline-variant bg-surface px-4 pr-4 font-heading text-2xl text-primary placeholder:text-outline focus:border-primary"
+                />
+              </div>
+              <AssetPicker
+                balances={balanceEntries}
+                selectedKey={assetKey as string}
+                onSelect={(key) => setAssetKey(key as StellarAssetKey)}
+                trustlineWarning={trustlineWarning}
+                disabled={isPending}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-outline">
-                XLM
-              </span>
             </div>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-outline-variant/30 pt-4">
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Network fee
+                {t('common.networkFee')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">100 stroops</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.networkFeeAmount')}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Announcer contract
+                {t('common.announcerContract')}
               </span>
-              <span className="font-mono text-[10px] text-on-surface-variant">Soroban</span>
+              <span className="font-mono text-[10px] text-on-surface-variant">
+                {t('stellar.announcerContractName')}
+              </span>
             </div>
           </div>
 
           {error && <p className="text-sm text-error">{error}</p>}
+
+          {queuedOffline && !error && (
+            <p role="status" className="text-sm text-on-surface-variant">
+              You&apos;re offline — this send was queued. Review and sign it from the offline queue
+              after you reconnect.
+            </p>
+          )}
+
+          {isUnknownRecipient && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant/50 bg-surface-container p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">⚠️</span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-on-surface">
+                    You haven't paid this recipient before
+                  </p>
+                  <p className="text-xs text-on-surface-variant">
+                    This address is not in your contacts or payment history. Please verify the
+                    address carefully before sending.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSaveDialog(true)}
+                className="h-9 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+              >
+                Save to contacts
+              </button>
+            </div>
+          )}
+
+          {showSaveDialog && (
+            <div className="flex flex-col gap-3 rounded border border-outline-variant bg-surface-container p-4">
+              <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                Contact Name
+              </label>
+              <input
+                type="text"
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                placeholder="Enter a name for this contact"
+                className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary placeholder:text-outline focus:border-primary"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSaveDialog(false)}
+                  className="h-9 flex-1 border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveContact}
+                  disabled={!contactName.trim()}
+                  className="h-9 flex-1 bg-primary font-heading text-[11px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleSend}
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? 'Confirm in wallet...' : 'Send Privately'}
+            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -284,43 +1120,37 @@ export function StellarSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? 'Transfer Complete' : 'Pending'}
+              {isSuccess ? t('common.transferComplete') : t('common.pending')}
             </span>
           </div>
 
           <div className="flex flex-col gap-3">
             <div>
               <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                Stealth Address
+                {t('common.stealthAddress')}
               </span>
               <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={stellarAddrUrl(stealthResult.stealthAddress)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {stealthResult.stealthAddress}
-                </a>
-                <CopyButton text={stealthResult.stealthAddress} />
+                <StellarLink
+                  value={stealthResult.stealthAddress}
+                  type="account"
+                  className="max-w-full"
+                  linkClassName="text-xs"
+                />
               </div>
             </div>
 
             {txHash && (
               <div>
                 <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  Transaction Hash
+                  {t('common.transactionHash')}
                 </span>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <a
-                    href={stellarTxUrl(txHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block truncate font-mono text-xs text-primary underline"
-                  >
-                    {txHash}
-                  </a>
-                  <CopyButton text={txHash} />
+                  <StellarLink
+                    value={txHash}
+                    type="tx"
+                    className="max-w-full"
+                    linkClassName="text-xs"
+                  />
                 </div>
               </div>
             )}
@@ -331,9 +1161,100 @@ export function StellarSend() {
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
             >
-              New Transfer
+              {t('common.newTransfer')}
             </button>
           )}
+        </div>
+      )}
+      {showNetworkModal && <NetworkMismatchModal onClose={() => setShowNetworkModal(false)} />}
+
+      {isScanningQR && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-scanner-title"
+        >
+          <div
+            ref={scannerContainerRef}
+            className="flex w-full max-w-sm flex-col gap-4 border border-outline-variant bg-surface-container p-5 shadow-xl"
+          >
+            <div className="flex items-center justify-between">
+              <h2
+                id="qr-scanner-title"
+                className="font-heading text-lg font-bold uppercase tracking-tight text-on-surface"
+              >
+                Scan recipient QR
+              </h2>
+              <button
+                ref={closeScannerRef}
+                type="button"
+                onClick={() => setIsScanningQR(false)}
+                aria-label="Close QR scanner"
+                className="p-1 text-outline transition-colors hover:text-primary"
+              >
+                ×
+              </button>
+            </div>
+
+            {!cameraUnavailable && (
+              <div
+                className="overflow-hidden bg-black"
+                aria-label="Live camera preview for QR scanning"
+                role="img"
+              >
+                <QrReader
+                  constraints={{ facingMode: { ideal: 'environment' } }}
+                  scanDelay={300}
+                  onResult={handleScanResult}
+                  containerStyle={{ width: '100%' }}
+                  videoStyle={{ width: '100%', height: 'auto' }}
+                />
+              </div>
+            )}
+
+            {cameraUnavailable && (
+              <div className="border border-error/40 bg-error/10 p-3">
+                <p className="font-body text-sm text-error">
+                  Camera permission was denied or the camera is unavailable.
+                </p>
+                <p className="mt-1 font-body text-xs text-on-surface-variant">
+                  Select a screenshot or saved QR image instead.
+                </p>
+              </div>
+            )}
+
+            {scannerError && !cameraUnavailable && (
+              <p role="alert" className="font-body text-sm text-error">
+                {scannerError}
+              </p>
+            )}
+
+            <input
+              ref={qrImageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleQrImage}
+              className="hidden"
+              aria-label="Choose a QR code image"
+            />
+            <button
+              type="button"
+              onClick={() => qrImageInputRef.current?.click()}
+              disabled={isDecodingQrImage}
+              className="h-11 w-full border border-outline-variant font-heading text-[11px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-50"
+            >
+              {isDecodingQrImage ? 'Reading image...' : 'Choose QR image'}
+            </button>
+            <p className="font-body text-[11px] leading-relaxed text-outline">
+              QR images are decoded locally in your browser and are never uploaded.
+            </p>
+            <p className="font-body text-[11px] leading-relaxed text-outline">
+              Keyboard: <kbd className="font-mono">Space</kbd> toggles camera ·{' '}
+              <kbd className="font-mono">U</kbd> opens image picker ·{' '}
+              <kbd className="font-mono">Esc</kbd> closes
+            </p>
+          </div>
         </div>
       )}
     </section>

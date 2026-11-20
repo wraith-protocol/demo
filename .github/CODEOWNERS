@@ -1,0 +1,8 @@
+# CI and automation are maintainer-owned.
+# A pull request that touches these paths needs maintainer approval before it
+# can merge. Everything else merges as normal.
+#
+# This exists because contributors have repeatedly edited workflow files to make
+# their own failing checks pass, which silently weakens CI for everyone.
+
+/.github/            @truthixify

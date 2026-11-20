@@ -1,6 +1,7 @@
 import { defineChain } from 'viem';
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { http } from 'wagmi';
+import { getStellarNetworkConfig } from '@/lib/stellar/deployments';
 
 export const horizenTestnet = defineChain({
   id: 2651420,
@@ -27,13 +28,22 @@ export const wagmiConfig = getDefaultConfig({
   },
 });
 
+// The selected network and its endpoints come from
+// `src/lib/stellar/deployments.ts`, the same table the contract IDs resolve
+// from; `STELLAR_NETWORK` stays here so pages and contexts keep reading their
+// endpoint config from `@/config`.
+const stellarNetwork = getStellarNetworkConfig();
+
 export const STELLAR_NETWORK = {
-  name: 'Stellar Testnet',
-  networkPassphrase: 'Test SDF Network ; September 2015',
-  rpcUrl: 'https://soroban-testnet.stellar.org',
-  horizonUrl: 'https://horizon-testnet.stellar.org',
-  explorerUrl: 'https://stellar.expert/explorer/testnet',
+  name: stellarNetwork.label,
+  networkPassphrase: stellarNetwork.networkPassphrase,
+  rpcUrl: stellarNetwork.rpcUrl,
+  horizonUrl: stellarNetwork.horizonUrl,
 } as const;
+
+// The stealth-vault contract has no fixed testnet deployment yet — operators
+// configure it per environment once it ships (see wraith-protocol/contracts#48).
+export const STELLAR_VAULT_CONTRACT_ID = import.meta.env.VITE_STELLAR_VAULT_CONTRACT_ID || '';
 
 export const SOLANA_NETWORK = {
   name: 'Solana Devnet',

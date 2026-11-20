@@ -1,7 +1,7 @@
-import { horizenTestnet, STELLAR_NETWORK, SOLANA_NETWORK, CKB_NETWORK } from '@/config';
+import { horizenTestnet, SOLANA_NETWORK, CKB_NETWORK } from '@/config';
+import { stellarExpertAccountUrl, stellarExpertTransactionUrl } from '@/utils/stellarExpert';
 
 const HORIZEN_EXPLORER = horizenTestnet.blockExplorers.default.url;
-const STELLAR_EXPLORER = STELLAR_NETWORK.explorerUrl;
 const SOLANA_EXPLORER = SOLANA_NETWORK.explorerUrl;
 const CKB_EXPLORER = CKB_NETWORK.explorerUrl;
 
@@ -14,11 +14,11 @@ export function horizenAddrUrl(addr: string) {
 }
 
 export function stellarTxUrl(hash: string) {
-  return `${STELLAR_EXPLORER}/tx/${hash}`;
+  return stellarExpertTransactionUrl(hash);
 }
 
 export function stellarAddrUrl(addr: string) {
-  return `${STELLAR_EXPLORER}/account/${addr}`;
+  return stellarExpertAccountUrl(addr);
 }
 
 export function solanaTxUrl(hash: string) {

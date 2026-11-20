@@ -62,6 +62,9 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
       testIgnore: ['**/e2e/pwa-*.spec.ts', '**/e2e/visual-*.spec.ts'],
     },
+    // PWA tests require a production build (the SW is disabled in dev mode).
+    // They run only on Chromium, which has the most complete SW + Cache API
+    // support required for the offline-reload scenario.
     {
       name: 'pwa-chromium',
       use: {
@@ -74,6 +77,8 @@ export default defineConfig({
   webServer: isPwaOnly
     ? [
         {
+          // The pwa-chromium project points at the preview server. The build must
+          // have run before `playwright test` is invoked (pnpm build && pnpm test).
           command: 'pnpm preview --port 5174 --host 127.0.0.1',
           url: 'http://127.0.0.1:5174',
           reuseExistingServer: !process.env.CI,
@@ -88,6 +93,8 @@ export default defineConfig({
           timeout: 120_000,
         },
         {
+          // The pwa-chromium project points at the preview server. The build must
+          // have run before `playwright test` is invoked (pnpm build && pnpm test).
           command: 'pnpm preview --port 5174 --host 127.0.0.1',
           url: 'http://127.0.0.1:5174',
           reuseExistingServer: !process.env.CI,

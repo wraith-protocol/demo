@@ -1,6 +1,55 @@
 <!doctype html>
-<html lang="en" class="dark">
+<!-- Hidden until the inline script below has applied the stored theme, which
+     prevents a flash of the wrong theme. The script reveals <html>, so the
+     guard must live on <html> — hiding <body> would leave the app invisible. -->
+<html lang="en" style="visibility: hidden">
   <head>
+    <script>
+      (function () {
+        const THEME_KEY = 'wraith-theme';
+        const stored = localStorage.getItem(THEME_KEY);
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme =
+          stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+        document.documentElement.style.visibility = 'visible';
+      })();
+    </script>
+    <script>
+      (function () {
+        const path = window.location.pathname;
+        const match = path.match(/^\/n\/([^/]+)$/);
+
+        if (match) {
+          const name = decodeURIComponent(match[1]);
+          const title = `${name} — Wraith Name`;
+          const description = `Send payments to ${name} on Wraith Protocol.`;
+          const url = `${window.location.origin}${path}`;
+
+          document.title = title;
+
+          const setMeta = (attribute, key, value) => {
+            let meta = document.head.querySelector(`meta[${attribute}="${key}"]`);
+            if (!meta) {
+              meta = document.createElement('meta');
+              meta.setAttribute(attribute, key);
+              document.head.appendChild(meta);
+            }
+            meta.setAttribute('content', value);
+          };
+
+          setMeta('property', 'og:title', title);
+          setMeta('property', 'og:description', description);
+          setMeta('property', 'og:url', url);
+          setMeta('property', 'og:image', '/og-image.png');
+          setMeta('name', 'twitter:title', title);
+          setMeta('name', 'twitter:description', description);
+          setMeta('name', 'twitter:image', '/og-image.png');
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
@@ -15,11 +64,16 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- Theme -->
-    <meta name="theme-color" content="#0e0e0e" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0e0e0e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Wraith" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -40,6 +94,15 @@
       content="Send and receive private payments on Horizen and Stellar using stealth addresses."
     />
     <meta name="twitter:image" content="/og-image.png" />
+    <!-- Plausible Analytics -->
+    <script defer data-domain="demo.usewraith.xyz" src="https://plausible.io/js/script.js"></script>
+    <script>
+      window.plausible =
+        window.plausible ||
+        function () {
+          (window.plausible.q = window.plausible.q || []).push(arguments);
+        };
+    </script>
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

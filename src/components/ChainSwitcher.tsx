@@ -8,18 +8,19 @@ const chains: { id: Chain; label: string }[] = [
   { id: 'ckb', label: 'CKB' },
 ];
 
-export function ChainSwitcher() {
+export function ChainSwitcher({ disabledChains = [] }: { disabledChains?: Chain[] }) {
   const { chain, setChain } = useChain();
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="chain-switcher">
       <select
         value={chain}
         onChange={(e) => setChain(e.target.value as Chain)}
+        aria-label="Chain"
         className="h-8 appearance-none border border-outline-variant bg-surface px-3 py-1.5 pr-7 font-mono text-[10px] uppercase tracking-widest text-primary focus:border-primary focus:outline-none sm:h-9 sm:px-4 sm:py-2 sm:pr-8 sm:text-xs"
       >
         {chains.map((c) => (
-          <option key={c.id} value={c.id}>
+          <option key={c.id} value={c.id} disabled={disabledChains.includes(c.id)}>
             {c.label}
           </option>
         ))}

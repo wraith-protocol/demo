@@ -15,6 +15,3 @@ public/mockServiceWorker.js
 
 # Unit test reports
 reports/
-
-# Visual regression specific
-e2e/screenshots/*.png
