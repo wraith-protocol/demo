@@ -74,7 +74,7 @@ function datedFilename(extension: 'csv' | 'json'): string {
   return `wraith-activity-${new Date().toISOString().slice(0, 10)}.${extension}`;
 }
 
-function downloadText(content: string, filename: string, type: string): void {
+export function downloadText(content: string, filename: string, type: string): void {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

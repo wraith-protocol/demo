@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wraith.finance/schema/local-data-export.json",
+  "title": "Wraith local data export",
+  "description": "An ordinary export of the data this app keeps on one device, for one wallet/network scope or for device-wide data. Secrets and encrypted payloads are never included; they are listed under `withheld`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "schemaVersion", "exportedAt", "scope", "categories", "withheld", "data"],
+  "$defs": {
+    "categoryId": {
+      "type": "string",
+      "enum": [
+        "labels",
+        "scan-cursor",
+        "activity",
+        "offline-intents",
+        "pending-submissions",
+        "vault-metadata",
+        "service-worker",
+        "cached-responses",
+        "contacts",
+        "name-history",
+        "split-templates",
+        "schedules",
+        "notifications",
+        "auction-data",
+        "key-vault",
+        "wallet-connection",
+        "push-subscriptions",
+        "unlinked-records",
+        "preferences",
+        "other-app-data"
+      ]
+    }
+  },
+  "properties": {
+    "type": { "const": "wraith-local-data-export" },
+    "schemaVersion": { "const": 1 },
+    "exportedAt": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "chain", "network", "wallet"],
+          "properties": {
+            "kind": { "const": "wallet" },
+            "chain": { "type": "string", "minLength": 1 },
+            "network": { "type": "string", "minLength": 1 },
+            "wallet": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "device" }
+          }
+        }
+      ]
+    },
+    "categories": {
+      "description": "Every category in the scope, with whether it is included in `data`.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "included", "itemCount", "redactedFields"],
+        "properties": {
+          "id": { "$ref": "#/$defs/categoryId" },
+          "label": { "type": "string", "minLength": 1 },
+          "included": { "type": "boolean" },
+          "itemCount": { "type": "integer", "minimum": 0 },
+          "redactedFields": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "withheld": {
+      "description": "Secret or encrypted material in the selected categories that this export leaves out.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason", "description"],
+        "properties": {
+          "id": { "$ref": "#/$defs/categoryId" },
+          "reason": { "type": "string", "enum": ["secret", "encrypted"] },
+          "description": { "type": "string", "minLength": 1 },
+          "recoveryFlow": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/categoryId" }
+    }
+  }
+}
