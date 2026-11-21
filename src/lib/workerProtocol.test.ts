@@ -424,9 +424,60 @@ describe('workerProtocol', () => {
         }
       });
     });
+    describe('CLEAR_LOCAL_DATA', () => {
+      it.each<MainThreadMessage>([
+        { type: 'CLEAR_LOCAL_DATA', requestId: 'req-1', scope: 'wallet', publicKey: 'GABC' },
+        { type: 'CLEAR_LOCAL_DATA', requestId: 'req-2', scope: 'all' },
+      ])('validates a $scope-scoped request', (msg) => {
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(true);
+        if (result.valid) {
+          expect(result.data).toEqual(msg);
+        }
+      });
+
+      it.each([
+        [{ type: 'CLEAR_LOCAL_DATA', requestId: 'req-1', scope: 'wallet' }, 'publicKey'],
+        [{ type: 'CLEAR_LOCAL_DATA', requestId: 'req-1', scope: 'device' }, 'scope'],
+        [{ type: 'CLEAR_LOCAL_DATA', requestId: 'req-1', scope: 'all', publicKey: 'G' }, 'extra'],
+        [{ type: 'CLEAR_LOCAL_DATA', requestId: 'bad', scope: 'all' }, 'requestId'],
+      ])('rejects a malformed request %#', (msg, reason) => {
+        const result = validateMainThreadMessage(msg);
+        expect(result.valid).toBe(false);
+        if (!result.valid) {
+          expect(result.reason).toContain(reason);
+        }
+      });
+    });
   });
 
   describe('validateWorkerMessage', () => {
+    describe('LOCAL_DATA_CLEARED', () => {
+      it('validates the acknowledgement', () => {
+        const msg: WorkerMessage = {
+          type: 'LOCAL_DATA_CLEARED',
+          requestId: 'req-3',
+          removedRecords: 2,
+        };
+        const result = validateWorkerMessage(msg);
+        expect(result.valid).toBe(true);
+        if (result.valid) {
+          expect(result.data).toEqual(msg);
+        }
+      });
+
+      it('rejects a negative or missing record count', () => {
+        for (const removedRecords of [-1, undefined, 1.5]) {
+          const result = validateWorkerMessage({
+            type: 'LOCAL_DATA_CLEARED',
+            requestId: 'req-3',
+            removedRecords,
+          });
+          expect(result.valid).toBe(false);
+        }
+      });
+    });
+
     describe('VIEWING_KEY_REGISTERED', () => {
       it('validates correct VIEWING_KEY_REGISTERED message', () => {
         const msg: WorkerMessage = {

@@ -43,6 +43,33 @@ export function upsertAccountRecord(
   });
 }
 
+/**
+ * Removes the record stored under `key`, or every record when `key` is null.
+ * Resolves with how many records were removed.
+ */
+export function removeStoreRecords(
+  db: IDBDatabase,
+  storeName: string,
+  key: string | null,
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) {
+      resolve(0);
+      return;
+    }
+    const tx = db.transaction([storeName], 'readwrite');
+    const store = tx.objectStore(storeName);
+    let removed = 0;
+    const count = key === null ? store.count() : store.count(key);
+    count.onsuccess = () => {
+      removed = count.result;
+      if (key === null) store.clear();
+      else store.delete(key);
+    };
+    finish(tx, () => resolve(removed), reject);
+  });
+}
+
 /** One-time cleanup of records written by older builds. Returns how many were changed. */
 export function scrubLegacySpendingMaterial(db: IDBDatabase, storeName: string): Promise<number> {
   return new Promise((resolve, reject) => {
