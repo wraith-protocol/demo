@@ -1,3 +1,8 @@
+import {
+  beginTransactionActivity,
+  assertTransactionCompatible,
+  transactionBlockReason,
+} from '@/lib/transactionActivity';
 import { create } from 'zustand';
 import {
   addEntry,
@@ -137,8 +142,10 @@ export const useOfflineQueueStore = create<OfflineQueueState>()((set, get) => ({
     }),
 
   reconcile: async () => {
+    if (transactionBlockReason()) return;
     if (get().phase === 'reconciling') return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    const finishReconcile = beginTransactionActivity('reconciling');
     set({ phase: 'reconciling' });
     try {
       const entries = get().entries;
@@ -155,11 +162,13 @@ export const useOfflineQueueStore = create<OfflineQueueState>()((set, get) => ({
       persistEntries(next);
       set({ entries: next, lastReconciledAt: Date.now() });
     } finally {
+      finishReconcile();
       set({ phase: 'idle' });
     }
   },
 
   broadcastSigned: async (id) => {
+    assertTransactionCompatible();
     const entry = get().entries.find((e) => e.id === id);
     if (!entry || entry.kind !== 'signed-submit') {
       return { ok: false, error: 'Queued transaction not found.' };

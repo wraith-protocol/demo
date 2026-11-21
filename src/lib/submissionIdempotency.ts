@@ -1,4 +1,6 @@
-const STORAGE_KEY = 'wraith-submission-idempotency-v1';
+import { APP_VERSION, SUBMISSION_STORAGE_KEY } from './appCompatibility';
+import { assertTransactionCompatible, beginTransactionActivity } from './transactionActivity';
+const STORAGE_KEY = SUBMISSION_STORAGE_KEY;
 
 export interface SubmissionRecord {
   operationId: string;
@@ -17,7 +19,7 @@ export class TransactionSubmissionUnknownError extends Error {
 }
 
 interface SubmissionState {
-  version: 1;
+  version: number;
   operations: Record<string, SubmissionRecord>;
   drafts: Record<string, string>;
 }
@@ -50,7 +52,7 @@ function storage(): Storage {
 
 function readState(): SubmissionState {
   const value = storage().getItem(STORAGE_KEY);
-  if (value === null) return { version: 1, operations: {}, drafts: {} };
+  if (value === null) return { version: APP_VERSION.transactionSchema, operations: {}, drafts: {} };
 
   let parsed: unknown;
   try {
@@ -61,7 +63,7 @@ function readState(): SubmissionState {
   if (
     !isRecord(parsed) ||
     !('version' in parsed) ||
-    parsed.version !== 1 ||
+    parsed.version !== APP_VERSION.transactionSchema ||
     !('operations' in parsed) ||
     !isRecord(parsed.operations) ||
     !('drafts' in parsed) ||
@@ -91,7 +93,7 @@ function readState(): SubmissionState {
     }
     drafts[draftKey] = operationId;
   }
-  return { version: 1, operations, drafts };
+  return { version: APP_VERSION.transactionSchema, operations, drafts };
 }
 
 function writeState(state: SubmissionState): void {
@@ -154,6 +156,7 @@ export async function reserveSubmissionOperationId(
   draft: string,
   preferredOperationId?: string | null,
 ): Promise<string> {
+  assertTransactionCompatible();
   const draftKey = await hashDraft(draft);
   return withLock(`draft:${draftKey}`, () =>
     withLock('state', () => {
@@ -228,52 +231,60 @@ export async function submitStellarTransactionOnce(
   submit: () => Promise<string>,
   metadata?: Record<string, string | number>,
 ): Promise<string> {
-  return withLock(`operation:${operationId}`, async () => {
-    const start = await withLock('state', () => {
-      const state = readState();
-      if (!isValidOperationId(operationId)) {
-        throw new Error('The transaction operation ID is invalid.');
-      }
-      const existing = ownValue(state.operations, operationId);
-      if (existing !== undefined && !isSubmissionRecord(existing)) {
-        throw new Error('Saved transaction submission state is invalid; clear it before retrying.');
-      }
-      if (
-        existing?.txHash &&
-        (existing.txHash !== txHash || existing.signedEnvelope !== signedEnvelope)
-      ) {
-        throw new Error('This operation ID is already bound to a different signed transaction.');
-      }
-      if (existing?.status === 'submitted' && existing.txHash) {
-        return { alreadySubmitted: true as const, hash: existing.txHash };
-      }
+  assertTransactionCompatible();
+  const finish = beginTransactionActivity('submitting');
+  try {
+    return await withLock(`operation:${operationId}`, async () => {
+      const start = await withLock('state', () => {
+        const state = readState();
+        if (!isValidOperationId(operationId)) {
+          throw new Error('The transaction operation ID is invalid.');
+        }
+        const existing = ownValue(state.operations, operationId);
+        if (existing !== undefined && !isSubmissionRecord(existing)) {
+          throw new Error(
+            'Saved transaction submission state is invalid; clear it before retrying.',
+          );
+        }
+        if (
+          existing?.txHash &&
+          (existing.txHash !== txHash || existing.signedEnvelope !== signedEnvelope)
+        ) {
+          throw new Error('This operation ID is already bound to a different signed transaction.');
+        }
+        if (existing?.status === 'submitted' && existing.txHash) {
+          return { alreadySubmitted: true as const, hash: existing.txHash };
+        }
 
-      const record: SubmissionRecord = {
-        operationId,
-        draftKey: existing?.draftKey ?? '',
-        status: 'submitting',
-        txHash,
-        signedEnvelope,
-        ...((metadata ?? existing?.metadata) ? { metadata: metadata ?? existing?.metadata } : {}),
-      };
-      state.operations[operationId] = record;
-      writeState(state);
-      return { alreadySubmitted: false as const, record };
-    });
-    if (start.alreadySubmitted) return start.hash;
+        const record: SubmissionRecord = {
+          operationId,
+          draftKey: existing?.draftKey ?? '',
+          status: 'submitting',
+          txHash,
+          signedEnvelope,
+          ...((metadata ?? existing?.metadata) ? { metadata: metadata ?? existing?.metadata } : {}),
+        };
+        state.operations[operationId] = record;
+        writeState(state);
+        return { alreadySubmitted: false as const, record };
+      });
+      if (start.alreadySubmitted) return start.hash;
 
-    const submittedHash = await submit();
-    await withLock('state', () => {
-      const state = readState();
-      state.operations[operationId] = {
-        ...start.record,
-        status: 'submitted',
-        txHash: submittedHash || txHash,
-      };
-      writeState(state);
+      const submittedHash = await submit();
+      await withLock('state', () => {
+        const state = readState();
+        state.operations[operationId] = {
+          ...start.record,
+          status: 'submitted',
+          txHash: submittedHash || txHash,
+        };
+        writeState(state);
+      });
+      return submittedHash || txHash;
     });
-    return submittedHash || txHash;
-  });
+  } finally {
+    finish();
+  }
 }
 
 export async function broadcastStellarTransaction(

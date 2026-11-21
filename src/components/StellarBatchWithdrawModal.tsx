@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
@@ -39,7 +41,7 @@ export function StellarBatchWithdrawModal({
 
   const [globalDestination, setGlobalDestination] = useState('');
   const [assetKey] = useState<StellarAssetKey>('XLM');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useTransactionState<boolean>(false, Boolean);
   const [statusMessage, setStatusMessage] = useState('');
   const [executionResult, setExecutionResult] = useState<BatchWithdrawResult | null>(null);
 
@@ -79,6 +81,11 @@ export function StellarBatchWithdrawModal({
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setStatusMessage(blocked);
+      return;
+    }
     if (preview.validItems.length === 0 || isSubmitting) return;
 
     setIsSubmitting(true);

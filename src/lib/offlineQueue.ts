@@ -1,3 +1,4 @@
+import { transactionStorageError } from './appCompatibility';
 import {
   isBoundedString,
   isFiniteTimestamp,
@@ -296,10 +297,13 @@ export function isOfflineEntry(value: unknown): value is OfflineQueueEntry {
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export function loadOfflineQueue(storage: StorageLike): OfflineQueueEntry[] {
+  if (transactionStorageError()) return [];
   return readVersionedCollection(storage, OFFLINE_QUEUE_STORAGE_KEY, isOfflineEntry);
 }
 
 export function saveOfflineQueue(storage: StorageLike, entries: OfflineQueueEntry[]): void {
+  const error = transactionStorageError();
+  if (error) throw new Error(error);
   // Intentionally no truncation here: `addEntry` / `enforceQueueCap` own the
   // cap, and silently dropping the tail (usually the newest entry) is exactly
   // the data-loss bug this policy exists to prevent.
