@@ -1,11 +1,9 @@
 /// <reference lib="webworker" />
 /// <reference path="../vite-env.d.ts" />
-import {
-  cleanupOutdatedCaches,
-  createHandlerBoundToURL,
-  precacheAndRoute,
-} from 'workbox-precaching';
+import { matchPrecache, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { setCacheNameDetails } from 'workbox-core';
+import { APP_VERSION } from '../lib/appCompatibility';
+import { approveUpdate } from './updateActivation';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst, CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -49,8 +47,6 @@ setCacheNameDetails({
 // vite-plugin-pwa injects the manifest list here at build time.
 // In dev mode (when devOptions.enabled=true) this is an empty array.
 precacheAndRoute(self.__WB_MANIFEST);
-// Removes precaches carrying build-time revisions of earlier Workbox versions.
-cleanupOutdatedCaches();
 
 // ─── SPA Navigation Route ────────────────────────────────────────────────────
 // Serves the precached index.html shell for all navigation requests so
@@ -354,17 +350,12 @@ async function registerPeriodicSync(): Promise<void> {
 self.addEventListener('activate', (event) => {
   console.log('[app-sw] Activating');
   event.waitUntil(
-    Promise.all([
-      self.clients.claim(),
-      scrubLegacyKeys(),
-      // Drop every cache this app owns that is not part of the running version:
-      // superseded versions, newer versions left behind by a roll-back, and
-      // caches written by installs that predate explicit versioning.
-      purgeObsoleteCaches(self.caches).then((deleted) => {
-        if (deleted.length > 0) console.log('[app-sw] Purged obsolete caches:', deleted);
-      }),
-      registerPeriodicSync(),
-    ]),
+    (async () => {
+      const shell = await matchPrecache('index.html');
+      if (!shell?.ok) throw new Error('The new application shell is not ready');
+      await purgeObsoleteCaches(self.caches);
+      await Promise.all([self.clients.claim(), scrubLegacyKeys(), registerPeriodicSync()]);
+    })(),
   );
 });
 
@@ -427,7 +418,19 @@ self.addEventListener('message', (event) => {
   }
 
   if (type === 'SKIP_WAITING') {
-    self.skipWaiting();
+    event.waitUntil(
+      (async () => {
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const ready = await approveUpdate(clients);
+        event.ports[0]?.postMessage({ ready });
+        if (ready) await self.skipWaiting();
+      })(),
+    );
+    return;
+  }
+
+  if (type === 'GET_APP_VERSION') {
+    event.ports[0]?.postMessage(APP_VERSION);
     return;
   }
 

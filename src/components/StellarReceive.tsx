@@ -1,4 +1,6 @@
 // @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -95,7 +97,7 @@ function StellarMatchCardContainer({
   const [dest, setDest] = useState('');
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
-  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawing, setWithdrawing] = useTransactionState<boolean>(false, Boolean);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -143,6 +145,11 @@ function StellarMatchCardContainer({
   const withdrawBalance = parseFloat(balances[withdrawAssetKey] || '0');
 
   const handleWithdraw = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest) return;
 
     if (isNetworkMismatch) {
@@ -317,6 +324,11 @@ function StellarMatchCardContainer({
   };
 
   const handleSponsoredWithdraw = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest || !address) return;
 
     if (isNetworkMismatch) {
@@ -605,7 +617,7 @@ export function StellarReceive() {
   const [retentionGap, setRetentionGap] = useState<RetentionGap | null>(null);
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [retryStatus, setRetryStatus] = useState('');
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [isRegistering, setIsRegistering] = useTransactionState<boolean>(false, Boolean);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);

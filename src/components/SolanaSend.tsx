@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { useState, useCallback } from 'react';
 import {
   Connection,
@@ -17,8 +19,8 @@ import { trackEvent } from '@/lib/telemetry';
 export function SolanaSend() {
   const { t } = useTranslation();
   const { publicKey, connected, sendTransaction } = useWallet();
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('solana:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('solana:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
@@ -30,12 +32,18 @@ export function SolanaSend() {
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleSend = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!connected || !publicKey) {
       setError(t('common.walletNotConnected'));
       return;
     }
 
     setError('');
+    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
 
     try {
@@ -80,6 +88,7 @@ export function SolanaSend() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      finishTransaction();
       setIsPending(false);
     }
   }, [connected, publicKey, sendTransaction, recipient, amount, t]);
