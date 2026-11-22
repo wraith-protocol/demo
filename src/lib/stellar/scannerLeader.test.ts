@@ -32,7 +32,10 @@ describe('Stellar scanner leadership', () => {
 
     expect(result).toEqual({ role: 'leader', result: 'done' });
     expect(postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'progress', progress: { cursor: 42, matches: [{ stealthAddress: 'GSTEALTH' }] } }),
+      expect.objectContaining({
+        type: 'progress',
+        progress: { cursor: 42, matches: [{ stealthAddress: 'GSTEALTH' }] },
+      }),
     );
     expect(JSON.stringify(postMessage.mock.calls)).not.toContain('viewingKey');
     expect(close).toHaveBeenCalled();
@@ -46,7 +49,12 @@ describe('Stellar scanner leadership', () => {
 
     await expect(
       runAsScannerLeader(
-        { walletAddress: 'GTEST', network: 'testnet', locks, channelFactory: () => ({ close: vi.fn() } as unknown as BroadcastChannel) },
+        {
+          walletAddress: 'GTEST',
+          network: 'testnet',
+          locks,
+          channelFactory: () => ({ close: vi.fn() }) as unknown as BroadcastChannel,
+        },
         { scan },
       ),
     ).resolves.toEqual({ role: 'follower' });
@@ -55,7 +63,13 @@ describe('Stellar scanner leadership', () => {
 
   it('falls back to a local scan when coordination storage is unavailable', async () => {
     const result = await runAsScannerLeader(
-      { walletAddress: 'GTEST', network: 'testnet', channelFactory: () => { throw new Error('blocked'); } },
+      {
+        walletAddress: 'GTEST',
+        network: 'testnet',
+        channelFactory: () => {
+          throw new Error('blocked');
+        },
+      },
       { scan: async () => 'local' },
     );
     expect(result).toEqual({ role: 'leader', result: 'local' });
@@ -68,7 +82,8 @@ describe('Stellar scanner leadership', () => {
       walletAddress: 'GTEST',
       network: 'testnet',
       locks: { request } as unknown as LockManager,
-      channelFactory: () => ({ postMessage: vi.fn(), close: vi.fn() }) as unknown as BroadcastChannel,
+      channelFactory: () =>
+        ({ postMessage: vi.fn(), close: vi.fn() }) as unknown as BroadcastChannel,
     };
 
     await expect(

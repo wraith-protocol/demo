@@ -48,9 +48,7 @@ function isProgress(value: unknown): value is ScannerProgress {
     (candidate.cursor === undefined || Number.isSafeInteger(candidate.cursor)) &&
     (candidate.matches === undefined ||
       (Array.isArray(candidate.matches) &&
-        candidate.matches.every(
-          (match) => match && typeof match.stealthAddress === 'string',
-        )))
+        candidate.matches.every((match) => match && typeof match.stealthAddress === 'string')))
   );
 }
 
