@@ -58,6 +58,16 @@ Captured at the source, while offline:
 The stealth-announcement scanner needs no queue: it resumes from the
 persisted `lastScannedLedger` checkpoint on every run.
 
+## 2a. Cross-tab scanner coordination
+
+Stellar scans are coordinated per wallet and network. The browser
+`navigator.locks` API elects one active scanner; a `BroadcastChannel` carries
+public cursor progress and match addresses to sibling tabs. Viewing keys,
+spending scalars, and other scan material never cross the tab boundary. If the
+lock is released because a tab closes or sleeps, another tab can take over. A
+blocked coordination API falls back to a local scan so private-browser and
+embedded-webview modes remain usable.
+
 ## 3. Reuse one operation ID for direct sends and queue retries
 
 Every Stellar payment intent receives an operation ID before it can be

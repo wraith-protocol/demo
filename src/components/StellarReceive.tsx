@@ -45,6 +45,7 @@ import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModa
 import { createStellarQrUri } from '@/utils/qr';
 import { readScanCursor, writeScanCursor, type RetentionGap } from '@/lib/stellar/scannerCursor';
 import { fetchAnnouncementEvents } from '@/lib/stellar/announcementRpc';
+import { runAsScannerLeader } from '@/lib/stellar/scannerLeader';
 
 // Fetches announcements on the main thread. Only used to support the
 // `window.scanAnnouncementsMock` test hook (see e2e/fixtures.ts) which needs
@@ -1134,86 +1135,113 @@ export function StellarReceive() {
         return;
       }
 
-      // Restart cleanly: tear down any in-flight scan before starting a new
-      // one, so a strategy change always takes effect on the next scan without
-      // requiring a page reload.
-      if (workerRef.current) {
-        workerRef.current.terminate();
-        workerRef.current = null;
+      try {
+        const leadership = await runAsScannerLeader(
+          { walletAddress: address ?? 'unconnected', network: STELLAR_NETWORK.rpcUrl },
+          {
+            scan: (publish) =>
+              new Promise<void>((resolve, reject) => {
+                // Restart cleanly: tear down any in-flight scan before starting a
+                // new one, so a strategy change takes effect without a reload.
+                if (workerRef.current) {
+                  workerRef.current.terminate();
+                  workerRef.current = null;
+                }
+
+                const worker = new Worker(
+                  new URL('../workers/stellar-scanner.worker.ts', import.meta.url),
+                  { type: 'module' },
+                );
+                workerRef.current = worker;
+
+                worker.onmessage = (event: MessageEvent) => {
+                  const {
+                    type,
+                    results,
+                    nextLedger,
+                    committedLedger,
+                    matched: pageMatches,
+                    requestedLedger,
+                    oldestAvailableLedger,
+                    error: workerError,
+                  } = event.data ?? {};
+                  if (type === 'PAGE') {
+                    // Each page advances the stored cursor only once its matches have been
+                    // handed to the page, so an interrupted scan resumes at the first
+                    // ledger proven complete instead of at the tip. A ledger that the RPC
+                    // page boundary split is re-read, and matches are deduped below.
+                    if (address && Number.isSafeInteger(committedLedger)) {
+                      writeScanCursor(localStorage, address, committedLedger + 1);
+                    }
+                    if (Array.isArray(pageMatches) && pageMatches.length > 0) {
+                      setMatched((previous) => {
+                        const seen = new Set(previous.map((match) => match.stealthAddress));
+                        const fresh = pageMatches.filter(
+                          (match) => !seen.has(match.stealthAddress),
+                        );
+                        return fresh.length > 0 ? [...previous, ...fresh] : previous;
+                      });
+                    }
+                    publish({
+                      cursor: Number.isSafeInteger(committedLedger)
+                        ? committedLedger + 1
+                        : undefined,
+                      matches: Array.isArray(pageMatches)
+                        ? pageMatches.map((match) => ({ stealthAddress: match.stealthAddress }))
+                        : undefined,
+                    });
+                    return;
+                  }
+                  if (type === 'SUCCESS') {
+                    setMatched(results ?? []);
+                    setHasScanned(true);
+                    setRetentionGap(null);
+                    if (address && Number.isSafeInteger(nextLedger)) {
+                      writeScanCursor(localStorage, address, nextLedger);
+                    }
+                    trackEvent('scan_triggered');
+                  } else if (type === 'RETENTION_GAP') {
+                    setRetentionGap({ requestedLedger, oldestAvailableLedger });
+                  } else {
+                    setError(workerError || t('common.scanFailed'));
+                  }
+                  setIsScanning(false);
+                  worker.terminate();
+                  if (workerRef.current === worker) workerRef.current = null;
+                  if (type === 'ERROR') reject(new Error(workerError || t('common.scanFailed')));
+                  else resolve();
+                };
+
+                worker.onerror = () => {
+                  setError(t('common.scanFailed'));
+                  setIsScanning(false);
+                  worker.terminate();
+                  if (workerRef.current === worker) workerRef.current = null;
+                  reject(new Error(t('common.scanFailed')));
+                };
+
+                worker.postMessage({
+                  rpcUrl: STELLAR_NETWORK.rpcUrl,
+                  announcerContract,
+                  viewingKey: stellarKeys.viewingKey,
+                  spendingPubKey: stellarKeys.spendingPubKey,
+                  spendingScalar: stellarKeys.spendingScalar,
+                  strategy: scanStrategy,
+                  startLedger:
+                    recoveryStartLedger ??
+                    (address ? readScanCursor(localStorage, address) : undefined),
+                });
+              }),
+          },
+        );
+        if (leadership.role === 'follower') {
+          setIsScanning(false);
+          setError('Another tab is scanning this wallet; try again when it finishes.');
+        }
+      } catch (err) {
+        setIsScanning(false);
+        setError(err instanceof Error ? err.message : t('common.scanFailed'));
       }
-
-      const worker = new Worker(new URL('../workers/stellar-scanner.worker.ts', import.meta.url), {
-        type: 'module',
-      });
-      workerRef.current = worker;
-
-      worker.onmessage = (event: MessageEvent) => {
-        const {
-          type,
-          results,
-          nextLedger,
-          committedLedger,
-          matched: pageMatches,
-          requestedLedger,
-          oldestAvailableLedger,
-          error: workerError,
-        } = event.data ?? {};
-        if (type === 'PAGE') {
-          // Each page advances the stored cursor only once its matches have been
-          // handed to the page, so an interrupted scan resumes at the first
-          // ledger proven complete instead of at the tip. A ledger that the RPC
-          // page boundary split is re-read, and matches are deduped below.
-          if (address && Number.isSafeInteger(committedLedger)) {
-            writeScanCursor(localStorage, address, committedLedger + 1);
-          }
-          if (Array.isArray(pageMatches) && pageMatches.length > 0) {
-            setMatched((previous) => {
-              const seen = new Set(previous.map((match) => match.stealthAddress));
-              const fresh = pageMatches.filter((match) => !seen.has(match.stealthAddress));
-              return fresh.length > 0 ? [...previous, ...fresh] : previous;
-            });
-          }
-          return;
-        }
-        if (type === 'SUCCESS') {
-          setMatched(results ?? []);
-          setHasScanned(true);
-          setRetentionGap(null);
-          if (address && Number.isSafeInteger(nextLedger)) {
-            writeScanCursor(localStorage, address, nextLedger);
-          }
-          trackEvent('scan_triggered');
-        } else if (type === 'RETENTION_GAP') {
-          setRetentionGap({ requestedLedger, oldestAvailableLedger });
-        } else {
-          setError(workerError || t('common.scanFailed'));
-        }
-        setIsScanning(false);
-        worker.terminate();
-        if (workerRef.current === worker) {
-          workerRef.current = null;
-        }
-      };
-
-      worker.onerror = () => {
-        setError(t('common.scanFailed'));
-        setIsScanning(false);
-        worker.terminate();
-        if (workerRef.current === worker) {
-          workerRef.current = null;
-        }
-      };
-
-      worker.postMessage({
-        rpcUrl: STELLAR_NETWORK.rpcUrl,
-        announcerContract,
-        viewingKey: stellarKeys.viewingKey,
-        spendingPubKey: stellarKeys.spendingPubKey,
-        spendingScalar: stellarKeys.spendingScalar,
-        strategy: scanStrategy,
-        startLedger:
-          recoveryStartLedger ?? (address ? readScanCursor(localStorage, address) : undefined),
-      });
     },
     [stellarKeys, scanStrategy, address, t],
   );
