@@ -1,34 +1,110 @@
-import { useState } from 'react';
-import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  useAccount,
+  useBalance,
+  usePublicClient,
+  useSendTransaction,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
-import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
+import type { HexString } from '@wraith-protocol/sdk/chains/evm';
 import { useTranslation } from 'react-i18next';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
 import { trackEvent } from '@/lib/telemetry';
+import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
+import { useActivityStore } from '@/stores/activityStore';
+import {
+  createEvmSubmissionAdapter,
+  evmSubmissionScope,
+  resolveEvmNonce,
+} from '@/lib/evmSubmission';
+import {
+  isAmbiguousSubmissionError,
+  releaseSubmissionDraft,
+  reserveSubmissionOperationId,
+  submitChainTransactionOnce,
+} from '@/lib/submissionIdempotency';
+
+interface StealthSummary {
+  stealthAddress: string;
+  ephemeralPubKey: string;
+}
 
 export function HorizenSend() {
   const { t } = useTranslation();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, chainId } = useAccount();
   const { data: balanceData } = useBalance({ address });
+  const publicClient = usePublicClient({ chainId: horizenTestnet.id });
+  const addActivity = useActivityStore((state) => state.addEntry);
+  const updateActivity = useActivityStore((state) => state.updateStatus);
 
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
-  const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
+  const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { sendTransaction, data: txHash, isPending } = useSendTransaction();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { sendTransactionAsync } = useSendTransaction();
+  const {
+    data: receipt,
+    error: receiptError,
+    isLoading: isConfirming,
+  } = useWaitForTransactionReceipt({
+    hash: txHash,
+    chainId: horizenTestnet.id,
+  });
+  const isSuccess = receipt?.status === 'success';
+
+  const scope = useMemo(
+    () => (address && chainId ? evmSubmissionScope(chainId, address) : null),
+    [address, chainId],
+  );
+  const adapter = useMemo(
+    () => (publicClient ? createEvmSubmissionAdapter(publicClient) : null),
+    [publicClient],
+  );
+  const pending = usePendingChainSubmission(scope, adapter);
+  const isPending = isSubmitting || pending.blocked;
+
+  useEffect(() => {
+    if (!txHash || !receipt) return;
+    updateActivity(txHash, receipt.status === 'success' ? 'confirmed' : 'failed');
+    if (receipt.status !== 'success') setError(t('submission.failedOnChain'));
+    void pending.check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txHash, receipt]);
+
+  useEffect(() => {
+    if (!txHash || !receiptError) return;
+    setError(receiptError.message);
+    void pending.check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txHash, receiptError]);
 
   const isMetaAddress = recipient.startsWith('st:eth:');
   const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
   const isWraithName = !isMetaAddress && cleanedName.length >= 3 && /^[a-z0-9]+$/.test(cleanedName);
 
   const handleSend = async () => {
-    setError('');
+    if (isSubmitting || pending.blocked) return;
+    if (!address || !scope || !adapter || !publicClient) {
+      setError(t('common.walletNotConnected'));
+      return;
+    }
+    if (chainId !== horizenTestnet.id) {
+      setError(`Switch your wallet to ${horizenTestnet.name} before sending.`);
+      return;
+    }
 
+    setError('');
+    setIsSubmitting(true);
     let metaAddress = recipient;
+    let draft = '';
+    let operationId = '';
 
     try {
       if (isWraithName) {
@@ -57,22 +133,81 @@ export function HorizenSend() {
         return;
       }
 
-      const result = buildSendStealth({
-        recipientMetaAddress: metaAddress,
-        amount,
+      draft = JSON.stringify({
+        chain: 'evm',
+        network: scope.network,
+        wallet: scope.account,
+        recipient: metaAddress,
+        amount: amount.trim(),
+      });
+      operationId = await reserveSubmissionOperationId(draft);
+
+      const result = await submitChainTransactionOnce({
+        operationId,
+        scope,
+        adapter,
+        prepare: async ({ pinnedNonce }) => {
+          const nonce = await resolveEvmNonce(publicClient, address, pinnedNonce);
+          const built = buildSendStealth({
+            recipientMetaAddress: metaAddress,
+            amount,
+            chain: 'horizen',
+          });
+          setStealthResult({
+            stealthAddress: built.stealthAddress,
+            ephemeralPubKey: built.ephemeralPubKey,
+          });
+          trackEvent('send_submitted');
+          return {
+            identity: { kind: 'evm', chainId: horizenTestnet.id, from: scope.account, nonce },
+            metadata: {
+              stealthAddress: built.stealthAddress,
+              ephemeralPubKey: built.ephemeralPubKey,
+            },
+            broadcast: () =>
+              sendTransactionAsync({
+                to: built.transaction.to as `0x${string}`,
+                data: built.transaction.data as `0x${string}`,
+                value: built.transaction.value,
+                nonce,
+                chainId: horizenTestnet.id,
+              }),
+          };
+        },
+      });
+
+      const { metadata } = result.record;
+      if (typeof metadata?.stealthAddress === 'string') {
+        setStealthResult({
+          stealthAddress: metadata.stealthAddress,
+          ephemeralPubKey: String(metadata.ephemeralPubKey ?? ''),
+        });
+      }
+      if (result.status === 'failed') {
+        setStealthResult(null);
+        setError(t('submission.failedOnChain'));
+        await releaseSubmissionDraft(draft, operationId);
+        return;
+      }
+      setTxHash(result.txHash as `0x${string}`);
+      addActivity({
+        id: result.txHash,
         chain: 'horizen',
+        wallet: scope.account,
+        kind: 'stealth-send',
+        direction: 'out',
+        status: result.status === 'confirmed' ? 'confirmed' : 'pending',
+        amount: amount.trim(),
+        recipient: metaAddress,
+        timestamp: Date.now(),
       });
-
-      setStealthResult(result);
-      trackEvent('send_submitted');
-
-      sendTransaction({
-        to: result.transaction.to as `0x${string}`,
-        data: result.transaction.data as `0x${string}`,
-        value: result.transaction.value,
-      });
+      await releaseSubmissionDraft(draft, operationId);
     } catch (err) {
+      if (!isAmbiguousSubmissionError(err)) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      setIsSubmitting(false);
+      pending.refresh();
     }
   };
 
@@ -80,6 +215,7 @@ export function HorizenSend() {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setTxHash(undefined);
     setError('');
   };
 
@@ -129,6 +265,8 @@ export function HorizenSend() {
           {t('horizen.sendDescription')}
         </p>
       </div>
+
+      <PendingSubmissionNotice pending={pending} txUrl={horizenTxUrl} />
 
       {!stealthResult && (
         <div className="flex flex-col gap-6">
@@ -221,7 +359,7 @@ export function HorizenSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            {isSubmitting ? t('common.confirmInWallet') : t('common.sendPrivately')}
           </button>
         </div>
       )}
@@ -290,7 +428,9 @@ export function HorizenSend() {
             </div>
           </div>
 
-          {isSuccess && (
+          {error && <p className="text-sm text-error">{error}</p>}
+
+          {(isSuccess || (!isSubmitting && !pending.blocked && !txHash)) && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
