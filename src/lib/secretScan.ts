@@ -175,6 +175,113 @@ export function readIndexedDbMetadata(
   ).then((groups) => groups.flat());
 }
 
+export interface IndexedDbIndexInspection {
+  name: string;
+  keyPath: string | string[] | null;
+  unique: boolean;
+  multiEntry: boolean;
+}
+
+export interface IndexedDbStoreInspection {
+  name: string;
+  keyPath: string | string[] | null;
+  autoIncrement: boolean;
+  indexes: IndexedDbIndexInspection[];
+}
+
+export interface IndexedDbDatabaseInspection {
+  name: string;
+  version: number;
+  stores: IndexedDbStoreInspection[];
+  records: IndexedDbMetadataRow[];
+}
+
+export function inspectIndexedDb(
+  databaseNames: readonly string[],
+): Promise<IndexedDbDatabaseInspection[]> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve([]);
+
+  return Promise.all(
+    databaseNames.map(
+      (database) =>
+        new Promise<IndexedDbDatabaseInspection>((resolve) => {
+          const empty = (): IndexedDbDatabaseInspection => ({
+            name: database,
+            version: 0,
+            stores: [],
+            records: [],
+          });
+          let request: IDBOpenDBRequest;
+          try {
+            request = indexedDB.open(database);
+          } catch {
+            resolve(empty());
+            return;
+          }
+          request.onerror = () => resolve(empty());
+          request.onblocked = () => resolve(empty());
+          request.onsuccess = () => {
+            const db = request.result;
+            const storeNames = Array.from(db.objectStoreNames).slice(0, 20);
+            if (storeNames.length === 0) {
+              db.close();
+              resolve({ name: database, version: db.version, stores: [], records: [] });
+              return;
+            }
+            const tx = db.transaction(storeNames, 'readonly');
+            const stores = storeNames.map((storeName) => {
+              const store = tx.objectStore(storeName);
+              return {
+                name: storeName,
+                keyPath: store.keyPath ?? null,
+                autoIncrement: store.autoIncrement,
+                indexes: Array.from(store.indexNames).map((indexName) => {
+                  const index = store.index(indexName);
+                  return {
+                    name: indexName,
+                    keyPath: index.keyPath ?? null,
+                    unique: index.unique,
+                    multiEntry: index.multiEntry,
+                  };
+                }),
+              };
+            });
+            const records: IndexedDbMetadataRow[] = [];
+            let pending = storeNames.length;
+            for (const store of storeNames) {
+              const cursorRequest = tx.objectStore(store).openCursor();
+              cursorRequest.onsuccess = () => {
+                const cursor = cursorRequest.result;
+                if (cursor && records.length < 200) {
+                  records.push({
+                    database,
+                    store,
+                    key: String(cursor.key),
+                    value: redactValue(cursor.value),
+                  });
+                  cursor.continue();
+                } else {
+                  pending -= 1;
+                  if (pending === 0) {
+                    db.close();
+                    resolve({ name: database, version: db.version, stores, records });
+                  }
+                }
+              };
+              cursorRequest.onerror = () => {
+                pending -= 1;
+                if (pending === 0) {
+                  db.close();
+                  resolve({ name: database, version: db.version, stores, records });
+                }
+              };
+            }
+          };
+        }),
+    ),
+  );
+}
+
 function storageEntries(store: Storage | undefined): Record<string, string> {
   const entries: Record<string, string> = {};
   if (!store) return entries;
