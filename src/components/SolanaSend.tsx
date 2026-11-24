@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Connection,
   PublicKey,
@@ -7,82 +7,205 @@ import {
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import { useWallet } from '@solana/wallet-adapter-react';
+import bs58 from 'bs58';
 import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
 import { useTranslation } from 'react-i18next';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
 import { trackEvent } from '@/lib/telemetry';
+import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
+import { useActivityStore } from '@/stores/activityStore';
+import {
+  createSolanaSubmissionAdapter,
+  encodeSignedTransaction,
+  solanaSubmissionScope,
+} from '@/lib/solanaSubmission';
+import {
+  isAmbiguousSubmissionError,
+  releaseSubmissionDraft,
+  reserveSubmissionOperationId,
+  submitChainTransactionOnce,
+} from '@/lib/submissionIdempotency';
+
+const SOLANA_CLUSTER = 'devnet';
+
+interface StealthSummary {
+  stealthAddress: string;
+  ephemeralPubKey: string;
+}
 
 export function SolanaSend() {
   const { t } = useTranslation();
-  const { publicKey, connected, sendTransaction } = useWallet();
+  const { publicKey, connected, signTransaction } = useWallet();
+  const addActivity = useActivityStore((state) => state.addEntry);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
-  const [stealthResult, setStealthResult] = useState<{
-    stealthAddress: string;
-    ephemeralPubKey: Uint8Array;
-    viewTag: number;
-  } | null>(null);
+  const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const connection = useMemo(() => new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed'), []);
+  const adapter = useMemo(() => createSolanaSubmissionAdapter(connection), [connection]);
+  const account = publicKey?.toBase58() ?? null;
+  const scope = useMemo(
+    () => (account ? solanaSubmissionScope(SOLANA_CLUSTER, account) : null),
+    [account],
+  );
+  const pending = usePendingChainSubmission(scope, adapter);
+
   const handleSend = useCallback(async () => {
-    if (!connected || !publicKey) {
+    if (isPending || pending.blocked) return;
+    if (!connected || !publicKey || !scope || !signTransaction) {
       setError(t('common.walletNotConnected'));
+      return;
+    }
+    if (!recipient.startsWith('st:sol:')) {
+      setError(t('solana.validMetaAddressError'));
       return;
     }
 
     setError('');
     setIsPending(true);
+    const draft = JSON.stringify({
+      chain: 'solana',
+      network: scope.network,
+      wallet: scope.account,
+      recipient: recipient.trim(),
+      amount: amount.trim(),
+    });
+    let operationId = '';
 
     try {
-      if (!recipient.startsWith('st:sol:')) {
-        setError(t('solana.validMetaAddressError'));
-        setIsPending(false);
+      operationId = await reserveSubmissionOperationId(draft);
+      const lamports = BigInt(Math.round(parseFloat(amount) * LAMPORTS_PER_SOL));
+
+      const result = await submitChainTransactionOnce({
+        operationId,
+        scope,
+        adapter,
+        prepare: async () => {
+          const built = buildSendSol({
+            recipientMetaAddress: recipient,
+            amount: lamports,
+            senderPubkey: publicKey.toBase58(),
+          });
+          const ephemeralPubKey = bytesToHex(built.ephemeralPubKey);
+          setStealthResult({ stealthAddress: built.stealthAddress, ephemeralPubKey });
+
+          const ix = built.instruction;
+          const { blockhash, lastValidBlockHeight } =
+            await connection.getLatestBlockhash('confirmed');
+          const tx = new Transaction({
+            feePayer: publicKey,
+            blockhash,
+            lastValidBlockHeight,
+          }).add(
+            new TransactionInstruction({
+              programId: new PublicKey(ix.programId),
+              keys: ix.keys.map((k) => ({
+                pubkey: new PublicKey(k.pubkey),
+                isSigner: k.isSigner,
+                isWritable: k.isWritable,
+              })),
+              data: Buffer.from(ix.data),
+            }),
+          );
+
+          const signed = await signTransaction(tx);
+          if (!signed.signature) throw new Error('The wallet did not sign the transaction.');
+          const raw = signed.serialize();
+          const signature = bs58.encode(signed.signature);
+          trackEvent('send_submitted');
+          return {
+            identity: {
+              kind: 'solana',
+              cluster: SOLANA_CLUSTER,
+              from: publicKey.toBase58(),
+              signature,
+              blockhash,
+              lastValidBlockHeight,
+              signedTx: encodeSignedTransaction(raw),
+            },
+            metadata: { stealthAddress: built.stealthAddress, ephemeralPubKey },
+            broadcast: () =>
+              connection.sendRawTransaction(raw, {
+                skipPreflight: false,
+                preflightCommitment: 'confirmed',
+              }),
+          };
+        },
+      });
+
+      const { metadata } = result.record;
+      if (typeof metadata?.stealthAddress === 'string') {
+        setStealthResult({
+          stealthAddress: metadata.stealthAddress,
+          ephemeralPubKey: String(metadata.ephemeralPubKey ?? ''),
+        });
+      }
+      if (result.status === 'failed') {
+        setStealthResult(null);
+        setError(t('submission.failedOnChain'));
+        await releaseSubmissionDraft(draft, operationId);
         return;
       }
-
-      const lamports = BigInt(Math.round(parseFloat(amount) * LAMPORTS_PER_SOL));
-      const result = buildSendSol({
-        recipientMetaAddress: recipient,
-        amount: lamports,
-        senderPubkey: publicKey.toBase58(),
+      setTxHash(result.txHash);
+      addActivity({
+        id: result.txHash,
+        chain: 'solana',
+        wallet: scope.account,
+        kind: 'stealth-send',
+        direction: 'out',
+        status: result.status === 'confirmed' ? 'confirmed' : 'pending',
+        amount: amount.trim(),
+        recipient: recipient.trim(),
+        timestamp: Date.now(),
       });
-      trackEvent('send_submitted');
-      setStealthResult({
-        stealthAddress: result.stealthAddress,
-        ephemeralPubKey: result.ephemeralPubKey,
-        viewTag: result.viewTag,
-      });
+      await releaseSubmissionDraft(draft, operationId);
 
-      const connection = new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed');
-      const ix = result.instruction;
-      const tx = new Transaction().add(
-        new TransactionInstruction({
-          programId: new PublicKey(ix.programId),
-          keys: ix.keys.map((k) => ({
-            pubkey: new PublicKey(k.pubkey),
-            isSigner: k.isSigner,
-            isWritable: k.isWritable,
-          })),
-          data: Buffer.from(ix.data),
-        }),
-      );
-
-      const signature = await sendTransaction(tx, connection);
-      setTxHash(signature);
-
-      await connection.confirmTransaction(signature, 'confirmed');
+      if (result.status === 'submitted') {
+        await connection.confirmTransaction(
+          {
+            signature: result.txHash,
+            blockhash:
+              result.record.identity?.kind === 'solana' ? result.record.identity.blockhash : '',
+            lastValidBlockHeight:
+              result.record.identity?.kind === 'solana'
+                ? result.record.identity.lastValidBlockHeight
+                : 0,
+          },
+          'confirmed',
+        );
+      }
+      await pending.check();
       setIsSuccess(true);
+      useActivityStore.getState().updateStatus(result.txHash, 'confirmed');
     } catch (err) {
+      if (!isAmbiguousSubmissionError(err) && !txHash) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
       setIsPending(false);
+      pending.refresh();
     }
-  }, [connected, publicKey, sendTransaction, recipient, amount, t]);
+  }, [
+    isPending,
+    pending,
+    connected,
+    publicKey,
+    scope,
+    signTransaction,
+    recipient,
+    amount,
+    adapter,
+    connection,
+    addActivity,
+    txHash,
+    t,
+  ]);
 
   const reset = () => {
     setRecipient('');
@@ -131,6 +254,8 @@ export function SolanaSend() {
           {t('solana.sendDescription')}
         </p>
       </div>
+
+      <PendingSubmissionNotice pending={pending} txUrl={solanaTxUrl} />
 
       {!stealthResult && (
         <div className="flex flex-col gap-6">
@@ -188,7 +313,7 @@ export function SolanaSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || pending.blocked}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
@@ -232,7 +357,7 @@ export function SolanaSend() {
                 {t('common.ephemeralPublicKey')}
               </span>
               <p className="mt-0.5 truncate font-mono text-xs text-on-surface-variant">
-                {bytesToHex(stealthResult.ephemeralPubKey)}
+                {stealthResult.ephemeralPubKey}
               </p>
             </div>
 
@@ -256,7 +381,9 @@ export function SolanaSend() {
             )}
           </div>
 
-          {isSuccess && (
+          {error && <p className="text-sm text-error">{error}</p>}
+
+          {(isSuccess || (!isPending && !pending.blocked)) && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
