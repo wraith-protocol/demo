@@ -430,7 +430,7 @@ export function HorizenSend() {
 
           {error && <p className="text-sm text-error">{error}</p>}
 
-          {(isSuccess || (!isSubmitting && !pending.blocked && !txHash)) && (
+          {(isSuccess || (!isSubmitting && !pending.blocked)) && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
