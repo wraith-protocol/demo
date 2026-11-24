@@ -209,5 +209,20 @@
     "deriveStealthKeys": "Derive Stealth Keys",
     "cellsFound_one": "{{count}} cell found",
     "cellsFound_other": "{{count}} cells found"
+  },
+  "submission": {
+    "pendingTitle": "Previous transfer awaiting confirmation",
+    "pendingBody": "A transfer from this wallet may already have been broadcast. New transfers are paused until the network reports its outcome, so nothing is sent twice.",
+    "status": "Status",
+    "statusPending": "Broadcast — waiting for confirmation",
+    "statusUnacknowledged": "Outcome unknown — checking the network",
+    "statusUnknown": "Status unavailable — try again shortly",
+    "statusReplaced": "Replaced by another transaction — review required",
+    "checkStatus": "Check status",
+    "checking": "Checking...",
+    "stopTracking": "Stop tracking (reviewed)",
+    "foreignNotice_one": "{{count}} unresolved transfer belongs to another account or network. Switch back to check it.",
+    "foreignNotice_other": "{{count}} unresolved transfers belong to another account or network. Switch back to check them.",
+    "failedOnChain": "The transaction was included but failed on-chain. No funds were transferred."
   }
 }
