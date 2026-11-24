@@ -1,4 +1,3 @@
-// @ts-nocheck  (temporary: wave-6 merges left stale symbol names; unblocks CI)
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -78,42 +77,6 @@ type HorizonAccount = {
   sequence: string;
   balances?: HorizonBalance[];
 };
-
-function formatAsset(value: number, assetKey: StellarAssetKey) {
-  const assetInfo = getAssetByKey(assetKey);
-  return value.toFixed(assetInfo.decimals).replace(/\.?0+$/, '');
-}
-
-function validateMetaAddress(value: string) {
-  if (!value) return 'Recipient meta-address is required';
-  if (!value.startsWith('st:xlm:')) return 'Not a valid Stellar stealth meta-address';
-
-  try {
-    decodeStealthMetaAddress(value);
-    return '';
-  } catch {
-    return 'Not a valid Stellar stealth meta-address';
-  }
-}
-
-function validateAmount(value: string, assetKey: StellarAssetKey) {
-  if (!value) return 'Amount is required';
-  if (!/^(?:\d+|\d*\.\d+)$/.test(value)) return `Enter a valid ${assetKey} amount`;
-
-  const assetInfo = getAssetByKey(assetKey);
-  const decimalPart = value.split('.')[1];
-  if (decimalPart && decimalPart.length > assetInfo.decimals) {
-    return `${assetKey} supports up to ${assetInfo.decimals} decimals`;
-  }
-
-  const parsed = Number(value);
-  const minAmount = getMinAmount(assetKey);
-  if (!Number.isFinite(parsed) || parsed <= minAmount) {
-    return `Amount must be greater than ${minAmount} ${assetKey}`;
-  }
-
-  return '';
-}
 
 export function StellarSend() {
   const { t } = useTranslation();
@@ -358,7 +321,7 @@ export function StellarSend() {
     isKnown: boolean;
     isNative: boolean;
   }> = useMemo(() => {
-    const knownAssetKeys = new Set(STELLAR_ASSETS.map((a) => a.key));
+    const knownAssetKeys = new Set<string>(STELLAR_ASSETS.map((a) => a.key));
     const entries: Array<{
       key: string;
       code: string;
@@ -728,40 +691,16 @@ export function StellarSend() {
         setRetryStatus('');
       }
 
-      let builder = new TransactionBuilder(sourceAccount, { fee: '100', networkPassphrase });
-
-      if (stealthExists) {
-        builder = builder.addOperation(
-          Operation.payment({
-            destination: result.stealthAddress,
-            asset: sendAsset,
-            amount: amountValue,
-          }),
-        );
-      } else if (currentAssetInfo.isNative) {
-        builder = builder.addOperation(
-          Operation.createAccount({
-            destination: result.stealthAddress,
-            startingBalance: amountValue,
-          }),
-        );
-      } else {
-        builder = builder.addOperation(
-          Operation.payment({
-            destination: result.stealthAddress,
-            asset: sendAsset,
-            amount: amountValue,
-          }),
-        );
-      }
-
-      builder = builder.setTimeout(30);
-
-      if (memo) {
-        builder = builder.addMemo(Memo.text(memo));
-      }
-
-      const classicTx = builder.build();
+      const classicTx = buildPaymentTransaction({
+        sourceAccount,
+        destination: result.stealthAddress,
+        asset: sendAsset,
+        amount: amountValue,
+        isNative: currentAssetInfo.isNative,
+        destinationExists: stealthExists,
+        networkPassphrase,
+        memo,
+      });
 
       const intent = buildStellarSendIntent({
         address,
@@ -856,18 +795,15 @@ export function StellarSend() {
         const freshData = await freshRes.json();
         const freshAccount = new Account(address, freshData.sequence);
 
-        const announceTx = new TransactionBuilder(freshAccount, { fee: '100', networkPassphrase })
-          .addOperation(
-            announcerContract.call(
-              'announce',
-              nativeToScVal(SCHEME_ID, { type: 'u32' }),
-              new Address(result.stealthAddress).toScVal(),
-              xdr.ScVal.scvBytes(Buffer.from(result.ephemeralPubKey)),
-              xdr.ScVal.scvBytes(Buffer.from([result.viewTag])),
-            ),
-          )
-          .setTimeout(30)
-          .build();
+        const announceTx = buildAnnouncementTransaction({
+          sourceAccount: freshAccount,
+          announcerContractId: getStellarContractId('announcer'),
+          schemeId: SCHEME_ID,
+          stealthAddress: result.stealthAddress,
+          ephemeralPubKey: result.ephemeralPubKey,
+          viewTag: result.viewTag,
+          networkPassphrase,
+        });
 
         const simulated: unknown = await withRetry(() => soroban.simulateTransaction(announceTx), {
           onRetry,
@@ -1330,7 +1266,7 @@ export function StellarSend() {
                 role="img"
               >
                 <QrReader
-                  constraints={{ facingMode: { ideal: 'environment' } }}
+                  constraints={{ video: { facingMode: { ideal: 'environment' } } }}
                   scanDelay={300}
                   onResult={handleScanResult}
                   containerStyle={{ width: '100%' }}
