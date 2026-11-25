@@ -23,8 +23,9 @@ export interface SubmissionScope {
  *   returns, and the nonce stays pinned so any rebuild replaces in place.
  * - Solana: the fee-payer signature plus the blockhash validity window; the
  *   signed bytes are kept so retries rebroadcast the identical transaction.
- * - CKB: the signed transaction hash and its input out-points; consumed
- *   inputs prove the transaction can no longer be committed.
+ * - CKB: the signed transaction hash and its input out-points; a consumed
+ *   input with the hash absent may be a wallet replacement that already
+ *   paid, so it requires review rather than permitting a rebuild.
  */
 export type ChainTxIdentity =
   | { kind: 'evm'; chainId: number; from: string; nonce: number; txHash?: string }
@@ -410,15 +411,16 @@ export async function broadcastStellarTransaction(
 /**
  * Authoritative (or explicitly non-authoritative) view of a broadcast
  * attempt. Only `dropped` permits a rebuild: it means the original
- * transaction can provably never land (expired blockhash, consumed inputs,
- * or an unused pinned nonce that any rebuild must reuse).
+ * transaction can provably never land and that no replacement could have
+ * satisfied the operation (an expired Solana blockhash, or an unused EVM
+ * nonce that any rebuild must reuse). Consumed CKB inputs are `replaced`.
  */
 export type ReconcileVerdict =
   | { state: 'confirmed'; txHash: string }
   | { state: 'failed'; txHash: string; reason: string }
   | { state: 'pending' }
   | { state: 'unknown'; reason: string }
-  | { state: 'dropped'; reason: 'expired' | 'dropped' | 'inputs-consumed' }
+  | { state: 'dropped'; reason: 'expired' | 'dropped' }
   | { state: 'replaced'; reason: string };
 
 export type BroadcastErrorClass = 'rejected' | 'ambiguous' | 'already-known';
