@@ -1,42 +1,54 @@
-import { test as base } from '@playwright/test';
+import { test as base, expect } from './fixtures';
 
-export const test = base.extend<{
-  mockTime: Date;
-  mockBalances: Record<string, string>;
-  mockNetworkResponses: Record<string, any>;
-}>({
-  mockTime: async ({}, use) => {
-    const fixedDate = new Date('2025-01-15T12:00:00.000Z');
-    await use(fixedDate);
-  },
-  mockBalances: async ({}, use) => {
-    const balances = {
-      horizen: '1.5',
-      stellar: '1000',
-      solana: '50',
-      ckb: '1000000',
-    };
-    await use(balances);
-  },
-  mockNetworkResponses: async ({}, use) => {
-    const responses = {
-      horizenNameResolve: {
-        jsonrpc: '2.0',
-        id: 1,
-        result:
-          '0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000041aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0011223300000000000000000000000000000000000000000000000000000000000000',
-      },
-      horizenBalance: {
-        jsonrpc: '2.0',
-        id: 1,
-        result: '0x152d02c7e14af6800000',
-      },
-      stellarBalance: '1000000000',
-      solanaBalance: 50000000000,
-      ckbBalance: 100000000000,
-    };
-    await use(responses);
-  },
+export const FROZEN_TIME = new Date('2025-01-15T12:00:00.000Z');
+export const MOCK_WALLET = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
+export const MOCK_TX_HASH = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+export const RECIPIENT_META =
+  'st:xlm:5a1922b5614eed2ef72ebad40abc5d014f7c27b6e1de5dc36976e9eec4cbe29e6b912a495f9f14513d54a00a7887f986d394a30a77239475caf211e8094b6cdb';
+
+export const test = base.extend<{ frozenEnvironment: void }>({
+  frozenEnvironment: [
+    async ({ page }, use) => {
+      // Time: fix Date without freezing timers, so the app keeps running.
+      await page.clock.setFixedTime(FROZEN_TIME);
+
+      // Motion: the config sets reducedMotion; this is a second guarantee.
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+
+      // Fonts: never hit Google Fonts, so only the container's fonts render.
+      await page.route(/fonts\.(googleapis|gstatic)\.com|plausible\.io/, (route) =>
+        route.fulfill({ status: 200, contentType: 'text/css', body: '' }),
+      );
+      // Consent: pre-decline analytics so the cookie banner never renders.
+      await page.addInitScript(() => {
+        try {
+          localStorage.setItem('wraith-telemetry-consent', 'declined');
+        } catch {}
+      });
+      // Network: abort every non-local request so nothing external can stall the load event.
+      await page.route(/^https?:\/\/(?!127\.0\.0\.1)/, (route) => route.abort());
+
+      // Randomness: seeded PRNG so ephemeral keys (and so stealth addresses) repeat.
+      await page.addInitScript(() => {
+        let s = 123456789;
+        const next = () => {
+          s = (s * 1664525 + 1013904223) >>> 0;
+          return s & 0xff;
+        };
+        const original = crypto.getRandomValues.bind(crypto);
+        crypto.getRandomValues = ((arr: any) => {
+          if (arr instanceof Uint8Array) {
+            for (let i = 0; i < arr.length; i++) arr[i] = next();
+            return arr;
+          }
+          return original(arr);
+        }) as typeof crypto.getRandomValues;
+      });
+
+      await use();
+    },
+    { auto: true },
+  ],
 });
 
-export const expect = base.expect;
+export { expect };

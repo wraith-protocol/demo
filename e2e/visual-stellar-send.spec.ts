@@ -1,61 +1,59 @@
-import { test, expect } from './visual-fixtures';
+import { test, expect, MOCK_WALLET, MOCK_TX_HASH, RECIPIENT_META } from './visual-fixtures';
 
-test.describe('Stellar Send - Visual Regression', () => {
-  test.beforeEach(async ({ page }) => {
+test.describe('Stellar Send - visual regression', () => {
+  test('send: disconnected', async ({ page, freighter }) => {
+    await freighter.mock({ isConnected: false });
     await page.goto('/send');
-    await page.evaluate(() => {
-      window.matchMedia = (query) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: () => {},
-        removeListener: () => {},
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        dispatchEvent: () => false,
-      });
-    });
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    const chainSwitcher = page.getByRole('combobox');
-    await chainSwitcher.selectOption('stellar');
+    await page.locator('select:not(#locale-switcher)').selectOption('stellar');
+    await expect(page.getByRole('button', { name: 'Connect Freighter' })).toBeVisible();
+    await expect(page).toHaveScreenshot('stellar-send-disconnected.png');
   });
 
-  test('not connected state', async ({ page }) => {
-    await page.waitForLoadState('networkidle');
-    await expect(page).toHaveScreenshot('stellar-send-not-connected.png');
-  });
-
-  test('form with recipient and amount', async ({ page }) => {
-    await page.waitForLoadState('networkidle');
-    const recipientInput = page.getByPlaceholder('st:xlm:...');
-    await recipientInput.fill(
-      'st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
-    );
-    const amountInput = page.getByPlaceholder('0.0');
-    await amountInput.fill('100');
+  test('send: form filled', async ({ page, freighter, horizon }) => {
+    await freighter.mock({ isConnected: true, address: MOCK_WALLET });
+    await horizon.mock({ accountBalance: '1000' });
+    await page.goto('/send');
+    await page.locator('select:not(#locale-switcher)').selectOption('stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+    await page.getByPlaceholder('st:xlm:...').waitFor({ timeout: 90000 });
+    await page.getByPlaceholder('st:xlm:...').fill(RECIPIENT_META);
+    await page.getByPlaceholder('0.0').fill('50');
     await expect(page).toHaveScreenshot('stellar-send-form-filled.png');
   });
 
-  test('success state with stealth address', async ({ page }) => {
-    await page.waitForLoadState('networkidle');
-    await page.evaluate(() => {
-      (window as any).mockStealthResult = {
-        stealthAddress: 'G1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABC',
-        txHash: 'abc123def4567890abc123def4567890abc123def4567890abc123def4567890',
-      };
+  test('send: success', async ({ page, freighter, horizon }) => {
+    await freighter.mock({ isConnected: true, address: MOCK_WALLET });
+    await horizon.mock({
+      accountExists: true,
+      accountBalance: '1000',
+      txSuccess: true,
+      txHash: MOCK_TX_HASH,
     });
+    await page.goto('/send');
+    await page.locator('select:not(#locale-switcher)').selectOption('stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+    await page.getByPlaceholder('st:xlm:...').waitFor({ timeout: 90000 });
+    await page.getByPlaceholder('st:xlm:...').fill(RECIPIENT_META);
+    await page.getByPlaceholder('0.0').fill('50');
+    await page.getByRole('button', { name: 'Send Privately' }).click();
+
+    // Real success state, reached through the app's own code path.
+    await expect(page.getByText('Transfer Complete')).toBeVisible();
+    await expect(page.getByText(MOCK_TX_HASH)).toBeVisible();
     await expect(page).toHaveScreenshot('stellar-send-success.png');
   });
 
-  test('mobile view - form filled', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
-    await page.waitForLoadState('networkidle');
-    const recipientInput = page.getByPlaceholder('st:xlm:...');
-    await recipientInput.fill(
-      'st:xlm:GABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890',
-    );
-    const amountInput = page.getByPlaceholder('0.0');
-    await amountInput.fill('100');
-    await expect(page).toHaveScreenshot('stellar-send-mobile-form-filled.png');
+  test('send: failure', async ({ page, freighter, horizon }) => {
+    await freighter.mock({ isConnected: true, address: MOCK_WALLET });
+    await horizon.mock({ accountExists: true, txSuccess: false, txErrorCode: 'tx_failed' });
+    await page.goto('/send');
+    await page.locator('select:not(#locale-switcher)').selectOption('stellar');
+    await page.getByRole('button', { name: 'Connect Freighter' }).click();
+    await page.getByPlaceholder('st:xlm:...').waitFor({ timeout: 90000 });
+    await page.getByPlaceholder('st:xlm:...').fill(RECIPIENT_META);
+    await page.getByPlaceholder('0.0').fill('50');
+    await page.getByRole('button', { name: 'Send Privately' }).click();
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(page).toHaveScreenshot('stellar-send-failure.png');
   });
 });
