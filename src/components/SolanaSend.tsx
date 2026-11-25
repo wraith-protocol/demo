@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { useState, useCallback } from 'react';
 import {
   Connection,
@@ -43,12 +45,18 @@ export function SolanaSend() {
   } | null>(null);
 
   const handleSend = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!connected || !publicKey) {
       setError(t('common.walletNotConnected'));
       return;
     }
 
     setError('');
+    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
 
     try {
@@ -146,6 +154,7 @@ export function SolanaSend() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      finishTransaction();
       setIsPending(false);
     }
   }, [pendingTransfer, publicKey, signTransaction, t]);

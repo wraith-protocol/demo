@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStellarWallet } from '@/context/StellarWalletContext';
@@ -358,7 +360,7 @@ export default function StellarSplit() {
 
   // Phase: idle | validated | submitting | done
   type Phase = 'idle' | 'validated' | 'submitting' | 'done';
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useTransactionState<Phase>('idle', (value) => value === 'submitting');
 
   const [csvText, setCsvText] = useState('');
   const [rows, setRows] = useState<BatchRow[]>([]);
@@ -442,6 +444,11 @@ export default function StellarSplit() {
   }, [csvText]);
 
   const handleSubmit = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address) {
       setError(t('common.walletNotConnected'));
       return;

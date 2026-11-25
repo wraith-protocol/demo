@@ -40,8 +40,8 @@ describe('service worker update prompt', () => {
 
     expect(applying.status).toBe('applying');
     expect(isApplyingUpdate(applying)).toBe(true);
-    // The prompt is replaced by the busy state, so it must not linger.
-    expect(shouldPromptForUpdate(applying)).toBe(false);
+    // Keep progress and failure feedback visible in the update prompt.
+    expect(shouldPromptForUpdate(applying)).toBe(true);
   });
 
   it('ignores a duplicate refresh while already applying', () => {
@@ -60,6 +60,6 @@ describe('service worker update prompt', () => {
 
     expect(failed.status).toBe('error');
     expect(failed.error).toBe('activation failed');
-    expect(shouldPromptForUpdate(failed)).toBe(false);
+    expect(shouldPromptForUpdate(failed)).toBe(true);
   });
 });

@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -96,11 +98,14 @@ export function StellarSend() {
   const { address, isConnected, signTransaction, isNetworkMismatch } = useStellarWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
-  const [recipient, setRecipient] = useState(paramTo || '');
-  const [amount, setAmount] = useState(paramAmount || '');
-  const [assetKey, setAssetKey] = useState<StellarAssetKey>(initialAssetKey);
+  const [recipient, setRecipient] = useSendDraft<string>('stellar:recipient', paramTo || '');
+  const [amount, setAmount] = useSendDraft<string>('stellar:amount', paramAmount || '');
+  const [assetKey, setAssetKey] = useSendDraft<StellarAssetKey>(
+    'stellar:assetKey',
+    initialAssetKey,
+  );
   const [allBalances, setAllBalances] = useState<Record<string, string>>({});
-  const [memo, setMemo] = useState(paramMemo || '');
+  const [memo, setMemo] = useSendDraft<string>('stellar:memo', paramMemo || '');
   const { isKnownAddress, addContact } = useContacts();
   const { isKnownRecipient, addToHistory } = useNameHistory();
   const [error, setError] = useState('');
@@ -398,6 +403,8 @@ export function StellarSend() {
     });
 
     simulationTimeoutRef.current = globalThis.setTimeout(async () => {
+      if (transactionBlockReason()) return;
+      const finishSimulation = beginTransactionActivity('simulating');
       try {
         const result = await simulateStellarSendAnnouncement(
           {
@@ -434,6 +441,8 @@ export function StellarSend() {
           events: [],
           intent: null,
         });
+      } finally {
+        finishSimulation();
       }
     }, 500);
 
@@ -565,6 +574,11 @@ export function StellarSend() {
     recipient && !isKnownAddress(recipient) && !isKnownRecipient(recipient);
 
   const handleSend = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     setSubmitAttempted(true);
     setTouched({ recipient: true, amount: true });
 
@@ -635,6 +649,7 @@ export function StellarSend() {
     }
 
     setError('');
+    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
     setRetryStatus('');
     let txHashHex = '';
@@ -882,6 +897,7 @@ export function StellarSend() {
       }
       setError(message);
     } finally {
+      finishTransaction();
       setIsPending(false);
     }
   }, [address, recipient, amount, assetKey, memo, simulation, signTransaction, t]);

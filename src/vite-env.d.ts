@@ -9,6 +9,7 @@ declare const __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 // src/lib/stellar/deployments.ts. Contract IDs are validated before use, so a
 // typo here fails the call rather than scanning the wrong contract.
 interface ImportMetaEnv {
+  readonly VITE_APP_SHELL_VERSION?: string;
   /** `testnet` | `futurenet` | `public`; defaults to `testnet`. */
   readonly VITE_STELLAR_NETWORK?: string;
   readonly VITE_STELLAR_ANNOUNCER_CONTRACT_ID?: string;

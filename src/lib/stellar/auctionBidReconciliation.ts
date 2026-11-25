@@ -1,3 +1,4 @@
+import { beginTransactionActivity } from '../transactionActivity';
 import type { AuctionBid } from '@/lib/auctionEncryption';
 
 export type AuthoritativeTransactionStatus = 'SUCCESS' | 'FAILED' | 'NOT_FOUND';
@@ -52,7 +53,12 @@ export async function reconcileUnknownBids(
   lookup: TransactionStatusLookup,
   update: BidSubmissionUpdater,
 ): Promise<void> {
-  for (const bid of Object.values(bids)) {
-    await reconcileUnknownBid(bid, lookup, update);
+  const finish = beginTransactionActivity('reconciling');
+  try {
+    for (const bid of Object.values(bids)) {
+      await reconcileUnknownBid(bid, lookup, update);
+    }
+  } finally {
+    finish();
   }
 }
