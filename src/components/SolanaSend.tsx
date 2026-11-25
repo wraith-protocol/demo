@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Connection,
@@ -40,8 +42,8 @@ export function SolanaSend() {
   const { t } = useTranslation();
   const { publicKey, connected, signTransaction } = useWallet();
   const addActivity = useActivityStore((state) => state.addEntry);
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('solana:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('solana:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
@@ -59,6 +61,11 @@ export function SolanaSend() {
 
   const handleSend = useCallback(async () => {
     if (isPending || pending.blocked) return;
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!connected || !publicKey || !scope || !signTransaction) {
       setError(t('common.walletNotConnected'));
       return;
@@ -70,6 +77,7 @@ export function SolanaSend() {
 
     setError('');
     setIsPending(true);
+    const finishTransaction = beginTransactionActivity('submitting');
     const draft = JSON.stringify({
       chain: 'solana',
       network: scope.network,
@@ -188,6 +196,7 @@ export function SolanaSend() {
       if (!isAmbiguousSubmissionError(err) && !txHash) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      finishTransaction();
       setIsPending(false);
       pending.refresh();
     }

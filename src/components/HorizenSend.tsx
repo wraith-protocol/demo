@@ -1,3 +1,6 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { useTransactionActivity } from '@/hooks/useTransactionActivity';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useEffect, useMemo, useState } from 'react';
 import {
   useAccount,
@@ -41,8 +44,8 @@ export function HorizenSend() {
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
 
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('horizen:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('horizen:amount', '');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
@@ -70,6 +73,8 @@ export function HorizenSend() {
   const pending = usePendingChainSubmission(scope, adapter);
   const isPending = isSubmitting || pending.blocked;
 
+  useTransactionActivity(isSubmitting || isConfirming);
+
   useEffect(() => {
     if (!txHash || !receipt) return;
     updateActivity(txHash, receipt.status === 'success' ? 'confirmed' : 'failed');
@@ -91,6 +96,11 @@ export function HorizenSend() {
 
   const handleSend = async () => {
     if (isSubmitting || pending.blocked) return;
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address || !scope || !adapter || !publicClient) {
       setError(t('common.walletNotConnected'));
       return;
@@ -102,6 +112,7 @@ export function HorizenSend() {
 
     setError('');
     setIsSubmitting(true);
+    const finishTransaction = beginTransactionActivity('signing');
     let metaAddress = recipient;
     let draft = '';
     let operationId = '';
@@ -206,6 +217,7 @@ export function HorizenSend() {
       if (!isAmbiguousSubmissionError(err)) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      finishTransaction();
       setIsSubmitting(false);
       pending.refresh();
     }

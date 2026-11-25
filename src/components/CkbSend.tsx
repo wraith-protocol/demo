@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
@@ -43,8 +45,8 @@ export function CkbSend() {
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
   const addActivity = useActivityStore((state) => state.addEntry);
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('ckb:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('ckb:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -83,6 +85,11 @@ export function CkbSend() {
 
   const handleSend = useCallback(async () => {
     if (isPending || pending.blocked) return;
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!signer || !scope || !adapter) {
       setError(t('ckb.connectWalletFirst'));
       return;
@@ -98,6 +105,7 @@ export function CkbSend() {
 
     setError('');
     setIsPending(true);
+    const finishTransaction = beginTransactionActivity('submitting');
     const draft = JSON.stringify({
       chain: 'ckb',
       network: scope.network,
@@ -179,6 +187,7 @@ export function CkbSend() {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
       if (err instanceof SubmissionNeedsReviewError) void pending.check();
     } finally {
+      finishTransaction();
       setIsPending(false);
       pending.refresh();
     }

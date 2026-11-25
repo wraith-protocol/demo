@@ -64,7 +64,7 @@ export function reduceUpdateState(state: UpdateState, event: UpdateEvent): Updat
 
 /** Whether the "new version ready" prompt should be visible right now. */
 export function shouldPromptForUpdate(state: UpdateState): boolean {
-  return state.status === 'waiting' && !state.dismissed;
+  return state.status !== 'idle' && !state.dismissed;
 }
 
 /** Whether the update is being applied (controls the button's busy state). */
