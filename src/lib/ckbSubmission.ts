@@ -94,10 +94,12 @@ async function anyInputConsumed(client: CkbStatusClient, inputs: string[]): Prom
 /**
  * Reconciles a CKB submission by transaction hash.
  *
- * The transaction is only `dropped` when it is not committed and at least
- * one of its inputs has been consumed on-chain by another transaction: a
- * UTXO can be spent once, so the original can never be committed and a
- * rebuild cannot double-pay.
+ * A consumed input with the tracked hash absent is never proof that the
+ * payment did not happen: the consuming transaction may be a wallet
+ * replacement or retry that paid the same recipient, and a rebuild from new
+ * inputs could then pay twice. That case is `replaced` (human review), and
+ * no CKB outcome ever permits an automatic rebuild. Only identical signed
+ * bytes are rebroadcast while the outcome is pending or unknown.
  */
 export async function reconcileCkbSubmission(
   client: CkbStatusClient,
@@ -112,7 +114,7 @@ export async function reconcileCkbSubmission(
   if (await anyInputConsumed(client, identity.inputs)) {
     const recheck = await client.getTransactionStatus(identity.txHash);
     if (recheck === 'committed') return { state: 'confirmed', txHash: identity.txHash };
-    return { state: 'dropped', reason: 'inputs-consumed' };
+    return { state: 'replaced', reason: 'input-consumed-by-another-transaction' };
   }
   return status === 'rejected'
     ? { state: 'unknown', reason: 'rejected-by-pool-with-live-inputs' }
