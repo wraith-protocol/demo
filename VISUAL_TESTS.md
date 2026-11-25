@@ -4,7 +4,7 @@ This document describes the visual regression testing setup for the Wraith Proto
 
 ## Overview
 
-Visual regression tests capture screenshots of critical transaction states across all supported chains (Horizen, Stellar, Solana, CKB) to detect UI regressions that functional tests might miss, such as:
+Visual regression tests capture deterministic UI states across all supported chains (Horizen, Stellar, Solana, CKB) to detect regressions that functional tests might miss, such as:
 
 - Clipped addresses or text
 - Overlapping controls
@@ -16,31 +16,22 @@ Visual regression tests capture screenshots of critical transaction states acros
 
 ### Horizen (EVM)
 
-- **Send Page**: Not connected, empty form, recipient filled, wraith name, amount filled, max amount, invalid input error, pending transaction, success state
-- **Receive Page**: Not connected, derive keys, meta address displayed, registration pending, registration complete, scan button, scanning state, no transfers found, payment found, withdraw form, withdrawing state, withdrawn, private key revealed
+- Send and receive disconnected states
 
 ### Stellar
 
-- **Send Page**: Not connected, form filled, success state
-- **Receive Page**: Not connected, meta address displayed, payment found
+- Send disconnected, form-filled, and successful transfer states
+- Receive disconnected state
 
 ### Solana
 
-- **Send Page**: Not connected, form filled, success state
-- **Receive Page**: Not connected, meta address displayed, payment found
+- Send and receive disconnected states
 
 ### CKB
 
-- **Send Page**: Not connected, form filled, stealth cell generated
-- **Receive Page**: Not connected, meta address displayed, stealth cell found
+- Send and receive disconnected states
 
-### Error States
-
-- Invalid meta-address error
-- Name not found error
-- Insufficient balance error
-- Transaction failed error
-- Wallet connection error
+Transaction-success coverage is currently exercised through Stellar's actual send flow with deterministic Freighter and Horizon mocks. Other wallet-dependent states are not represented by assigning unused globals; add them only when tests can drive the app through its real handlers.
 
 ### Viewports
 
@@ -52,10 +43,11 @@ Visual regression tests capture screenshots of critical transaction states acros
 
 ### Initial Setup
 
-Install Playwright browsers:
+Build the app and install the Playwright browser used by the visual suite:
 
 ```bash
-npx playwright install --with-deps
+pnpm build
+pnpm exec playwright install chromium
 ```
 
 ### Run All Visual Tests
@@ -81,30 +73,30 @@ pnpm test:visual:update
 ### Run Specific Test File
 
 ```bash
-npx playwright test e2e/horizen-send.spec.ts
+pnpm exec playwright test e2e/visual-stellar-send.spec.ts
 ```
 
-### Run With Specific Browser
+### Run a Visual Viewport
 
 ```bash
-npx playwright test --project=chromium-desktop
-npx playwright test --project=firefox-desktop
-npx playwright test --project=webkit-desktop
+pnpm exec playwright test --project=chromium-desktop
+pnpm exec playwright test --project=chromium-mobile
+pnpm exec playwright test --project=chromium-tablet
 ```
 
 ## Test Structure
 
-### Fixtures (`e2e/fixtures.ts`)
+### Fixtures (`e2e/visual-fixtures.ts`, `e2e/fixtures.ts`)
 
 Deterministic fixtures for test isolation:
 
-- `mockTime`: Fixed date (2025-01-15T12:00:00.000Z) to avoid time-dependent UI changes
-- `mockBalances`: Fixed balances for all chains
-- `mockNetworkResponses`: Mocked RPC responses for deterministic network behavior
+- Fixed date, reduced motion, and seeded randomness
+- External network requests are blocked unless explicitly mocked
+- Freighter and Horizon mocks from `e2e/fixtures.ts` drive Stellar's actual send flow
 
 ### Test Files
 
-Each chain has dedicated test files (prefixed with `visual-` to distinguish from functional tests):
+Each chain has dedicated test files (prefixed with `visual-` to distinguish them from functional tests):
 
 - `e2e/visual-horizen-send.spec.ts` - Horizen send states
 - `e2e/visual-horizen-receive.spec.ts` - Horizen receive states
@@ -114,7 +106,6 @@ Each chain has dedicated test files (prefixed with `visual-` to distinguish from
 - `e2e/visual-solana-receive.spec.ts` - Solana receive states
 - `e2e/visual-ckb-send.spec.ts` - CKB send states
 - `e2e/visual-ckb-receive.spec.ts` - CKB receive states
-- `e2e/visual-error-states.spec.ts` - Error state coverage
 
 ### Configuration (`playwright.config.ts`)
 
@@ -129,10 +120,10 @@ Each chain has dedicated test files (prefixed with `visual-` to distinguish from
 Tests ensure deterministic rendering by:
 
 1. **Freezing Time**: All tests use a fixed timestamp
-2. **Mocking Network Responses**: RPC calls return predictable data
-3. **Masking Dynamic Data**: Addresses, hashes, and private keys use consistent mock values
+2. **Mocking Stellar Dependencies**: Freighter and Horizon return predictable responses
+3. **Blocking External Requests**: Unmocked network calls cannot affect screenshots
 4. **Reduced Motion**: Animations are disabled to avoid timing issues
-5. **Fixed Fonts**: System fonts are used with consistent rendering
+5. **Pinned Platform**: Baselines and visual CI both use Windows
 
 ## CI Integration
 
@@ -140,7 +131,7 @@ Visual tests run automatically on pull requests via GitHub Actions:
 
 1. Build the application
 2. Install Playwright browsers
-3. Run visual tests against the built preview
+3. Run visual tests against the built preview on Windows, matching the baseline platform
 4. Upload test results and screenshots as artifacts
 5. Failed tests trigger CI failure
 
@@ -151,7 +142,7 @@ When a visual test fails:
 1. Download the `visual-test-results` artifact from the failed CI run
 2. Open `playwright-report/index.html` to view the comparison
 3. Compare baseline vs. actual screenshots
-4. If the change is intentional, run `npm run test:visual:update` locally
+4. If the change is intentional, run `pnpm test:visual:update` on Windows
 5. Commit the updated screenshots
 
 ## Adding New Tests
@@ -159,20 +150,26 @@ When a visual test fails:
 To add visual coverage for a new state:
 
 1. Add a test case to the appropriate spec file
-2. Set up the page state (inputs, mocks, chain selection)
-3. Call `await expect(page).toHaveScreenshot('descriptive-name.png')`
-4. Run the test once to generate the baseline
-5. Commit the new screenshot
+2. Drive the state through the app's UI with real deterministic mocks where needed
+3. Assert the intended state is visible before calling `toHaveScreenshot`
+4. Run `pnpm test:visual:update` on Windows and inspect the generated images
+5. Commit the reviewed screenshots with the test
 
 ### Example
 
 ```typescript
-test('new transaction state', async ({ page }) => {
+test('successful send', async ({ page, freighter, horizon }) => {
+  await freighter.mock({ isConnected: true, address: MOCK_WALLET });
+  await horizon.mock({ txSuccess: true, txHash: MOCK_TX_HASH });
   await page.goto('/send');
-  await page.evaluate(() => {
-    (window as any).mockTransactionState = 'new-state';
-  });
-  await expect(page).toHaveScreenshot('horizen-send-new-state.png');
+  await page.locator('select:not(#locale-switcher)').selectOption('stellar');
+  await page.getByRole('button', { name: 'Connect Freighter' }).click();
+  await page.getByPlaceholder('st:xlm:...').fill(RECIPIENT_META);
+  await page.getByPlaceholder('0.0').fill('50');
+  await page.getByRole('button', { name: 'Send Privately' }).click();
+  await expect(page.getByText('Transfer Complete')).toBeVisible();
+  await expect(page.getByText(MOCK_TX_HASH)).toBeVisible();
+  await expect(page).toHaveScreenshot('stellar-send-success.png');
 });
 ```
 
@@ -180,10 +177,9 @@ test('new transaction state', async ({ page }) => {
 
 1. **Descriptive Names**: Use clear, descriptive screenshot names
 2. **Minimal Changes**: Each test should change only what's necessary
-3. **Wait for Stability**: Use `waitForLoadState('networkidle')` before screenshots
-4. **Mask Secrets**: Never commit real addresses, keys, or hashes
+3. **Assert State**: Verify the expected UI state before taking a screenshot
+4. **Use Fixtures**: Mock wallet and network boundaries, not application state
 5. **Viewport Coverage**: Test critical states on mobile and desktop
-6. **Error States**: Don't forget error and edge case states
 
 ## Troubleshooting
 
@@ -191,7 +187,7 @@ test('new transaction state', async ({ page }) => {
 
 Font rendering can vary across platforms. If this causes false positives:
 
-- Use the same OS for baseline generation and CI (Ubuntu)
+- Use the same OS for baseline generation and CI (Windows)
 - Consider using system fonts consistently
 
 ### Tests timeout

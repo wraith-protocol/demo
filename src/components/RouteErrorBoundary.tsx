@@ -1,9 +1,11 @@
 import {
   Component,
+  createContext,
   lazy,
-  useMemo,
+  useContext,
   type ComponentType,
   type ErrorInfo,
+  type LazyExoticComponent,
   type ReactNode,
 } from 'react';
 
@@ -13,22 +15,36 @@ interface RouteErrorBoundaryProps {
 
 interface RouteErrorBoundaryState {
   error: Error | null;
+  retryAttempt: number;
 }
 
 export type PageLoader = () => Promise<{ default: ComponentType }>;
 
+const retryAttemptContext = createContext(0);
+const lazyPageCache = new WeakMap<PageLoader, Map<number, LazyExoticComponent<ComponentType>>>();
+
+function getLazyPage(loader: PageLoader, attempt: number) {
+  let attempts = lazyPageCache.get(loader);
+  if (!attempts) {
+    attempts = new Map();
+    lazyPageCache.set(loader, attempts);
+  }
+
+  let page = attempts.get(attempt);
+  if (!page) {
+    page = lazy(loader);
+    attempts.set(attempt, page);
+  }
+  return page;
+}
+
 /**
- * Renders a lazy-loaded page. The lazy() component is built here, inside
- * render, rather than once at module scope (as App.tsx's routes used to do):
- * React.lazy calls its loader once per component instance and replays a
- * cached rejection on every later render of that same instance, so a
- * module-level lazy() can never actually be retried after a chunk load
- * fails. Keeping it in useMemo instead ties its lifetime to this instance,
- * so RouteErrorBoundary's retry (which remounts its children, see below)
- * gets a fresh lazy component, and therefore a fresh import() attempt.
+ * Keep each lazy component stable across Suspense retries. React discards
+ * useMemo caches when a component suspends during its initial render.
  */
 export function LazyPage({ loader }: { loader: PageLoader }) {
-  const Page = useMemo(() => lazy(loader), [loader]);
+  const attempt = useContext(retryAttemptContext);
+  const Page = getLazyPage(loader, attempt);
   return <Page />;
 }
 
@@ -50,9 +66,9 @@ export class RouteErrorBoundary extends Component<
   RouteErrorBoundaryProps,
   RouteErrorBoundaryState
 > {
-  state: RouteErrorBoundaryState = { error: null };
+  state: RouteErrorBoundaryState = { error: null, retryAttempt: 0 };
 
-  static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<RouteErrorBoundaryState> {
     return { error };
   }
 
@@ -61,7 +77,7 @@ export class RouteErrorBoundary extends Component<
   }
 
   private retry = () => {
-    this.setState({ error: null });
+    this.setState((state) => ({ error: null, retryAttempt: state.retryAttempt + 1 }));
   };
 
   render() {
@@ -98,6 +114,10 @@ export class RouteErrorBoundary extends Component<
       );
     }
 
-    return this.props.children;
+    return (
+      <retryAttemptContext.Provider value={this.state.retryAttempt ?? 0}>
+        {this.props.children}
+      </retryAttemptContext.Provider>
+    );
   }
 }

@@ -32,6 +32,8 @@ export default defineConfig({
       name: 'chromium-desktop',
       use: {
         ...devices['Desktop Chrome'],
+        baseURL: 'http://127.0.0.1:5174',
+        serviceWorkers: 'block',
         viewport: { width: 1280, height: 720 },
       },
       testMatch: ['**/e2e/visual-*.spec.ts'],
@@ -40,6 +42,8 @@ export default defineConfig({
       name: 'chromium-mobile',
       use: {
         ...devices['Pixel 5'],
+        baseURL: 'http://127.0.0.1:5174',
+        serviceWorkers: 'block',
         viewport: { width: 375, height: 667 },
       },
       testMatch: ['**/e2e/visual-*.spec.ts'],
@@ -48,6 +52,8 @@ export default defineConfig({
       name: 'chromium-tablet',
       use: {
         ...devices['Desktop Chrome'],
+        baseURL: 'http://127.0.0.1:5174',
+        serviceWorkers: 'block',
         viewport: { width: 768, height: 1024 },
       },
       testMatch: ['**/e2e/visual-*.spec.ts'],

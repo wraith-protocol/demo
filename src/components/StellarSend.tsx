@@ -821,7 +821,21 @@ export function StellarSend() {
     } finally {
       setIsPending(false);
     }
-  }, [address, recipient, amount, assetKey, memo, signTransaction, t, paramExp]);
+  }, [
+    address,
+    recipient,
+    amount,
+    assetKey,
+    memo,
+    signTransaction,
+    t,
+    paramExp,
+    canSubmit,
+    isNetworkMismatch,
+    isPending,
+    isExpired,
+    validationError,
+  ]);
 
   const reset = () => {
     const currentSubmission = submissionDraftRef.current;
@@ -1042,7 +1056,7 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}

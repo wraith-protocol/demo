@@ -1,10 +1,42 @@
 import { test as base, expect } from './fixtures';
+import type { Page } from '@playwright/test';
 
 export const FROZEN_TIME = new Date('2025-01-15T12:00:00.000Z');
 export const MOCK_WALLET = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
 export const MOCK_TX_HASH = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 export const RECIPIENT_META =
   'st:xlm:5a1922b5614eed2ef72ebad40abc5d014f7c27b6e1de5dc36976e9eec4cbe29e6b912a495f9f14513d54a00a7887f986d394a30a77239475caf211e8094b6cdb';
+
+export async function selectVisualChain(page: Page, chain: string) {
+  let chainSelect = page.locator('select[aria-label="Chain"]:visible').first();
+  if ((await chainSelect.count()) === 0) {
+    const menuButton = page.getByRole('button', { name: 'Menu' });
+    await menuButton.click();
+    chainSelect = page.locator('select[aria-label="Chain"]:visible').first();
+    await chainSelect.selectOption(chain);
+    await menuButton.click();
+    return;
+  }
+  await chainSelect.selectOption(chain);
+}
+
+export async function openVisualMobileMenu(page: Page) {
+  if ((page.viewportSize()?.width ?? Infinity) < 640) {
+    await page.getByRole('button', { name: 'Menu' }).click();
+  }
+}
+
+export async function closeVisualMobileMenu(page: Page) {
+  if ((page.viewportSize()?.width ?? Infinity) < 640) {
+    await page.getByRole('button', { name: 'Menu' }).click();
+  }
+}
+
+export async function connectVisualWallet(page: Page, buttonName: string) {
+  await openVisualMobileMenu(page);
+  await page.getByRole('button', { name: buttonName }).click();
+  await closeVisualMobileMenu(page);
+}
 
 export const test = base.extend<{ frozenEnvironment: void }>({
   frozenEnvironment: [

@@ -106,13 +106,17 @@ jobs:
           if-no-files-found: ignore
 
   visual-regression:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     needs: build
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
 
       - uses: actions/setup-node@v4
         with:
@@ -122,8 +126,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install chromium
 
       - name: Run visual regression tests
         run: pnpm test:visual
@@ -143,5 +147,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: e2e/screenshots/
+          path: e2e/*-snapshots/*.png
           retention-days: 7
