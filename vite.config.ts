@@ -5,12 +5,27 @@ import fs from 'fs';
 import { VitePWA } from 'vite-plugin-pwa';
 import { extractInitialLoadPaths } from './scripts/initial-load-paths.mjs';
 
+// Use the same deployment identity in the window and the injectManifest build.
+const shellVersion =
+  process.env.VITE_APP_SHELL_VERSION ?? process.env.GITHUB_SHA ?? new Date().toISOString();
+process.env.VITE_APP_SHELL_VERSION = shellVersion;
+
 export default defineConfig({
   test: {
     environment: 'jsdom',
   },
   plugins: [
     react(),
+    {
+      name: 'app-shell-version',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'app-version.json',
+          source: JSON.stringify({ shell: shellVersion }),
+        });
+      },
+    },
     VitePWA({
       // Use 'injectManifest' so our custom SW (app-sw.ts) controls precaching and runtime
       // caching. The custom SW merges PWA precache + Stellar notification background sync.
@@ -77,7 +92,7 @@ export default defineConfig({
       // update is surfaced to the user instead of swapping the app underneath
       // them. `injectRegister: null` disables the auto-injected register script;
       // registration happens in src/hooks/useAppUpdate.ts via
-      // `virtual:pwa-register` so the prompt is driven by app state.
+      // the native ServiceWorker API so reloads stay under the transaction gate.
       registerType: 'prompt',
       injectRegister: null,
 

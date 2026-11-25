@@ -1,3 +1,4 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -141,7 +142,7 @@ export function StellarReceive() {
   const retentionGap = scanner.retentionGap;
 
   const [showNetworkModal, setShowNetworkModal] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [isRegistering, setIsRegistering] = useTransactionState<boolean>(false, Boolean);
   const [isRegSuccess, setIsRegSuccess] = useState(false);
   const [regHash, setRegHash] = useState<string | null>(null);
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false);

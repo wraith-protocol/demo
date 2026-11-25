@@ -13,9 +13,17 @@ import { useAppUpdate } from '@/hooks/useAppUpdate';
  * versioned caches).
  */
 export function UpdatePrompt() {
-  const { promptVisible, applying, error, applyUpdate, dismiss } = useAppUpdate();
+  const {
+    promptVisible,
+    applying,
+    blockedReason,
+    compatibilityError,
+    error,
+    applyUpdate,
+    dismiss,
+  } = useAppUpdate();
 
-  if (!promptVisible) return null;
+  if (!promptVisible && !compatibilityError) return null;
 
   return (
     <div
@@ -26,7 +34,8 @@ export function UpdatePrompt() {
     >
       <div className="mx-auto flex max-w-[720px] flex-wrap items-center gap-3">
         <p className="flex-1 font-body text-sm text-on-surface-variant">
-          A new version of Wraith is ready.
+          {compatibilityError || 'A new version of Wraith is ready.'}
+          {blockedReason && <span className="ml-1">{blockedReason}</span>}
           {error && (
             <span role="alert" className="ml-1 text-error">
               Update failed: {error}
@@ -38,7 +47,7 @@ export function UpdatePrompt() {
           <button
             type="button"
             onClick={applyUpdate}
-            disabled={applying}
+            disabled={applying || !!blockedReason}
             className="h-8 border border-primary px-3 font-heading text-[10px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-primary hover:text-surface disabled:opacity-50"
           >
             {applying ? 'Reloading...' : 'Reload'}

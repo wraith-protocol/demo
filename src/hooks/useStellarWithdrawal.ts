@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useCallback, useEffect, useState } from 'react';
 import { Account, Asset, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
@@ -101,7 +103,7 @@ export function useStellarWithdrawal({
   const [balanceState, setBalanceState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const [withdrawAssetKey, setWithdrawAssetKey] = useState<StellarAssetKey>('XLM');
   const [dest, setDest] = useState('');
-  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawing, setWithdrawing] = useTransactionState<boolean>(false, Boolean);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [feeBumpHash, setFeeBumpHash] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -150,6 +152,11 @@ export function useStellarWithdrawal({
   }, [isNetworkMismatch]);
 
   const withdraw = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest) return;
     if (rejectMismatch()) return;
 
@@ -265,6 +272,11 @@ export function useStellarWithdrawal({
   ]);
 
   const sponsoredWithdraw = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest || !address) return;
     if (rejectMismatch()) return;
 
