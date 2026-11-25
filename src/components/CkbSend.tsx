@@ -22,6 +22,7 @@ import {
   releaseSubmissionDraft,
   reserveSubmissionOperationId,
   submitChainTransactionOnce,
+  SubmissionNeedsReviewError,
 } from '@/lib/submissionIdempotency';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
@@ -176,6 +177,7 @@ export function CkbSend() {
     } catch (err) {
       if (!isAmbiguousSubmissionError(err)) setStealthInfo(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+      if (err instanceof SubmissionNeedsReviewError) void pending.check();
     } finally {
       setIsPending(false);
       pending.refresh();
