@@ -21,7 +21,7 @@ import { pathToFileURL } from 'node:url';
 // A new critical finding always fails CI: critical vulnerabilities are never
 // accepted, only upgraded or removed.
 export const MAX_CRITICAL = 0;
-// High findings that currently have no patched release (see the doc).
+// High findings also fail CI; overrides must remediate them, not accept them.
 export const MAX_HIGH = 0;
 // ---------------------------------------------------------------------------
 
