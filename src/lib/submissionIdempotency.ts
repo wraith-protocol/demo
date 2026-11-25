@@ -1,5 +1,9 @@
 import { APP_VERSION, SUBMISSION_STORAGE_KEY } from './appCompatibility';
-import { assertTransactionCompatible, beginTransactionActivity } from './transactionActivity';
+import {
+  assertTransactionCompatible,
+  beginTransactionActivity,
+  withTransactionActivity,
+} from './transactionActivity';
 const STORAGE_KEY = SUBMISSION_STORAGE_KEY;
 
 export type SubmissionStatus = 'prepared' | 'submitting' | 'submitted' | 'confirmed' | 'failed';
@@ -635,11 +639,13 @@ export async function reconcileChainSubmission(
   scope: SubmissionScope,
   adapter: ChainSubmissionAdapter,
 ): Promise<{ verdict: ReconcileVerdict | null; record: SubmissionRecord | null }> {
-  return withLock(`operation:${operationId}`, async () => {
-    const record = loadScopedRecord(operationId, scope);
-    if (!record || !isUnresolved(record)) return { verdict: null, record };
-    return reconcileUnderLock(operationId, record, adapter);
-  });
+  return withTransactionActivity('reconciling', () =>
+    withLock(`operation:${operationId}`, async () => {
+      const record = loadScopedRecord(operationId, scope);
+      if (!record || !isUnresolved(record)) return { verdict: null, record };
+      return reconcileUnderLock(operationId, record, adapter);
+    }),
+  );
 }
 
 /**
@@ -658,6 +664,17 @@ export async function submitChainTransactionOnce(options: {
   prepare: (context: PrepareContext) => Promise<PreparedChainSubmission>;
 }): Promise<ChainSubmissionResult> {
   const { operationId, scope, adapter, prepare } = options;
+  return withTransactionActivity('submitting', () =>
+    submitChainUnderLock(operationId, scope, adapter, prepare),
+  );
+}
+
+async function submitChainUnderLock(
+  operationId: string,
+  scope: SubmissionScope,
+  adapter: ChainSubmissionAdapter,
+  prepare: (context: PrepareContext) => Promise<PreparedChainSubmission>,
+): Promise<ChainSubmissionResult> {
   return withLock(`operation:${operationId}`, async () => {
     let record = loadScopedRecord(operationId, scope);
     if (!record) {
