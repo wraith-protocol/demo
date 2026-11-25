@@ -131,6 +131,7 @@ export function SolanaSend() {
     setError('');
     setIsPending(true);
     trackEvent('send_submitted');
+    const finishTransaction = beginTransactionActivity('submitting');
 
     try {
       const signed = await signTransaction(pendingTransfer.transaction);

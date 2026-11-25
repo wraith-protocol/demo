@@ -14,6 +14,8 @@ import {
   SystemProgram,
   Transaction as SolanaTransaction,
 } from '@solana/web3.js';
+import { privateKeyToAccount } from 'viem/accounts';
+import type { TransactionSerialized } from 'viem';
 import {
   bindSimulation,
   buildCkbSendIntent,
@@ -27,6 +29,7 @@ import {
   fingerprintWalletContext,
   simulationIsFresh,
   verifyCkbSignedTransaction,
+  verifyEvmSignedTransaction,
   verifyEvmSubmittedTransaction,
   verifySolanaSignedTransaction,
   verifyStellarSignedTransaction,
@@ -81,15 +84,49 @@ function signStellar(transaction: ReturnType<typeof buildStellarTransaction>) {
   return transaction.toXDR();
 }
 
+const EVM_SIGNER = privateKeyToAccount(`0x${'11'.repeat(32)}`);
+const EVM_OTHER_SIGNER = privateKeyToAccount(`0x${'22'.repeat(32)}`);
+const EVM_TO = '0x2222222222222222222222222222222222222222' as const;
+const EVM_STEALTH = '0x3333333333333333333333333333333333333333';
+const EVM_DATA = '0xdeadbeef' as const;
+const EVM_VALUE = 10n ** 17n;
+const EVM_GAS = 90_000n;
+const EVM_MAX_FEE = 2_000_000_000n;
+const EVM_PRIORITY_FEE = 1_000_000_000n;
+const EVM_NONCE = 7;
+
 function evmIntent() {
   return buildEvmSendIntent({
     chainId: 2651420,
-    account: '0x1111111111111111111111111111111111111111',
-    to: '0x2222222222222222222222222222222222222222',
-    stealthAddress: '0x3333333333333333333333333333333333333333',
-    data: '0xdeadbeef',
-    value: 10n ** 17n,
+    account: EVM_SIGNER.address,
+    to: EVM_TO,
+    stealthAddress: EVM_STEALTH,
+    data: EVM_DATA,
+    value: EVM_VALUE,
+    gas: EVM_GAS,
+    maxFeePerGas: EVM_MAX_FEE,
+    maxPriorityFeePerGas: EVM_PRIORITY_FEE,
+    nonce: EVM_NONCE,
   });
+}
+
+function evmSignRequest(overrides: Record<string, unknown> = {}) {
+  return {
+    account: EVM_SIGNER.address,
+    chainId: 2651420,
+    to: EVM_TO,
+    data: EVM_DATA,
+    value: EVM_VALUE,
+    gas: EVM_GAS,
+    maxFeePerGas: EVM_MAX_FEE,
+    maxPriorityFeePerGas: EVM_PRIORITY_FEE,
+    nonce: EVM_NONCE,
+    ...overrides,
+  };
+}
+
+function signEvm(overrides: Record<string, unknown> = {}): Promise<TransactionSerialized> {
+  return EVM_SIGNER.signTransaction(evmSignRequest(overrides)) as Promise<TransactionSerialized>;
 }
 
 function solanaIntent() {
@@ -275,18 +312,21 @@ describe('stellar payload verification', () => {
 });
 
 describe('horizen payload verification', () => {
-  it('accepts the unchanged submitted transaction', () => {
-    const intent = evmIntent();
+  const submitted = () => ({
+    chainId: 2651420,
+    from: EVM_SIGNER.address,
+    to: EVM_TO as string | null,
+    value: EVM_VALUE,
+    input: EVM_DATA,
+    gas: EVM_GAS,
+    maxFeePerGas: EVM_MAX_FEE,
+    maxPriorityFeePerGas: EVM_PRIORITY_FEE,
+    nonce: EVM_NONCE,
+    type: 'eip1559',
+  });
 
-    expect(
-      verifyEvmSubmittedTransaction(intent, {
-        chainId: 2651420,
-        from: '0x1111111111111111111111111111111111111111',
-        to: '0x2222222222222222222222222222222222222222',
-        value: 10n ** 17n,
-        input: '0xdeadbeef',
-      }).ok,
-    ).toBe(true);
+  it('accepts the unchanged submitted transaction', () => {
+    expect(verifyEvmSubmittedTransaction(evmIntent(), submitted()).ok).toBe(true);
   });
 
   it.each([
@@ -295,18 +335,67 @@ describe('horizen payload verification', () => {
     ['contract', { input: '0xfeedface' }],
     ['network', { chainId: 1 }],
     ['account', { from: '0x5555555555555555555555555555555555555555' }],
+    ['gas', { gas: 100_000n }],
+    ['maxFeePerGas', { maxFeePerGas: 3_000_000_000n }],
+    ['maxPriorityFeePerGas', { maxPriorityFeePerGas: 1n }],
+    ['nonce', { nonce: 8 }],
+    ['type', { type: 'legacy' }],
   ])('rejects a submitted transaction with a different %s', (_label, overrides) => {
-    const intent = evmIntent();
-    const submitted = {
-      chainId: 2651420,
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222' as string | null,
-      value: 10n ** 17n,
-      input: '0xdeadbeef',
-      ...overrides,
-    };
+    expect(verifyEvmSubmittedTransaction(evmIntent(), { ...submitted(), ...overrides }).ok).toBe(
+      false,
+    );
+  });
 
-    expect(verifyEvmSubmittedTransaction(intent, submitted).ok).toBe(false);
+  it('fails closed when fee or network fields are missing', () => {
+    const {
+      maxFeePerGas: _maxFeePerGas,
+      chainId: _chainId,
+      ...withoutRequiredFields
+    } = submitted();
+
+    expect(verifyEvmSubmittedTransaction(evmIntent(), withoutRequiredFields).ok).toBe(false);
+  });
+
+  it('accepts a wallet signed transaction that matches the reviewed intent', async () => {
+    const verification = await verifyEvmSignedTransaction(evmIntent(), await signEvm());
+
+    expect(verification.ok).toBe(true);
+    expect(verification.mismatches).toEqual([]);
+  });
+
+  it.each([
+    ['amount', { value: 1n }],
+    ['recipient', { to: '0x4444444444444444444444444444444444444444' }],
+    ['contract data', { data: '0xfeedface' }],
+    ['network', { chainId: 1 }],
+    ['gas', { gas: 150_000n }],
+    ['maxFeePerGas', { maxFeePerGas: 3_000_000_000n }],
+    ['maxPriorityFeePerGas', { maxPriorityFeePerGas: 1n }],
+    ['nonce', { nonce: 8 }],
+  ])('rejects a tampered signed transaction with a different %s', async (_label, overrides) => {
+    const verification = await verifyEvmSignedTransaction(evmIntent(), await signEvm(overrides));
+
+    expect(verification.ok).toBe(false);
+  });
+
+  it('rejects a signed transaction from a different account', async () => {
+    const verification = await verifyEvmSignedTransaction(
+      evmIntent(),
+      (await EVM_OTHER_SIGNER.signTransaction(evmSignRequest())) as TransactionSerialized,
+    );
+
+    expect(verification.ok).toBe(false);
+    expect(verification.mismatches.map((mismatch) => mismatch.field)).toContain('account');
+  });
+
+  it('fails closed for an unparseable wallet response', async () => {
+    const verification = await verifyEvmSignedTransaction(
+      evmIntent(),
+      'not-a-transaction' as TransactionSerialized,
+    );
+
+    expect(verification.ok).toBe(false);
+    expect(verification.mismatches.map((mismatch) => mismatch.field)).toContain('signedPayload');
   });
 });
 

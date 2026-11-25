@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   useAccount,
   useBalance,
   usePublicClient,
-  useSendTransaction,
   useWaitForTransactionReceipt,
+  useWalletClient,
 } from 'wagmi';
+import type { Hex } from 'viem';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { useTransactionActivity } from '@/hooks/useTransactionActivity';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
 import { useTranslation } from 'react-i18next';
@@ -13,25 +17,35 @@ import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { IntentSummary } from '@/components/IntentSummary';
-import { buildEvmSendIntent, verifyEvmSubmittedTransaction } from '@/lib/txIntent';
+import {
+  prepareEvmSend,
+  submitVerifiedEvmTransaction,
+  type EvmBroadcaster,
+  type EvmFeeClient,
+  type EvmSigner,
+  type EvmSignRequest,
+} from '@/lib/evmSubmission';
+import type { TransactionIntent } from '@/lib/txIntent';
 import { trackEvent } from '@/lib/telemetry';
 
 export function HorizenSend() {
   const { t } = useTranslation();
   const { isConnected, address } = useAccount();
   const { data: balanceData } = useBalance({ address });
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId: horizenTestnet.id });
+  const walletClient = useWalletClient({ chainId: horizenTestnet.id }).data;
 
   const [recipient, setRecipient] = useSendDraft<string>('horizen:recipient', '');
   const [amount, setAmount] = useSendDraft<string>('horizen:amount', '');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
   const [pendingIntent, setPendingIntent] = useState<{
-    intent: ReturnType<typeof buildEvmSendIntent>;
-    request: { to: `0x${string}`; data: `0x${string}`; value?: bigint };
+    intent: TransactionIntent;
+    request: EvmSignRequest;
   } | null>(null);
+  const [txHash, setTxHash] = useState<Hex | undefined>();
+  const [isPending, setIsPending] = useState(false);
 
-  const { sendTransactionAsync: sendTransaction, data: txHash, isPending } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useTransactionActivity(isPending || isConfirming);
@@ -89,24 +103,22 @@ export function HorizenSend() {
         chain: 'horizen',
       });
 
-      const request = {
-        to: result.transaction.to as `0x${string}`,
-        data: result.transaction.data as `0x${string}`,
-        value: result.transaction.value,
-      };
+      if (!publicClient) {
+        setError('Transaction verification is unavailable. Nothing was submitted.');
+        return;
+      }
+
+      const { intent, request } = await prepareEvmSend(publicClient as EvmFeeClient, {
+        chainId: horizenTestnet.id,
+        account: address as Hex,
+        to: result.transaction.to as Hex,
+        data: result.transaction.data as Hex,
+        value: result.transaction.value ?? 0n,
+        stealthAddress: result.stealthAddress,
+      });
 
       setStealthResult(result);
-      setPendingIntent({
-        intent: buildEvmSendIntent({
-          chainId: horizenTestnet.id,
-          account: address,
-          to: request.to,
-          stealthAddress: result.stealthAddress,
-          data: request.data,
-          value: request.value ?? 0n,
-        }),
-        request,
-      });
+      setPendingIntent({ intent, request });
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
@@ -115,7 +127,7 @@ export function HorizenSend() {
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!pendingIntent) return;
     if (!address || pendingIntent.intent.account !== address.toLowerCase()) {
       setPendingIntent(null);
@@ -125,48 +137,35 @@ export function HorizenSend() {
     }
 
     setError('');
-    trackEvent('send_submitted');
-    sendTransaction(pendingIntent.request);
+    setIsPending(true);
+    const finishTransaction = beginTransactionActivity('submitting');
+
+    try {
+      const hash = await submitVerifiedEvmTransaction(
+        walletClient as EvmSigner | undefined,
+        publicClient as EvmBroadcaster | undefined,
+        pendingIntent.intent,
+        pendingIntent.request,
+      );
+      setTxHash(hash);
+      setPendingIntent(null);
+      trackEvent('send_submitted');
+    } catch (err) {
+      setPendingIntent(null);
+      setStealthResult(null);
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      finishTransaction();
+      setIsPending(false);
+    }
   };
-
-  useEffect(() => {
-    if (!txHash || !pendingIntent || !publicClient) return;
-
-    let cancelled = false;
-    publicClient
-      .getTransaction({ hash: txHash })
-      .then((submitted) => {
-        if (cancelled) return;
-        const verification = verifyEvmSubmittedTransaction(pendingIntent.intent, {
-          chainId: submitted.chainId,
-          from: submitted.from,
-          to: submitted.to,
-          value: submitted.value,
-          input: submitted.input,
-        });
-        if (!verification.ok) {
-          setError(
-            `The wallet submitted a transaction that does not match the confirmed intent (${verification.mismatches
-              .map((mismatch) => mismatch.field)
-              .join(', ')}). Do not retry without a fresh review.`,
-          );
-        }
-      })
-      .catch(() => {
-        // Receipt verification is best-effort; the pending state still reflects
-        // the wallet's reported hash.
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [txHash, pendingIntent, publicClient]);
 
   const reset = () => {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
     setPendingIntent(null);
+    setTxHash(undefined);
     setError('');
   };
 

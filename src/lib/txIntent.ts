@@ -8,6 +8,7 @@ import {
   type Operation,
 } from '@stellar/stellar-sdk';
 import type { Transaction as SolanaTransaction } from '@solana/web3.js';
+import { parseTransaction, recoverTransactionAddress, type TransactionSerialized } from 'viem';
 
 export type IntentChain = 'horizen' | 'stellar' | 'solana' | 'ckb';
 
@@ -502,8 +503,11 @@ export interface EvmSendIntentParams {
   stealthAddress: string;
   data: string;
   value: bigint;
-  gas?: bigint;
-  maxFeePerGas?: bigint;
+  /** The exact fee and nonce the wallet is being asked to sign. */
+  gas: bigint;
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+  nonce: number;
   memo?: string;
 }
 
@@ -515,9 +519,7 @@ export function buildEvmSendIntent(params: EvmSendIntentParams): TransactionInte
     recipient: params.stealthAddress.toLowerCase(),
     asset: 'ETH',
     amount: params.value.toString(),
-    fee: params.maxFeePerGas
-      ? `${params.gas ?? 0n} gas @ ${params.maxFeePerGas} wei`
-      : 'wallet-determined',
+    fee: `${params.gas} gas @ ${params.maxFeePerGas} wei (priority ${params.maxPriorityFeePerGas})`,
     memo: params.memo?.trim() ? params.memo.trim() : null,
     contract: {
       address: params.to.toLowerCase(),
@@ -528,6 +530,11 @@ export function buildEvmSendIntent(params: EvmSendIntentParams): TransactionInte
       chainId: String(params.chainId),
       data: params.data.toLowerCase(),
       value: params.value.toString(),
+      gas: params.gas.toString(),
+      maxFeePerGas: params.maxFeePerGas.toString(),
+      maxPriorityFeePerGas: params.maxPriorityFeePerGas.toString(),
+      nonce: String(params.nonce),
+      type: 'eip1559',
     },
   };
 }
@@ -538,6 +545,12 @@ export interface EvmSubmittedTransaction {
   to: string | null;
   value: bigint;
   input: string;
+  gas?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+  gasPrice?: bigint;
+  nonce?: number;
+  type?: string;
 }
 
 export function verifyEvmSubmittedTransaction(
@@ -545,13 +558,12 @@ export function verifyEvmSubmittedTransaction(
   submitted: EvmSubmittedTransaction,
 ): IntentVerification {
   const mismatches: IntentMismatch[] = [];
-  const actualChainId = submitted.chainId ?? Number(expected.extra.chainId);
 
-  if (String(actualChainId) !== expected.extra.chainId) {
+  if (String(submitted.chainId) !== expected.extra.chainId) {
     mismatches.push({
       field: 'network',
       expected: expected.extra.chainId,
-      actual: String(actualChainId),
+      actual: submitted.chainId === undefined ? '(missing)' : String(submitted.chainId),
     });
   }
 
@@ -584,12 +596,82 @@ export function verifyEvmSubmittedTransaction(
     });
   }
 
+  // Fee and nonce are part of what the wallet authorizes. An intent without
+  // them cannot be verified, so it must never authorize a broadcast.
+  for (const field of ['gas', 'maxFeePerGas', 'maxPriorityFeePerGas', 'nonce'] as const) {
+    const expectedValue = expected.extra[field];
+    const actualValue = submitted[field];
+    const matches =
+      expectedValue !== undefined &&
+      actualValue !== undefined &&
+      String(actualValue) === expectedValue;
+    if (!matches) {
+      mismatches.push({
+        field,
+        expected: expectedValue ?? '(unverifiable)',
+        actual: actualValue === undefined ? '(missing)' : String(actualValue),
+      });
+    }
+  }
+
+  if (submitted.type !== expected.extra.type || submitted.gasPrice !== undefined) {
+    mismatches.push({
+      field: 'type',
+      expected: expected.extra.type ?? 'eip1559',
+      actual: submitted.type ?? '(missing)',
+    });
+  }
+
   return {
     ok: mismatches.length === 0,
     expectedHash: fingerprintIntent(expected),
     actualHash: fingerprintIntent(expected),
     mismatches,
   };
+}
+
+/**
+ * Re-decodes the wallet's signed transaction before any broadcast and requires
+ * it to match the reviewed intent field for field, including gas, fee caps and
+ * nonce. An unparseable payload or an unavailable signer fails closed.
+ */
+export async function verifyEvmSignedTransaction(
+  expected: TransactionIntent,
+  serializedTransaction: TransactionSerialized,
+): Promise<IntentVerification> {
+  let parsed: ReturnType<typeof parseTransaction>;
+  let from: string;
+  try {
+    parsed = parseTransaction(serializedTransaction);
+    from = await recoverTransactionAddress({ serializedTransaction });
+  } catch {
+    return {
+      ok: false,
+      expectedHash: fingerprintIntent(expected),
+      actualHash: 'unparseable',
+      mismatches: [
+        {
+          field: 'signedPayload',
+          expected: fingerprintIntent(expected),
+          actual: 'unparseable',
+        },
+      ],
+    };
+  }
+
+  return verifyEvmSubmittedTransaction(expected, {
+    chainId: parsed.chainId,
+    from,
+    to: parsed.to ?? null,
+    value: parsed.value ?? 0n,
+    input: String(parsed.data ?? '0x'),
+    gas: parsed.gas,
+    maxFeePerGas: parsed.maxFeePerGas,
+    maxPriorityFeePerGas: parsed.maxPriorityFeePerGas,
+    gasPrice: 'gasPrice' in parsed ? parsed.gasPrice : undefined,
+    nonce: parsed.nonce,
+    type: parsed.type,
+  });
 }
 
 /* -------------------------------------------------------------------------- */
