@@ -57,14 +57,18 @@ import {
 } from '@/lib/submissionIdempotency';
 import { ExpiringNamesBanner } from '@/components/ExpiringNamesBanner';
 import { decodeQrImage, isCameraUnavailableError, parseStellarQrPayload } from '@/utils/qr';
+import {
+  STELLAR_BASE_FEE_XLM,
+  STELLAR_BASE_RESERVE_XLM,
+  buildAnnouncementTransaction,
+  buildPaymentTransaction,
+  formatAsset,
+  getMinAmount,
+  validateAmount,
+  validateMetaAddress,
+} from '@/lib/stellar/sendTransactionBuilder';
 
 const ANNOUNCER_CONTRACT = STELLAR_ANNOUNCER_CONTRACT;
-const STELLAR_BASE_FEE_XLM = 0.00001;
-const STELLAR_BASE_RESERVE_XLM = 1;
-
-function getMinAmount(assetKey: StellarAssetKey): number {
-  return assetKey === 'XLM' ? 0.0000001 : 0.0000001;
-}
 
 type HorizonBalance = {
   asset_type: string;
@@ -384,7 +388,14 @@ export function StellarSend() {
       return;
     }
 
-    setSimulation({ status: 'loading', error: '', fee: null, returnValue: null, events: [] });
+    setSimulation({
+      status: 'loading',
+      error: '',
+      fee: null,
+      returnValue: null,
+      events: [],
+      intent: null,
+    });
 
     simulationTimeoutRef.current = globalThis.setTimeout(async () => {
       try {
