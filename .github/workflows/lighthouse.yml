@@ -19,8 +19,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,11 +34,21 @@ jobs:
 
       - name: Run Lighthouse CI
         id: lhci
-        run: npx lhci autorun --config=./lighthouserc.json --collect.url=http://localhost:4173 --collect.startServerCommand="pnpm preview" --collect.startServerReadyPattern="ready" --collect.startServerReadyTimeout=15000 || echo "LHCI_FAILED=true" >> $GITHUB_OUTPUT
+        run: |
+          set +e
+          npx lhci autorun --config=./lighthouserc.json --collect.url=http://localhost:4173 --collect.startServerCommand="pnpm preview" --collect.startServerReadyPattern="Local:" --collect.startServerReadyTimeout=15000
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "LHCI_FAILED=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
 
       - name: Post Lighthouse Comment
         if: always()
+        continue-on-error: true
         uses: actions/github-script@v7
+        env:
+          LHCI_FAILED: ${{ steps.lhci.outputs.LHCI_FAILED }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -85,3 +93,7 @@ jobs:
                 body: body,
               });
             }
+
+      - name: Fail on Lighthouse budget breach
+        if: steps.lhci.outputs.LHCI_FAILED == 'true'
+        run: exit 1

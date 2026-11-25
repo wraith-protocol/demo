@@ -18,13 +18,13 @@ jobs:
     # the committed baselines are generated. Keep this tag in sync with the
     # `playwright` version in package.json. See CONTRIBUTING.md.
     container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install pnpm
-        run: npm install -g pnpm@9.15.9
+        uses: pnpm/action-setup@v4
 
       - run: pnpm install --frozen-lockfile
 
