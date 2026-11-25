@@ -2,7 +2,7 @@
 import { appendFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { inflateRawSync } from 'node:zlib';
+import { strFromU8, unzipSync } from 'fflate';
 import { findSecrets } from '../src/lib/secretPatterns.mjs';
 
 export const DEFAULT_PATHS = Object.freeze([
@@ -40,28 +40,25 @@ export class SecretScanError extends Error {
 }
 
 function zipEntries(buffer) {
-  const entries = [];
-  let offset = 0;
-  while (offset + 30 <= buffer.length && buffer.readUInt32LE(offset) === 0x04034b50) {
-    const flags = buffer.readUInt16LE(offset + 6);
-    const method = buffer.readUInt16LE(offset + 8);
-    const compressedSize = buffer.readUInt32LE(offset + 18);
-    const nameLength = buffer.readUInt16LE(offset + 26);
-    const extraLength = buffer.readUInt16LE(offset + 28);
-    const name = buffer.toString('utf8', offset + 30, offset + 30 + nameLength);
-    const start = offset + 30 + nameLength + extraLength;
-    if (flags & 0x08 || compressedSize === 0 || start + compressedSize > buffer.length) break;
-    const chunk = buffer.subarray(start, start + compressedSize);
-    let text = '';
-    if (method === 0) {
-      text = chunk.toString('utf8');
-    } else if (method === 8) {
-      text = inflateRawSync(chunk).toString('utf8');
-    }
-    entries.push({ name, text });
-    offset = start + compressedSize;
+  let files;
+  try {
+    files = unzipSync(new Uint8Array(buffer), {
+      filter: ({ originalSize }) => {
+        if (originalSize > MAX_FILE_BYTES) {
+          throw new SecretScanError(
+            `ZIP entry exceeds ${MAX_FILE_BYTES} bytes when decompressed: ${originalSize}`,
+          );
+        }
+        return true;
+      },
+    });
+  } catch (error) {
+    if (error instanceof SecretScanError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new SecretScanError(`Malformed ZIP archive: ${message}`);
   }
-  return entries;
+
+  return Object.entries(files).map(([name, data]) => ({ name, text: strFromU8(data) }));
 }
 
 function lineAt(text, index) {
@@ -115,7 +112,10 @@ export function scanFile(filePath, source = filePath) {
   }
   const extension = path.extname(filePath).toLowerCase();
   if (extension === '.zip') {
-    return zipEntries(buffer).flatMap((entry) => scanText(entry.text, `${source}!${entry.name}`));
+    return [
+      ...scanText(buffer.toString('utf8'), `${source}!raw`),
+      ...zipEntries(buffer).flatMap((entry) => scanText(entry.text, `${source}!${entry.name}`)),
+    ];
   }
   return scanText(buffer.toString('utf8'), source);
 }
