@@ -3,9 +3,11 @@ import {
   findUnresolvedChainSubmission,
   getSubmissionRecord,
   listForeignUnresolvedSubmissions,
+  discardChainSubmission,
   reconcileChainSubmission,
   reserveSubmissionOperationId,
   submitChainTransactionOnce,
+  SubmissionNeedsReviewError,
   SubmissionOutcomePendingError,
   SubmissionScopeMismatchError,
 } from './submissionIdempotency';
@@ -136,7 +138,7 @@ describe('CKB submission idempotency', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('rebuilds only once an input is consumed by another committed transaction', async () => {
+  it('requires review instead of rebuilding when an input is consumed and the hash is absent', async () => {
     const node = freshNode();
     const adapter = createCkbSubmissionAdapter(fakeClient(node));
     const operationId = await reserve();
@@ -159,9 +161,48 @@ describe('CKB submission idempotency', () => {
     node.deadCells.add(INPUT);
     await expect(
       submitChainTransactionOnce({ operationId, scope, adapter, prepare }),
-    ).resolves.toMatchObject({ status: 'submitted', txHash: '0x04' });
-    expect(calls).toHaveLength(2);
-    expect(getSubmissionRecord(operationId)?.resolution).toBeUndefined();
+    ).rejects.toBeInstanceOf(SubmissionNeedsReviewError);
+    expect(calls).toHaveLength(1);
+    expect(getSubmissionRecord(operationId)).toMatchObject({
+      status: 'submitting',
+      txHash: '0x03',
+      resolution: 'replaced',
+    });
+  });
+
+  it('never double-pays when a wallet replacement already paid the recipient', async () => {
+    const node = freshNode();
+    const adapter = createCkbSubmissionAdapter(fakeClient(node));
+    const operationId = await reserve('wallet replacement');
+    const { prepare, calls } = trackPrepare((_context, attempt) =>
+      ckbAttempt(`0xorig${attempt}`, async () => `0xorig${attempt}`),
+    );
+    await submitChainTransactionOnce({ operationId, scope, adapter, prepare });
+
+    // The wallet re-signed the same payment under a new hash, spending the
+    // same input; our tracked hash is now absent from the node.
+    node.statuses.set('0xwallet-replacement', 'committed');
+    node.deadCells.add(INPUT);
+
+    const { verdict } = await reconcileChainSubmission(operationId, scope, adapter);
+    expect(verdict).toEqual({
+      state: 'replaced',
+      reason: 'input-consumed-by-another-transaction',
+    });
+    for (let retry = 0; retry < 3; retry++) {
+      await expect(
+        submitChainTransactionOnce({ operationId, scope, adapter, prepare }),
+      ).rejects.toBeInstanceOf(SubmissionNeedsReviewError);
+    }
+    expect(calls).toHaveLength(1);
+    expect(node.rebroadcasts).toHaveLength(0);
+    expect(findUnresolvedChainSubmission(scope)).toMatchObject({
+      operationId,
+      resolution: 'replaced',
+    });
+
+    await discardChainSubmission(operationId, scope);
+    expect(getSubmissionRecord(operationId)).toBeNull();
   });
 
   it('adopts a transaction that commits in the race with input consumption', async () => {
