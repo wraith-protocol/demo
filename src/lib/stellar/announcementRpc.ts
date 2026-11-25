@@ -8,6 +8,7 @@ import { Address, xdr } from '@stellar/stellar-sdk';
 import { bytesToHex } from '@wraith-protocol/sdk/chains/stellar';
 import type { Announcement } from '@wraith-protocol/sdk/chains/stellar';
 import { fetchEventPages, type StellarRpcEvent, type StellarRpcOptions } from './rpcEvents';
+import { parseAnnouncementRecord, type AnnouncementRecord } from './announcementRecord';
 
 export interface AnnouncementPage {
   /** 1-based page index within this scan. */
@@ -54,7 +55,7 @@ export interface FetchAnnouncementEventsResult {
  */
 export function parseAnnouncementEvent(
   event: StellarRpcEvent | Record<string, unknown>,
-): Announcement | null {
+): AnnouncementRecord | null {
   const topics = event.topic as unknown;
   if (!Array.isArray(topics) || topics.length < 3) return null;
   if (typeof event.value !== 'string') return null;
@@ -72,7 +73,7 @@ export function parseAnnouncementEvent(
   const ephemeralPubKey = bytesToHex(new Uint8Array(valueVec[1].bytes()));
   const metadata = bytesToHex(new Uint8Array(valueVec[2].bytes()));
 
-  return { schemeId, stealthAddress, caller, ephemeralPubKey, metadata };
+  return parseAnnouncementRecord({ schemeId, stealthAddress, caller, ephemeralPubKey, metadata });
 }
 
 /**
