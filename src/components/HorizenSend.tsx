@@ -1,3 +1,6 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { useTransactionActivity } from '@/hooks/useTransactionActivity';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { useState } from 'react';
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
@@ -13,21 +16,29 @@ export function HorizenSend() {
   const { isConnected, address } = useAccount();
   const { data: balanceData } = useBalance({ address });
 
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('horizen:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('horizen:amount', '');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
 
-  const { sendTransaction, data: txHash, isPending } = useSendTransaction();
+  const { sendTransactionAsync: sendTransaction, data: txHash, isPending } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  useTransactionActivity(isPending || isConfirming);
 
   const isMetaAddress = recipient.startsWith('st:eth:');
   const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
   const isWraithName = !isMetaAddress && cleanedName.length >= 3 && /^[a-z0-9]+$/.test(cleanedName);
 
   const handleSend = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     setError('');
 
+    const finishTransaction = beginTransactionActivity('signing');
     let metaAddress = recipient;
 
     try {
@@ -66,13 +77,15 @@ export function HorizenSend() {
       setStealthResult(result);
       trackEvent('send_submitted');
 
-      sendTransaction({
+      await sendTransaction({
         to: result.transaction.to as `0x${string}`,
         data: result.transaction.data as `0x${string}`,
         value: result.transaction.value,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      finishTransaction();
     }
   };
 

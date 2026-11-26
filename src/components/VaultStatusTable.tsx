@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { StellarLink } from '@/components/StellarLink';
@@ -48,7 +50,7 @@ export function VaultStatusTable() {
     freighterNetwork,
     stellarKeys,
   );
-  const [actionId, setActionId] = useState<string | null>(null);
+  const [actionId, setActionId] = useTransactionState<string | null>(null, Boolean);
   const [actionError, setActionError] = useState('');
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -66,6 +68,11 @@ export function VaultStatusTable() {
   }
 
   const runAction = async (action: 'claim' | 'refund', deposit: OnChainVaultDeposit) => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setActionError(blocked);
+      return;
+    }
     if (isNetworkMismatch) {
       setActionError('Switch Freighter to Stellar Testnet before continuing');
       return;

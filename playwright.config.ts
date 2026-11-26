@@ -86,6 +86,12 @@ export default defineConfig({
             reuseExistingServer: !process.env.CI,
             timeout: 120_000,
           },
+          {
+            command: 'node e2e/pwa-update-server.mjs',
+            url: 'http://127.0.0.1:5178',
+            reuseExistingServer: false,
+            timeout: 120_000,
+          },
         ]
       : []),
   ],

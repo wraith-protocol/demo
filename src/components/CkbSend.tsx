@@ -1,3 +1,5 @@
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
 import { useState, useCallback } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
@@ -15,8 +17,8 @@ export function CkbSend() {
   const { t } = useTranslation();
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [recipient, setRecipient] = useSendDraft<string>('ckb:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('ckb:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -26,12 +28,18 @@ export function CkbSend() {
   } | null>(null);
 
   const handleSend = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!signer) {
       setError(t('ckb.connectWalletFirst'));
       return;
     }
 
     setError('');
+    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
 
     try {
@@ -77,6 +85,7 @@ export function CkbSend() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      finishTransaction();
       setIsPending(false);
     }
   }, [signer, recipient, amount, t]);

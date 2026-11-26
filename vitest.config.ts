@@ -15,7 +15,10 @@ export default defineConfig({
           environment: 'node',
           globals: true,
           include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
-          exclude: ['src/hooks/useStellarScanner.test.ts'],
+          exclude: [
+            'src/hooks/useStellarScanner.test.ts',
+            'src/hooks/useStellarWithdrawal.test.ts',
+          ],
           alias,
         },
       },
@@ -24,7 +27,10 @@ export default defineConfig({
           name: 'jsdom',
           environment: 'jsdom',
           globals: true,
-          include: ['src/hooks/useStellarScanner.test.ts'],
+          include: [
+            'src/hooks/useStellarScanner.test.ts',
+            'src/hooks/useStellarWithdrawal.test.ts',
+          ],
           alias,
         },
       },
