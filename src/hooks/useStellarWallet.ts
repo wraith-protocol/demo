@@ -1,3 +1,4 @@
+import { assertTransactionCompatible } from '@/lib/transactionActivity';
 /**
  * src/hooks/useStellarWallet.ts
  *
@@ -177,6 +178,7 @@ export function useStellarWallet(): StellarWalletState {
 
   const signTransaction = useCallback(
     async (xdr: string, networkPassphrase?: string) => {
+      assertTransactionCompatible();
       if (!wallet) throw new Error('No wallet connected');
       const result = await wallet.signTransaction(xdr, {
         networkPassphrase,

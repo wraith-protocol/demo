@@ -4,7 +4,7 @@
  * The PWA worker in `src/sw/app-sw.ts` owns every background responsibility —
  * precaching, Stellar notification sync, viewing-key storage and push
  * subscriptions — and is registered once per page load by `useAppUpdate`
- * (`virtual:pwa-register`). Features that need to talk to it must reuse that
+ * (with the native ServiceWorker API). Features that need to talk to it must reuse that
  * registration: registering a second script at the same scope replaces the
  * running worker, which used to leave the app with two competing scan paths and
  * two independent cursors.
