@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback } from 'react';
 import {
   deriveStealthKeys,
@@ -31,7 +33,7 @@ export function StellarVaultClaim() {
   const [deposits, setDeposits] = useState<ClaimableVaultDeposit[]>([]);
   const [currentLedger, setCurrentLedger] = useState<number | null>(null);
   const [loadError, setLoadError] = useState('');
-  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimingId, setClaimingId] = useTransactionState<string | null>(null, Boolean);
   const [claimError, setClaimError] = useState('');
   const [claimedHashes, setClaimedHashes] = useState<Record<string, string>>({});
   const [showNetworkModal, setShowNetworkModal] = useState(false);
@@ -86,6 +88,11 @@ export function StellarVaultClaim() {
         return;
       }
 
+      const blocked = transactionBlockReason();
+      if (blocked) {
+        setClaimError(blocked);
+        return;
+      }
       setClaimingId(deposit.depositId);
       setClaimError('');
 

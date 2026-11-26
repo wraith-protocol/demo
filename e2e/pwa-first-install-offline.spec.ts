@@ -17,6 +17,7 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { CACHE_VERSION_SUFFIX } from '../src/lib/swCache';
 
 // Use a fresh browser context for every test so we never inherit a pre-existing
 // service worker registration or Cache Storage entries from another spec.
@@ -225,17 +226,17 @@ test.describe('PWA precache — first install then offline reload', () => {
 
     // Wait until obsolete caches are purged by activate event
     await page.waitForFunction(
-      () =>
+      (suffix) =>
         window.caches
           .keys()
           .then(
             (names) =>
-              names.some((n) => n.includes('wraith-precache-v2')) &&
+              names.some((n) => n.includes(`wraith-precache-${suffix}`)) &&
               !names.includes('wraith-precache-v1') &&
               !names.includes('wraith-assets-v1') &&
               !names.includes('rpc-cache'),
           ),
-      null,
+      CACHE_VERSION_SUFFIX,
       { timeout: 20_000 },
     );
 
@@ -244,6 +245,6 @@ test.describe('PWA precache — first install then offline reload', () => {
     expect(remaining).not.toContain('wraith-assets-v1');
     expect(remaining).not.toContain('wraith-images-v1');
     expect(remaining).not.toContain('rpc-cache');
-    expect(remaining.some((n) => n.includes('wraith-precache-v2'))).toBe(true);
+    expect(remaining.some((n) => n.includes(`wraith-precache-${CACHE_VERSION_SUFFIX}`))).toBe(true);
   });
 });

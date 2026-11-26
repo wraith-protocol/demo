@@ -138,3 +138,20 @@ describe('toml override compatibility', () => {
     expect(() => toml.parse('not = valid = toml')).toThrow();
   });
 });
+
+describe('decode-uri-component override compatibility', () => {
+  it('keeps query-string on a callable patched CommonJS decoder', () => {
+    const wagmi = requireFrom('wagmi');
+    const queryStringRequire = createRequire(wagmi.resolve('query-string'));
+    const version = installedVersion(queryStringRequire, 'decode-uri-component');
+    expect(version).toMatch(/^0\.5\.1/);
+
+    const decodeComponent = queryStringRequire('decode-uri-component');
+    expect(typeof decodeComponent).toBe('function');
+    expect(decodeComponent('a+b')).toBe('a b');
+    expect(decodeComponent('%E2%9C%93')).toBe('✓');
+
+    const queryString = queryStringRequire('query-string');
+    expect(queryString.parse('a=%E2%9C%93&b=two')).toEqual({ a: '✓', b: 'two' });
+  });
+});

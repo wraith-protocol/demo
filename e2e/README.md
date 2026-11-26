@@ -128,20 +128,10 @@ await horizon.mock({
 
 ## Deterministic vs. live checks
 
-`e2e/stellar.spec.ts` is a **required, deterministic** suite. It never uses `test.skip()` or any
-environment-dependent condition, and it needs no contributor credentials or network access:
+`e2e/stellar.spec.ts` is a **required, deterministic** suite. ...
+... never part of this required job.
 
-- Freighter is replaced by the `freighter` fixture (`window.freighterMock`).
-- Horizon and Soroban RPC are replaced by the `horizon` fixture (`page.route`).
-- Clipboard access is stubbed inside the page, so the copy test behaves the same on Chromium,
-  Firefox and WebKit.
+## Transaction-aware PWA updates
 
-Run it exactly as CI does:
-
-```bash
-pnpm test:e2e:stellar
-```
-
-CI job `stellar-e2e` runs this on all three browsers and fails if any test is skipped. A live-network
-check against testnet, if ever added, must be a separate Playwright project that is reported on its
-own and is never part of this required job.
+Run `pnpm build && pnpm test:pwa` for the production worker tests. ...
+... incompatible API/persisted schema recovery.
