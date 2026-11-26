@@ -1,46 +1,10 @@
 import type { MatchedAnnouncement } from '@wraith-protocol/sdk/chains/stellar';
-import { scanWithStrategy, DEFAULT_SCAN_STRATEGY, type ScanStrategy } from './stellarScanDispatch';
+import { scanWithStrategy, DEFAULT_SCAN_STRATEGY } from './stellarScanDispatch';
 import { retentionGapFromError } from '../lib/stellar/scannerCursor';
 import { fetchAnnouncementEvents } from '../lib/stellar/announcementRpc';
+import type { StellarScannerRequest, StellarScannerMessage } from '../lib/stellar/scannerMessages';
 
-export interface StellarScannerRequest {
-  rpcUrl: string;
-  announcerContract: string;
-  viewingKey: Uint8Array;
-  spendingPubKey: Uint8Array;
-  spendingScalar: bigint;
-  strategy?: ScanStrategy;
-  startLedger?: number;
-  /** Page size override; the default is the RPC's 1,000-event cap. */
-  pageLimit?: number;
-}
-
-/**
- * Messages the worker posts back to the page.
- *
- * `PAGE` is emitted once per processed page, before that page's progress is
- * persisted, so an interrupted scan resumes from the first ledger it has not
- * delivered rather than from the tip. `SUCCESS` follows with the aggregate.
- */
-export type StellarScannerMessage =
-  | {
-      type: 'PAGE';
-      page: number;
-      committedLedger: number;
-      events: number;
-      undecodableEvents: number;
-      matched: MatchedAnnouncement[];
-    }
-  | {
-      type: 'SUCCESS';
-      results: MatchedAnnouncement[];
-      nextLedger: number;
-      committedLedger: number;
-      pages: number;
-      truncated: boolean;
-    }
-  | { type: 'RETENTION_GAP'; requestedLedger: number; oldestAvailableLedger: number }
-  | { type: 'ERROR'; error: string };
+export type { StellarScannerRequest, StellarScannerMessage } from '../lib/stellar/scannerMessages';
 
 function postMessage(message: StellarScannerMessage): void {
   self.postMessage(message);
