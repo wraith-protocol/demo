@@ -87,6 +87,8 @@ export interface PaymentIntentPayload {
   /** Stable operation ID carried from offline capture through submission. */
   operationId?: string;
   chain: string;
+  /** Wallet that captured the intent, so wallet-scoped data deletion can find it. */
+  wallet?: string;
   recipient: string;
   amount: string;
   asset?: string;
@@ -118,6 +120,8 @@ export interface SignedSubmitPayload {
   /** Same operation ID used by the original direct submission, when present. */
   operationId?: string;
   chain: string;
+  /** Wallet that signed the envelope, so wallet-scoped data deletion can find it. */
+  wallet?: string;
   /** Hex transaction hash (also used for dedupe). */
   txHash: string;
   /** Base64- or hex-encoded signed envelope. */
@@ -220,6 +224,7 @@ function isValidPayload(kind: OfflineWorkKind, payload: unknown): boolean {
     return (
       isBoundedString(p['chain'], 32) &&
       (p['operationId'] === undefined || isBoundedString(p['operationId'], 128)) &&
+      (p['wallet'] === undefined || isBoundedString(p['wallet'], 128)) &&
       isBoundedString(p['recipient'], 512) &&
       isBoundedString(p['amount'], 64) &&
       (p['asset'] === undefined || isBoundedString(p['asset'], 32)) &&
@@ -256,6 +261,7 @@ function isValidPayload(kind: OfflineWorkKind, payload: unknown): boolean {
   return (
     isBoundedString(p['chain'], 32) &&
     (p['operationId'] === undefined || isBoundedString(p['operationId'], 128)) &&
+    (p['wallet'] === undefined || isBoundedString(p['wallet'], 128)) &&
     isBoundedString(p['txHash'], 128) &&
     isBoundedString(p['signedXdr'], 20000)
   );

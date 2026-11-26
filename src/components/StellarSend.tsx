@@ -625,6 +625,7 @@ export function StellarSend() {
       const queued = useOfflineQueueStore.getState().enqueuePaymentIntent({
         operationId,
         chain: 'stellar',
+        ...(address ? { wallet: address } : {}),
         recipient: recipient.trim(),
         amount: amount.trim(),
         asset: assetKey,
@@ -796,6 +797,7 @@ export function StellarSend() {
         signedXdr,
         () => broadcastStellarTransaction(signedXdr, txHashHex, horizonUrl),
         {
+          ...(address ? { wallet: address } : {}),
           stealthAddress: result.stealthAddress,
           ephemeralPubKey: Array.from(result.ephemeralPubKey, (byte) =>
             byte.toString(16).padStart(2, '0'),
@@ -883,6 +885,7 @@ export function StellarSend() {
         const queued = useOfflineQueueStore.getState().enqueueSignedSubmit({
           operationId,
           chain: 'stellar',
+          ...(address ? { wallet: address } : {}),
           txHash: txHashHex,
           signedXdr,
         });

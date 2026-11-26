@@ -99,6 +99,15 @@ describe('isOfflineEntry', () => {
     expect(isOfflineEntry({ ...entry, policy: 'safe-to-queue' })).toBe(false);
   });
 
+  it('accepts an optional wallet tag and bounds its length', () => {
+    const wallet = `G${'A'.repeat(55)}`;
+    expect(isOfflineEntry(createOfflineEntry('payment-intent', intent({ wallet })))).toBe(true);
+    const signed = { chain: 'stellar', wallet, txHash: 'abc', signedXdr: 'AAAA' };
+    expect(isOfflineEntry(createOfflineEntry('signed-submit', signed))).toBe(true);
+    const oversized = intent({ wallet: 'G'.repeat(129) });
+    expect(isOfflineEntry(createOfflineEntry('payment-intent', oversized))).toBe(false);
+  });
+
   it.each([null, undefined, 42, 'nope', [], { kind: 'payment-intent' }])(
     'rejects malformed values (%s)',
     (value) => {

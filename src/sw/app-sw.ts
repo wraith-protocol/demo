@@ -16,13 +16,19 @@ import { decodeAnnouncementEvents } from '../lib/stellar/announcementEvent';
 import { scanPages, deliverMatch, type MatchNotifier } from './backgroundScan';
 import { createIdbScanKeyBackend } from './idbScanKeyBackend';
 import { findSpendingSecretField, removeScanKey } from './scanKeyStore';
-import { scrubLegacySpendingMaterial, upsertAccountRecord } from './accountRecords';
+import {
+  removeStoreRecords,
+  scrubLegacySpendingMaterial,
+  upsertAccountRecord,
+} from './accountRecords';
+import { validateMainThreadMessage } from '../lib/workerProtocol';
 import {
   deliverPushNotification,
   type NotificationPresentation,
   type ValidatedPushPayload,
 } from './notificationPayload';
 import {
+  NOTIFICATION_STORE_NAME,
   claimNotificationId,
   createNotificationStore,
   pruneNotificationIds,
@@ -540,6 +546,59 @@ self.addEventListener('message', (event) => {
 
   if (type === 'TRIGGER_SCAN') {
     event.waitUntil(handleSync());
+  }
+
+  // Wallet-scoped deletion and full local reset from the privacy controls. The
+  // page clears the scan-key database it shares with this worker; the worker
+  // clears the records only it owns and stops background scanning once no
+  // account is left, then acknowledges on the reply port.
+  if (type === 'CLEAR_LOCAL_DATA') {
+    const validated = validateMainThreadMessage(event.data);
+    const reply = event.ports[0] ?? (event.source as Client | null);
+    if (!validated.valid || validated.data.type !== 'CLEAR_LOCAL_DATA') {
+      console.error('[app-sw] Dropped invalid CLEAR_LOCAL_DATA message');
+      return;
+    }
+    const request = validated.data;
+    event.waitUntil(
+      (async () => {
+        const db = await openDB();
+        let removedRecords = 0;
+        let remaining = 0;
+        try {
+          if (request.scope === 'wallet') {
+            removedRecords = await removeStoreRecords(db, STORE_NAME, request.publicKey);
+          } else {
+            removedRecords =
+              (await removeStoreRecords(db, STORE_NAME, null)) +
+              (await removeStoreRecords(db, NOTIFICATION_STORE_NAME, null));
+          }
+          remaining = await new Promise<number>((resolve, reject) => {
+            const count = db.transaction([STORE_NAME], 'readonly').objectStore(STORE_NAME).count();
+            count.onerror = () => reject(count.error);
+            count.onsuccess = () => resolve(count.result);
+          });
+        } finally {
+          db.close();
+        }
+        if (remaining === 0 && 'periodicSync' in self.registration) {
+          try {
+            await (
+              self.registration as ServiceWorkerRegistration & {
+                periodicSync: { unregister(tag: string): Promise<void> };
+              }
+            ).periodicSync.unregister(SYNC_TAG);
+          } catch (error) {
+            console.error('[app-sw] Failed to unregister periodic sync:', error);
+          }
+        }
+        reply?.postMessage({
+          type: 'LOCAL_DATA_CLEARED',
+          requestId: request.requestId,
+          removedRecords,
+        });
+      })(),
+    );
   }
 
   // Push subscription management

@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { getConsent, setConsent, subscribeToConsent, trackPageView } from '@/lib/telemetry';
+import { LocalDataControls } from '@/components/LocalDataControls';
 
 export default function Privacy() {
   const consent = useSyncExternalStore(subscribeToConsent, getConsent, () => null);
@@ -108,6 +109,13 @@ export default function Privacy() {
             Telemetry on
           </button>
         </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="local-data-heading">
+        <h2 id="local-data-heading" className="font-heading text-lg font-medium text-on-surface">
+          Your local data
+        </h2>
+        <LocalDataControls />
       </section>
     </div>
   );

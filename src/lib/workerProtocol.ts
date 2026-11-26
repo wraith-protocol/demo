@@ -72,12 +72,22 @@ export type WorkerRequest =
       requestId: string;
       subscription: PushSubscriptionJSON;
       metaAddressHash?: string;
-    };
+    }
+  | LocalDataClearRequest;
+
+/**
+ * Asks the worker to drop the records it owns: one account's scan record, or
+ * (for a full local reset) every account, push and notification record.
+ */
+export type LocalDataClearRequest =
+  | { type: 'CLEAR_LOCAL_DATA'; requestId: string; scope: 'wallet'; publicKey: string }
+  | { type: 'CLEAR_LOCAL_DATA'; requestId: string; scope: 'all' };
 
 /**
  * Direction: worker → main thread (success responses)
  */
 export type WorkerSuccess =
+  | { type: 'LOCAL_DATA_CLEARED'; requestId: string; removedRecords: number }
   | { type: 'VIEWING_KEY_REGISTERED'; requestId: string }
   | { type: 'VIEWING_KEY_UNREGISTERED'; requestId: string }
   | { type: 'PUSH_SUBSCRIPTION_REGISTERED'; requestId: string }
@@ -407,6 +417,30 @@ export function validateMainThreadMessage(value: unknown): ValidationResult<Main
         };
       }
 
+      case 'CLEAR_LOCAL_DATA': {
+        const scope = msg.scope;
+        const allowedFields =
+          scope === 'wallet'
+            ? ['type', 'requestId', 'scope', 'publicKey']
+            : ['type', 'requestId', 'scope'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(`CLEAR_LOCAL_DATA message has extra fields: ${extraFields.join(', ')}`);
+        }
+        const requestId = assertRequestId(msg.requestId);
+        if (scope === 'all') {
+          return { valid: true, data: { type: 'CLEAR_LOCAL_DATA', requestId, scope: 'all' } };
+        }
+        if (scope !== 'wallet') {
+          throw new Error('scope must be "wallet" or "all"');
+        }
+        const publicKey = assertString(msg.publicKey, 'publicKey', 128, true);
+        return {
+          valid: true,
+          data: { type: 'CLEAR_LOCAL_DATA', requestId, scope: 'wallet', publicKey },
+        };
+      }
+
       default:
         throw new Error(`Unknown message type: ${type}`);
     }
@@ -454,6 +488,22 @@ export function validateWorkerMessage(value: unknown): ValidationResult<WorkerMe
         }
         const requestId = assertRequestId(msg.requestId);
         return { valid: true, data: { type: 'VIEWING_KEY_UNREGISTERED', requestId } };
+      }
+
+      case 'LOCAL_DATA_CLEARED': {
+        const allowedFields = ['type', 'requestId', 'removedRecords'];
+        const extraFields = Object.keys(msg).filter((k) => !allowedFields.includes(k));
+        if (extraFields.length > 0) {
+          throw new Error(`LOCAL_DATA_CLEARED message has extra fields: ${extraFields.join(', ')}`);
+        }
+        const requestId = assertRequestId(msg.requestId);
+        const removedRecords = assertInteger(
+          msg.removedRecords,
+          'removedRecords',
+          0,
+          Number.MAX_SAFE_INTEGER,
+        );
+        return { valid: true, data: { type: 'LOCAL_DATA_CLEARED', requestId, removedRecords } };
       }
 
       case 'PUSH_SUBSCRIPTION_REGISTERED': {
