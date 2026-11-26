@@ -1,9 +1,9 @@
 import {
   Component,
   lazy,
-  useMemo,
   type ComponentType,
   type ErrorInfo,
+  type LazyExoticComponent,
   type ReactNode,
 } from 'react';
 
@@ -17,18 +17,29 @@ interface RouteErrorBoundaryState {
 
 export type PageLoader = () => Promise<{ default: ComponentType }>;
 
+const lazyPages = new Map<PageLoader, LazyExoticComponent<ComponentType>>();
+
+function getLazyPage(loader: PageLoader) {
+  let Page = lazyPages.get(loader);
+  if (!Page) {
+    Page = lazy(loader);
+    lazyPages.set(loader, Page);
+  }
+  return Page;
+}
+
+function resetLazyPages() {
+  lazyPages.clear();
+}
+
 /**
- * Renders a lazy-loaded page. The lazy() component is built here, inside
- * render, rather than once at module scope (as App.tsx's routes used to do):
- * React.lazy calls its loader once per component instance and replays a
- * cached rejection on every later render of that same instance, so a
- * module-level lazy() can never actually be retried after a chunk load
- * fails. Keeping it in useMemo instead ties its lifetime to this instance,
- * so RouteErrorBoundary's retry (which remounts its children, see below)
- * gets a fresh lazy component, and therefore a fresh import() attempt.
+ * Renders a lazy-loaded page. The lazy() component is cached per loader at
+ * module scope so React can settle the import on the first render. When a
+ * chunk load fails, RouteErrorBoundary clears the cache before retrying (see
+ * below), so the retry gets a fresh lazy component and a fresh import().
  */
 export function LazyPage({ loader }: { loader: PageLoader }) {
-  const Page = useMemo(() => lazy(loader), [loader]);
+  const Page = getLazyPage(loader);
   return <Page />;
 }
 
@@ -57,6 +68,7 @@ export class RouteErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    resetLazyPages();
     console.error('Route chunk failed to load', error, info.componentStack);
   }
 
