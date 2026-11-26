@@ -132,3 +132,64 @@ jobs:
           name: pwa-test-report
           path: playwright-report/
           if-no-files-found: ignore
+
+  secret-scan-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify secret gate rejects a logged canary
+        run: |
+          fixture="$(mktemp -d)"
+          trap 'rm -rf "$fixture"' EXIT
+          printf '%s\n' 'WRAITH_CANARY_ABC123' > "$fixture/console.log"
+          if env -u GITHUB_OUTPUT SECRET_SCAN_PATHS="$fixture" pnpm secrets:gate; then
+            echo "Secret gate accepted a deliberately logged canary"
+            exit 1
+          fi
+
+      - name: Run browser secret scan regression
+        run: |
+          mkdir -p reports/secret-scan
+          set -o pipefail
+          pnpm test:secret-scan 2>&1 | tee reports/secret-scan/browser-console.log
+        env:
+          CI: true
+
+      - name: Scan browser artifacts for seeded secrets
+        id: secret_scan
+        if: always()
+        run: |
+          if pnpm secrets:gate; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Upload browser secret scan artifacts
+        if: always() && steps.secret_scan.outputs.clean == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-test-report
+          path: |
+            playwright-report/
+            reports/secret-scan/
+            test-results/
+          if-no-files-found: ignore
