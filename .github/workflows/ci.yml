@@ -106,28 +106,24 @@ jobs:
           if-no-files-found: ignore
 
   visual-regression:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     needs: build
+    container:
+      # Keep this in sync with the @playwright/test version pinned in pnpm-lock.yaml.
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+      options: --ipc=host
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Enable corepack (installs pnpm from packageManager field)
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.28.2 --activate
-          pnpm --version
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.2 --activate && pnpm --version
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install chromium
+      - name: Build with deterministic names contract fixture
+        run: pnpm build
+        env:
+          VITE_WRAITH_NAMES_CONTRACT_ID: CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL
 
       - name: Run visual regression tests
         run: pnpm test:visual
@@ -140,12 +136,4 @@ jobs:
           path: |
             test-results/
             playwright-report/
-          retention-days: 7
-
-      - name: Upload screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: e2e/*-snapshots/*.png
           retention-days: 7

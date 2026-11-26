@@ -205,7 +205,11 @@ export function SolanaSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? t('common.transferComplete') : t('common.pending')}
+              {error
+                ? t('common.transactionFailed')
+                : isSuccess
+                  ? t('common.transferComplete')
+                  : t('common.pending')}
             </span>
           </div>
 
@@ -255,6 +259,12 @@ export function SolanaSend() {
               </div>
             )}
           </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-error">
+              {error}
+            </p>
+          )}
 
           {isSuccess && (
             <button

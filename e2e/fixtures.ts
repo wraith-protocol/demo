@@ -6,9 +6,12 @@ export interface FreighterMockConfig {
   address: string | null;
   signedMessage: string | null; // base64
   signedTxXdr: string | null;
+  network?: string;
+  networkPassphrase?: string;
   shouldFailConnect?: boolean;
   shouldFailSignMessage?: boolean;
   shouldFailSignTx?: boolean;
+  shouldPendSignTx?: boolean;
   autoConnect?: boolean;
 }
 
@@ -46,6 +49,10 @@ export const test = base.extend<{
       await page.addInitScript((cfg) => {
         (window as any).freighterMock = {
           isConnected: async () => ({ isConnected: cfg.isConnected !== false }),
+          getNetworkDetails: async () => ({
+            network: cfg.network || 'TESTNET',
+            networkPassphrase: cfg.networkPassphrase || 'Test SDF Network ; September 2015',
+          }),
           authorized: false,
           getAddress: async function () {
             if (cfg.shouldFailConnect) {
@@ -80,6 +87,9 @@ export const test = base.extend<{
           signTransaction: async (xdrString: string) => {
             if (cfg.shouldFailSignTx) {
               throw new Error('User rejected transaction signing');
+            }
+            if (cfg.shouldPendSignTx) {
+              return new Promise(() => {});
             }
             return {
               signedTxXdr: cfg.signedTxXdr || xdrString,

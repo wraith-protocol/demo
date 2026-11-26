@@ -18,7 +18,7 @@ export function HorizenSend() {
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
 
-  const { sendTransaction, data: txHash, isPending } = useSendTransaction();
+  const { sendTransaction, data: txHash, isPending, error: sendError } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const isMetaAddress = recipient.startsWith('st:eth:');
@@ -235,11 +235,13 @@ export function HorizenSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isConfirming
-                ? t('common.confirming')
-                : isSuccess
-                  ? t('common.transferComplete')
-                  : t('common.pending')}
+              {sendError
+                ? t('common.transactionFailed')
+                : isConfirming
+                  ? t('common.confirming')
+                  : isSuccess
+                    ? t('common.transferComplete')
+                    : t('common.pending')}
             </span>
           </div>
 
@@ -289,6 +291,12 @@ export function HorizenSend() {
               </p>
             </div>
           </div>
+
+          {sendError && (
+            <p role="alert" className="min-w-0 break-words text-sm text-error">
+              {sendError.message}
+            </p>
+          )}
 
           {isSuccess && (
             <button

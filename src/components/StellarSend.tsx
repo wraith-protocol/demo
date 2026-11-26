@@ -1070,12 +1070,26 @@ export function StellarSend() {
             {isSuccess ? (
               <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             ) : (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
+              <span
+                className={`inline-block h-1.5 w-1.5 ${
+                  error ? 'bg-error' : 'animate-pulse bg-primary'
+                }`}
+              ></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? t('common.transferComplete') : t('common.pending')}
+              {error
+                ? t('common.transactionFailed')
+                : isSuccess
+                  ? t('common.transferComplete')
+                  : t('common.pending')}
             </span>
           </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-error">
+              {error}
+            </p>
+          )}
 
           <div className="flex flex-col gap-3">
             <div>

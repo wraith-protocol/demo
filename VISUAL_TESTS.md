@@ -1,211 +1,122 @@
-# Visual Regression Testing
+# Visual Regression Tests
 
-This document describes the visual regression testing setup for the Wraith Protocol demo.
+The visual suite captures reachable transaction and recovery screens from the
+real app. Wallet and network boundaries are deterministic fixtures; tests do
+not assign state to globals the app does not read.
 
-## Overview
+## Coverage
 
-Visual regression tests capture deterministic UI states across all supported chains (Horizen, Stellar, Solana, CKB) to detect regressions that functional tests might miss, such as:
+| Route               | State                                                                                                                    | Theme       | Viewports               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- | ----------------------- |
+| `/send`, `/receive` | Disconnected send and receive on Horizen, Stellar, Solana, and CKB                                                       | Light, dark | Desktop, mobile, tablet |
+| `/send`             | CKB connected send form through the CCC connector's deterministic wallet                                                 | Light, dark | Desktop, mobile, tablet |
+| `/send`             | Horizen, Stellar, and Solana pending, success, and wallet-rejection failure; Stellar form-filled and wrong-network modal | Light, dark | Desktop, mobile, tablet |
+| `/receive`          | Horizen, Solana, and CKB derived meta-address and empty scan; Stellar derived meta-address and matched-payment scan      | Light, dark | Desktop, mobile, tablet |
+| `/vault`            | Stellar vault deposit simulation, wallet signing, chain pending, success, and failure                                    | Light, dark | Desktop, mobile, tablet |
+| `/names/auctions`   | Encrypted recovery vault unlocked; failed bid recovery with a safe retry                                                 | Light, dark | Desktop, mobile, tablet |
 
-- Clipped addresses or text
-- Overlapping controls
-- Invisible error messages
-- Broken mobile layouts
-- Theme regressions
+Simulation, signing, pending, success, and failure are the states implemented
+by the Stellar vault deposit flow. The auction recovery test creates the
+encrypted vault through the UI, submits a bid through the app, and drives the
+wallet's real signing boundary to a deterministic rejection; the app persists
+the failed bid and displays its retry-safe recovery state.
 
-## Test Coverage
+Horizen, Stellar, and Solana wallet-dependent states are driven through
+injected providers and mocked chain RPCs. `installCkbWalletMock` supplies a
+deterministic signer through the actual CCC connector's wallet-selection flow;
+the app then calls its signer for key derivation and scans the SDK's CKB RPC
+endpoint.
+The CKB connected send form and empty receive scan are covered. CKB's
+transaction-completion path is not represented: the real CCC transaction
+builder requires client-provided funding cells, fee calculation, and signer
+transaction submission. This fixture does not mock those CCC client internals,
+so no CKB send success/failure or send-pending screenshot is claimed. CKB has no
+vault, auction-recovery, or wrong-network screen. Its matched-cell withdrawal
+is a manual private-key reveal for `ckb-cli`, not an in-app transaction flow.
 
-### Horizen (EVM)
+## Deterministic fixtures
 
-- Send and receive disconnected states
+`e2e/visual-fixtures.ts` is the shared source for screenshot determinism:
 
-### Stellar
+- Freeze the browser clock at `2025-01-15T12:00:00Z`, while leaving timers
+  functional.
+- Seed browser randomness used for deterministic stealth data.
+- Use fixed Stellar account balances and transaction results. Soroban
+  responses for auction tests are constructed from the intercepted RPC method.
+  Solana Devnet RPC and signature-subscription WebSocket confirmations are
+  deterministic.
+- Block unmocked external requests; the visual app serves its pinned font files
+  locally from `public/fonts/`.
+- Await the Inter, Space Grotesk, and JetBrains Mono font faces before capture.
+- Enable reduced motion in Playwright and emulated media; suppress CSS
+  animation, transition, and caret rendering.
+- Start each test in light mode. Dark-mode tests click the real `Toggle theme`
+  button and assert that the document enters dark mode.
 
-- Send disconnected, form-filled, and successful transfer states
-- Receive disconnected state
+The only masks are defined in `visualMasks` in `e2e/visual-fixtures.ts`:
 
-### Solana
+1. The narrow transaction link (`a[href*="/tx/"]`) in successful transaction
+   screenshots.
+2. The exact vault deposit ID text in the vault success screenshot.
 
-- Send and receive disconnected states
+No page, panel, address field, or error is masked.
 
-### CKB
+## Linux Docker commands
 
-- Send and receive disconnected states
+Docker Desktop and the Docker CLI must be available. The script reads the
+resolved `@playwright/test` version from `pnpm-lock.yaml`, selects the matching
+official `mcr.microsoft.com/playwright:v<version>-jammy` image, and mounts the
+repository plus the named Linux `node_modules` volume. It never uses Windows
+`node_modules`.
 
-Transaction-success coverage is currently exercised through Stellar's actual send flow with deterministic Freighter and Horizon mocks. Other wallet-dependent states are not represented by assigning unused globals; add them only when tests can drive the app through its real handlers.
-
-### Viewports
-
-- Desktop: 1280x720
-- Mobile: 375x667
-- Tablet: 768x1024
-
-## Running Tests
-
-### Initial Setup
-
-Build the app and install the Playwright browser used by the visual suite:
-
-```bash
-pnpm build
-pnpm exec playwright install chromium
-```
-
-### Run All Visual Tests
-
-```bash
-pnpm test:visual
-```
-
-### Run Visual Tests in UI Mode
-
-```bash
-pnpm test:e2e:ui
-```
-
-### Update Baseline Screenshots
-
-After intentional UI changes, update the baseline screenshots:
-
-```bash
-pnpm test:visual:update
-```
-
-### Run Specific Test File
-
-```bash
-pnpm exec playwright test e2e/visual-stellar-send.spec.ts
-```
-
-### Run a Visual Viewport
+Run the suite:
 
 ```bash
-pnpm exec playwright test --project=chromium-desktop
-pnpm exec playwright test --project=chromium-mobile
-pnpm exec playwright test --project=chromium-tablet
+pnpm test:visual:docker
 ```
 
-## Test Structure
+Update baselines only after reviewing an intentional UI change:
 
-### Fixtures (`e2e/visual-fixtures.ts`, `e2e/fixtures.ts`)
-
-Deterministic fixtures for test isolation:
-
-- Fixed date, reduced motion, and seeded randomness
-- External network requests are blocked unless explicitly mocked
-- Freighter and Horizon mocks from `e2e/fixtures.ts` drive Stellar's actual send flow
-
-### Test Files
-
-Each chain has dedicated test files (prefixed with `visual-` to distinguish them from functional tests):
-
-- `e2e/visual-horizen-send.spec.ts` - Horizen send states
-- `e2e/visual-horizen-receive.spec.ts` - Horizen receive states
-- `e2e/visual-stellar-send.spec.ts` - Stellar send states
-- `e2e/visual-stellar-receive.spec.ts` - Stellar receive states
-- `e2e/visual-solana-send.spec.ts` - Solana send states
-- `e2e/visual-solana-receive.spec.ts` - Solana receive states
-- `e2e/visual-ckb-send.spec.ts` - CKB send states
-- `e2e/visual-ckb-receive.spec.ts` - CKB receive states
-
-### Configuration (`playwright.config.ts`)
-
-- Reduced motion enabled for all tests
-- Animations disabled in screenshots
-- Multiple viewport configurations
-- Preview server for built application
-- Artifact storage for test results
-
-## Deterministic Behavior
-
-Tests ensure deterministic rendering by:
-
-1. **Freezing Time**: All tests use a fixed timestamp
-2. **Mocking Stellar Dependencies**: Freighter and Horizon return predictable responses
-3. **Blocking External Requests**: Unmocked network calls cannot affect screenshots
-4. **Reduced Motion**: Animations are disabled to avoid timing issues
-5. **Pinned Platform**: Baselines and visual CI both use Windows
-
-## CI Integration
-
-Visual tests run automatically on pull requests via GitHub Actions:
-
-1. Build the application
-2. Install Playwright browsers
-3. Run visual tests against the built preview on Windows, matching the baseline platform
-4. Upload test results and screenshots as artifacts
-5. Failed tests trigger CI failure
-
-## Reviewing Failures
-
-When a visual test fails:
-
-1. Download the `visual-test-results` artifact from the failed CI run
-2. Open `playwright-report/index.html` to view the comparison
-3. Compare baseline vs. actual screenshots
-4. If the change is intentional, run `pnpm test:visual:update` on Windows
-5. Commit the updated screenshots
-
-## Adding New Tests
-
-To add visual coverage for a new state:
-
-1. Add a test case to the appropriate spec file
-2. Drive the state through the app's UI with real deterministic mocks where needed
-3. Assert the intended state is visible before calling `toHaveScreenshot`
-4. Run `pnpm test:visual:update` on Windows and inspect the generated images
-5. Commit the reviewed screenshots with the test
-
-### Example
-
-```typescript
-test('successful send', async ({ page, freighter, horizon }) => {
-  await freighter.mock({ isConnected: true, address: MOCK_WALLET });
-  await horizon.mock({ txSuccess: true, txHash: MOCK_TX_HASH });
-  await page.goto('/send');
-  await page.locator('select:not(#locale-switcher)').selectOption('stellar');
-  await page.getByRole('button', { name: 'Connect Freighter' }).click();
-  await page.getByPlaceholder('st:xlm:...').fill(RECIPIENT_META);
-  await page.getByPlaceholder('0.0').fill('50');
-  await page.getByRole('button', { name: 'Send Privately' }).click();
-  await expect(page.getByText('Transfer Complete')).toBeVisible();
-  await expect(page.getByText(MOCK_TX_HASH)).toBeVisible();
-  await expect(page).toHaveScreenshot('stellar-send-success.png');
-});
+```bash
+pnpm test:visual:docker:update
 ```
 
-## Best Practices
+Both commands build the app and run all three visual viewport projects inside
+the pinned Linux image. The test-only `VITE_WRAITH_NAMES_CONTRACT_ID` points to
+a valid Stellar contract ID; all auction RPC calls remain intercepted. Commit
+only `*-linux.png` baselines. Do not generate or commit Windows snapshots.
 
-1. **Descriptive Names**: Use clear, descriptive screenshot names
-2. **Minimal Changes**: Each test should change only what's necessary
-3. **Assert State**: Verify the expected UI state before taking a screenshot
-4. **Use Fixtures**: Mock wallet and network boundaries, not application state
-5. **Viewport Coverage**: Test critical states on mobile and desktop
+Run one visual spec in the same container while developing:
 
-## Troubleshooting
-
-### Screenshots differ due to font rendering
-
-Font rendering can vary across platforms. If this causes false positives:
-
-- Use the same OS for baseline generation and CI (Windows)
-- Consider using system fonts consistently
-
-### Tests timeout
-
-Increase timeout in `playwright.config.ts`:
-
-```typescript
-use: {
-  actionTimeout: 10000,
-  navigationTimeout: 30000,
-}
+```bash
+pnpm test:visual:docker:spec e2e/visual-stellar-vault.spec.ts
 ```
 
-### Flaky tests due to animations
+## Review output and CI
 
-Ensure `reducedMotion: 'reduce'` is set in config and tests call `emulateMedia` before screenshots.
+Each test title names its route, state, and theme. A `visual-state` annotation
+adds the viewport (`desktop`, `mobile`, or `tablet`), giving the full identity:
 
-## References
+```text
+/send | stellar-send-success | mobile | dark
+```
 
-- [Playwright Visual Regression](https://playwright.dev/docs/web-shots)
-- [Playwright Configuration](https://playwright.dev/docs/test-configuration)
+Playwright's HTML report includes the screenshot comparison and its changed
+region. On failure, the CI `visual-test-results` artifact contains
+`playwright-report/` and `test-results/`, including actual, expected, and diff
+images. Download the artifact and open `playwright-report/index.html`.
+
+CI runs the same pinned Playwright Linux image as local baseline generation;
+the visual job does not separately install a browser.
+
+## Adding a visual state
+
+1. Use a deterministic wallet/network fixture that the app actually consumes.
+2. Navigate to the real route and perform the UI actions that reach the state.
+3. Assert the intended state is visible before calling `captureVisual`.
+4. Add `beginVisualCase` metadata with route, state, and theme; viewport comes
+   from the Playwright project.
+5. Add a narrow locator to the centralized `visualMasks` list only when a
+   genuinely dynamic secret or hash must be hidden.
+6. Generate and review Linux screenshots with
+   `pnpm test:visual:docker:update`.

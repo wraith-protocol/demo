@@ -260,7 +260,7 @@ async function simulateRead<T>(operation: xdr.Operation): Promise<T> {
   const { rpc } = await import('@stellar/stellar-sdk');
   const server = new rpc.Server(STELLAR_NETWORK.rpcUrl);
   const tx = new TransactionBuilder(
-    new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+    new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'),
     { fee: '100', networkPassphrase: STELLAR_NETWORK.networkPassphrase },
   )
     .addOperation(operation)
@@ -460,7 +460,7 @@ export async function checkAvailability(name: string): Promise<boolean> {
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
-        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'),
         {
           fee: '100',
           networkPassphrase: STELLAR_NETWORK.networkPassphrase,
@@ -632,7 +632,7 @@ export async function getNameRecord(name: string): Promise<NameRecord | null> {
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
-        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'),
         {
           fee: '100',
           networkPassphrase: STELLAR_NETWORK.networkPassphrase,
@@ -666,7 +666,7 @@ export async function getOwnedNames(ownerAddress: string): Promise<string[]> {
 
     const result = await server.simulateTransaction(
       new TransactionBuilder(
-        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWH', '0'),
+        new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0'),
         {
           fee: '100',
           networkPassphrase: STELLAR_NETWORK.networkPassphrase,
