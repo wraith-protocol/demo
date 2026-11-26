@@ -14,13 +14,21 @@ import { useTranslation } from 'react-i18next';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
+import {
+  buildSolanaSendIntent,
+  verifySolanaSignedTransaction,
+  type TransactionIntent,
+} from '@/lib/txIntent';
 import { trackEvent } from '@/lib/telemetry';
+
+const SOLANA_INTENT_NETWORK = 'solana:devnet';
 
 export function SolanaSend() {
   const { t } = useTranslation();
-  const { publicKey, connected, sendTransaction } = useWallet();
-  const [recipient, setRecipient] = useSendDraft<string>('solana:recipient', '');
-  const [amount, setAmount] = useSendDraft<string>('solana:amount', '');
+  const { publicKey, connected, signTransaction } = useWallet();
+  const [recipient, setRecipient] = useState('');
+  const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
@@ -30,6 +38,11 @@ export function SolanaSend() {
   } | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<{
+    intent: TransactionIntent;
+    transaction: Transaction;
+    connection: Connection;
+  } | null>(null);
 
   const handleSend = useCallback(async () => {
     const blocked = transactionBlockReason();
@@ -80,10 +93,64 @@ export function SolanaSend() {
         }),
       );
 
-      const signature = await sendTransaction(tx, connection);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+
+      const intent = buildSolanaSendIntent({
+        network: SOLANA_INTENT_NETWORK,
+        account: publicKey.toBase58(),
+        stealthAddress: result.stealthAddress,
+        lamports,
+        recentBlockhash: blockhash,
+        programId: ix.programId,
+        instructionData: Buffer.from(ix.data).toString('hex'),
+      });
+
+      setPendingTransfer({ intent, transaction: tx, connection });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      setIsPending(false);
+    }
+  }, [connected, publicKey, recipient, amount, t]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!publicKey || !pendingTransfer) return;
+    if (pendingTransfer.intent.account !== publicKey.toBase58()) {
+      setPendingTransfer(null);
+      setStealthResult(null);
+      setError('The wallet account changed since this transfer was reviewed. Review it again.');
+      return;
+    }
+    if (!signTransaction) {
+      setError('This wallet cannot sign transactions. Use a wallet that supports signing.');
+      return;
+    }
+
+    setError('');
+    setIsPending(true);
+    trackEvent('send_submitted');
+    const finishTransaction = beginTransactionActivity('submitting');
+
+    try {
+      const signed = await signTransaction(pendingTransfer.transaction);
+      const verification = verifySolanaSignedTransaction(pendingTransfer.transaction, signed);
+      if (!verification.ok) {
+        setPendingTransfer(null);
+        throw new Error(
+          `Your wallet signed a transaction that does not match the confirmed intent (${verification.mismatches
+            .map((mismatch) => mismatch.field)
+            .join(', ')}). Nothing was submitted. Review and confirm again.`,
+        );
+      }
+
+      const signature = await pendingTransfer.connection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+      });
       setTxHash(signature);
 
-      await connection.confirmTransaction(signature, 'confirmed');
+      await pendingTransfer.connection.confirmTransaction(signature, 'confirmed');
       setIsSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
@@ -91,12 +158,13 @@ export function SolanaSend() {
       finishTransaction();
       setIsPending(false);
     }
-  }, [connected, publicKey, sendTransaction, recipient, amount, t]);
+  }, [pendingTransfer, publicKey, signTransaction, t]);
 
   const reset = () => {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setPendingTransfer(null);
     setTxHash(null);
     setIsSuccess(false);
     setError('');
@@ -200,7 +268,7 @@ export function SolanaSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review transfer
           </button>
         </div>
       )}
@@ -264,6 +332,40 @@ export function SolanaSend() {
               </div>
             )}
           </div>
+
+          {pendingTransfer && !txHash && (
+            <>
+              <IntentSummary intent={pendingTransfer.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {txHash && error && <p className="text-sm text-error">{error}</p>}
+
+          {!isSuccess && !txHash && !pendingTransfer && error && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              Start over
+            </button>
+          )}
 
           {isSuccess && (
             <button
