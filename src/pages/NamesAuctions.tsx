@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
@@ -94,7 +96,7 @@ export default function NamesAuctions() {
   const [config, setConfig] = useState<NameAuctionConfig | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingAction, setPendingAction] = useState('');
+  const [pendingAction, setPendingAction] = useTransactionState<string>('', Boolean);
   const [error, setError] = useState('');
   const [txHash, setTxHash] = useState('');
   const [lookupName, setLookupName] = useState('');
@@ -198,6 +200,11 @@ export default function NamesAuctions() {
   };
 
   const submitAuctionTransaction = async (action: string, buildXdr: () => Promise<string>) => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     setPendingAction(action);
     setError('');
     setTxHash('');
@@ -237,6 +244,11 @@ export default function NamesAuctions() {
     selectedBid?.submissionStatus === 'pending' || selectedBid?.submissionStatus === 'unknown';
 
   const placeBid = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!unlocked) {
       setError('Set a passphrase to secure your bid recovery material before placing a bid.');
       return;

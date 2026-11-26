@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -31,7 +33,7 @@ function SolanaStealthRow({
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
-  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawing, setWithdrawing] = useTransactionState<boolean>(false, Boolean);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -54,6 +56,11 @@ function SolanaStealthRow({
   }, [match.stealthAddress]);
 
   const handleWithdraw = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest) return;
     setError('');
     setWithdrawing(true);

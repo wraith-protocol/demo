@@ -1,0 +1,17 @@
+{
+  "name": "decode-uri-component",
+  "version": "0.5.1-cjs.1",
+  "description": "CommonJS backport of decode-uri-component 0.5.1",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    "require": "./index.js",
+    "default": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "LICENSE"
+  ]
+}

@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback, useMemo } from 'react';
 import { decodeStealthMetaAddress } from '@wraith-protocol/sdk/chains/stellar';
 import { useStellarWallet } from '@/context/StellarWalletContext';
@@ -72,7 +74,9 @@ export function StellarVaultDeposit() {
     refundWindow: false,
   });
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [depositState, setDepositState] = useState<DepositState>('idle');
+  const [depositState, setDepositState] = useTransactionState<DepositState>('idle', (value) =>
+    ['simulating', 'signing', 'pending'].includes(value),
+  );
   const [depositId, setDepositId] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [simulationFee, setSimulationFee] = useState<string | null>(null);
@@ -108,6 +112,11 @@ export function StellarVaultDeposit() {
     !isProcessing;
 
   const handleDeposit = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     setSubmitAttempted(true);
     setTouched({ recipient: true, amount: true, unlockLedger: true, refundWindow: true });
 

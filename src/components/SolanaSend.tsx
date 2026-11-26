@@ -1,4 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
+import { useState, useCallback } from 'react';
 import {
   Connection,
   PublicKey,
@@ -17,20 +19,9 @@ import { useWalletSession } from '@/wallets/useWalletSession';
 
 export function SolanaSend() {
   const { t } = useTranslation();
-  const { publicKey, connected, sendTransaction, wallet } = useWallet();
-
-  const walletSession = useWalletSession(
-    connected && publicKey
-      ? {
-          chain: 'solana',
-          provider: `phantom:${wallet?.adapter.name ?? 'wallet'}`,
-          account: publicKey.toBase58(),
-          network: 'solana-devnet',
-        }
-      : null,
-  );
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const { publicKey, connected, sendTransaction } = useWallet();
+  const [recipient, setRecipient] = useSendDraft<string>('solana:recipient', '');
+  const [amount, setAmount] = useSendDraft<string>('solana:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [stealthResult, setStealthResult] = useState<{
@@ -53,12 +44,18 @@ export function SolanaSend() {
   );
 
   const handleSend = useCallback(async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!connected || !publicKey) {
       setError(t('common.walletNotConnected'));
       return;
     }
 
     setError('');
+    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
     const operation = walletSession.begin('solana-send-stealth-payment');
 
@@ -108,7 +105,7 @@ export function SolanaSend() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
-      walletSession.finish(operation);
+      finishTransaction();
       setIsPending(false);
     }
   }, [connected, publicKey, sendTransaction, recipient, amount, t, walletSession]);

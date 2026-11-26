@@ -1,3 +1,5 @@
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useStellarWallet } from '@/context/StellarWalletContext';
@@ -118,6 +120,11 @@ export default function Names() {
   }, [registerName, activeTab, checkNameAvailability]);
 
   const handleRegister = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address) {
       setError('Wallet not connected');
       return;
@@ -144,6 +151,11 @@ export default function Names() {
   };
 
   const handleTransfer = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address) {
       setError('Wallet not connected');
       return;
@@ -167,6 +179,11 @@ export default function Names() {
   };
 
   const handleRenew = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address) {
       setError('Wallet not connected');
       return;
@@ -193,6 +210,11 @@ export default function Names() {
   };
 
   const handleSetMetadata = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!address) {
       setError('Wallet not connected');
       return;
@@ -244,7 +266,7 @@ export default function Names() {
     return date.toLocaleDateString();
   };
 
-  const [isPending, setIsPending] = useState(false);
+  const [isPending, setIsPending] = useTransactionState<boolean>(false, Boolean);
 
   if (!isConnected) {
     return (

@@ -1,3 +1,6 @@
+import { useTransactionActivity } from '@/hooks/useTransactionActivity';
+import { useTransactionState } from '@/hooks/useTransactionState';
+import { transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useEffect } from 'react';
 import {
   useAccount,
@@ -44,7 +47,7 @@ function StealthRow({
   const [balance, setBalance] = useState<string | null>(null);
   const [loadingBal, setLoadingBal] = useState(true);
   const [dest, setDest] = useState('');
-  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawing, setWithdrawing] = useTransactionState<boolean>(false, Boolean);
   const [withdrawHash, setWithdrawHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -73,6 +76,11 @@ function StealthRow({
   }, [match.stealthAddress, upsert]);
 
   const handleWithdraw = async () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!dest) return;
     setError('');
     setWithdrawing(true);
@@ -277,6 +285,8 @@ export function HorizenReceive() {
     hash: regHash,
   });
 
+  useTransactionActivity(isRegPending || isRegConfirming);
+
   // Refetch registration status after successful registration
   useEffect(() => {
     if (isRegSuccess) {
@@ -306,6 +316,11 @@ export function HorizenReceive() {
   };
 
   const registerOnChain = () => {
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
     if (!evmMetaAddress) return;
     const metaBytes = metaAddressToBytes(evmMetaAddress);
     writeContract({

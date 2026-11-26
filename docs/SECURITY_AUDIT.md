@@ -8,8 +8,8 @@ must be re-checked. CI enforces the baseline described here.
 
 ## Policy
 
-- **No critical findings are ever accepted.** `pnpm audit:gate` (run in CI)
-  fails the build as soon as a critical production finding appears.
+- **No critical or high findings are ever accepted.** `pnpm audit:gate` (run in
+  CI) fails the build as soon as a critical or high production finding appears.
 - Direct dependencies are kept on patched releases.
 - When a transitive finding has no patched release that the consumer can load
   (or upgrading would break a supported chain integration), it is recorded in
@@ -25,13 +25,14 @@ must be re-checked. CI enforces the baseline described here.
 | --------- | -----: | ----: |
 | Critical  |      1 |     0 |
 | High      |     53 |     0 |
-| Moderate  |     86 |     8 |
-| Low       |      7 |     2 |
-| **Total** |    147 |    10 |
+| Moderate  |     86 |    12 |
+| Low       |      7 |     3 |
+| **Total** |    147 |    15 |
 
-High findings are at zero except for `decode-uri-component`, which is accepted
-below because its only patched release is ESM-only and its consumer is
-CommonJS. The critical (`shell-quote`) was removed by an override.
+All critical and high findings have been remediated. The critical
+(`shell-quote`) was removed by an override; the remaining high findings were
+removed by patched overrides, including a CommonJS backport for
+`decode-uri-component`.
 
 ## How to run the audit
 
@@ -72,19 +73,20 @@ version with `pnpm.overrides` (see `package.json`). Except where noted, every
 override stays within a range the consumer already declares, so runtime
 behaviour is preserved:
 
-| Override (package selector)                   | Forced to | Reported advisory                                                                                        |
-| --------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `axios`                                       | `1.20.0`  | Multiple GHSA advisories on the 1.x line.                                                                |
-| `form-data`                                   | `4.0.6`   | GHSA-hmw2-7cc7-3qxx.                                                                                     |
-| `follow-redirects`                            | `1.16.3`  | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c, GHSA-mrwp-f3q8-3g9p.                                           |
-| `hono`                                        | `4.13.13` | Multiple GHSA advisories on the 4.x line.                                                                |
-| `socket.io-parser`                            | `4.2.7`   | GHSA-2m8v-j782-fhvr.                                                                                     |
-| `browserslist`                                | `4.29.3`  | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
-| `metro>image-size`                            | `2.0.4`   | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.                                                                |
-| `shell-quote`                                 | `1.12.0`  | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv.                                                     |
-| `@stellar/stellar-sdk>toml`                   | `5.0.1`   | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64, GHSA-9qmh-m7c6-f92p. |
-| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`  | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.                                                                |
-| `zod`                                         | `4.6.6`   | GHSA-mrhx-c7xc-m3w5.                                                                                     |
+| Override (package selector)                   | Forced to     | Reported advisory                                                                                        |
+| --------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------- |
+| `axios`                                       | `1.20.0`      | Multiple GHSA advisories on the 1.x line.                                                                |
+| `form-data`                                   | `4.0.6`       | GHSA-hmw2-7cc7-3qxx.                                                                                     |
+| `follow-redirects`                            | `1.16.2`      | GHSA-q3jh-wrc6-jgq8, GHSA-8r9p-f939-6h3c, GHSA-mrwp-f3q8-3g9p.                                           |
+| `hono`                                        | `4.13.13`     | Multiple GHSA advisories on the 4.x line.                                                                |
+| `socket.io-parser`                            | `4.2.7`       | GHSA-2m8v-j782-fhvr.                                                                                     |
+| `browserslist`                                | `4.29.3`      | GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g.                                                                |
+| `metro>image-size`                            | `2.0.4`       | GHSA-5p2g-fcmc-qvqq, GHSA-w3rx-r6r6-pgpr.                                                                |
+| `query-string>decode-uri-component`           | `0.5.1-cjs.1` | GHSA-vcc3-ghjq-m6fr, GHSA-qr28-fpjm-wq7f.                                                                |
+| `shell-quote`                                 | `1.12.0`      | GHSA-pqg4-j6r4-53mv (critical), GHSA-395f-4hp3-45gv.                                                     |
+| `@stellar/stellar-sdk>toml`                   | `5.0.1`       | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j, GHSA-4qx8-w7c3-pj3p, GHSA-9j65-hcg3-gc64, GHSA-9qmh-m7c6-f92p. |
+| `engine.io-client>ws`, `ethers>ws`, `viem>ws` | `8.22.0`      | GHSA-96hv-2xvq-fx4p, GHSA-58qx-3vcg-4xpx.                                                                |
+| `zod`                                         | `4.6.6`       | GHSA-mrhx-c7xc-m3w5.                                                                                     |
 
 Overrides that cross a declared major range are scoped to the single path that
 needs them with pnpm's `parent>child` syntax, so they cannot silently change a
@@ -99,6 +101,11 @@ different consumer:
   declares** (`image-size` 1.x), so that override does cross a major. It is
   scoped to `metro`, and `scripts/dependency-compatibility.test.mjs` exercises
   the affected path so the bump cannot regress silently.
+- **`decode-uri-component` is patched in `0.5.1`, but that release is ESM-only**
+  and `query-string` 7.x requires it as CommonJS. The scoped override points at
+  `vendor/decode-uri-component-cjs`, a CJS backport of the upstream 0.5.1 fix
+  that preserves the 0.2.x `+`-to-space behaviour. The compatibility test
+  asserts the `query-string` path still resolves a callable decoder.
 
 The `toml` override is safe because `@stellar/stellar-sdk` only uses `toml`
 inside `StellarToml.Resolver`, which the demo never calls (`@stellar/stellar-sdk`
@@ -111,22 +118,18 @@ receive a constructable `ws` 7 module.
 
 ## Accepted findings
 
-Everything below is transitive and lacks a patched release that the consumer
-can load within its declared range; fixing it would require a breaking bump of a
-package we do not control. All are accepted with an owner and an expiry;
-re-check on or before the expiry.
+Everything below is transitive, has no patched release inside the range the
+consumer declares, and would require a breaking major bump of a package we do
+not control. All are accepted with an owner and an expiry; re-check on or before
+the expiry.
 
-| Package                | Severity | Advisory                                                      | Dependency path                                                                                       | Owner                          | Expiry     |
-| ---------------------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
-| `decode-uri-component` | high     | GHSA-qr28-fpjm-wq7f                                           | `wagmi` → `@wagmi/connectors` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string` | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `uuid`                 | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`                            | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `valibot`              | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse`                | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `decode-uri-component` | moderate | GHSA-vcc3-ghjq-m6fr                                           | `wagmi` → `@walletconnect/ethereum-provider` → `@reown/appkit` → `query-string`                       | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `stream-json`          | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                                          | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `elliptic`             | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`                   | `@wraith-protocol/maintainers` | 2027-01-15 |
-| `@babel/core`          | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`                             | `@wraith-protocol/maintainers` | 2027-01-15 |
-
-Notes:
+| Package       | Severity | Advisory                                                      | Dependency path                                                                        | Owner                          | Expiry     |
+| ------------- | -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------ | ---------- |
+| `uuid`        | moderate | GHSA-w5hq-g745-h8pq                                           | `@solana/web3.js` → `jayson`/`rpc-websockets`; `wagmi` → `@metamask/utils`             | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `valibot`     | moderate | GHSA-5qjj-4xww-7phc                                           | `@ckb-ccc/connector-react` → `@ckb-ccc/connector` → `@ckb-ccc/ccc` → `@ckb-ccc/xverse` | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `stream-json` | moderate | GHSA-528h-pc64-c93x, GHSA-hqr4-qq8f-hg3x, GHSA-mjw6-4jj6-33hc | `@solana/web3.js` → `jayson` → `stream-json`                                           | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `elliptic`    | low      | GHSA-848j-6mx2-7j84                                           | `@ckb-ccc/ccc` → `@ckb-ccc/eip6963` → `@joyid/ckb` → `@nervosnetwork/ckb-sdk-utils`    | `@wraith-protocol/maintainers` | 2027-01-15 |
+| `@babel/core` | low      | GHSA-4x5r-pxfx-6jf8                                           | `@solana/wallet-adapter-react` → `react-native` → `@react-native/codegen`              | `@wraith-protocol/maintainers` | 2027-01-15 |
 
 - The patched `decode-uri-component` 0.5.1 release is ESM-only, while its only
   consumer, `query-string@7.1.3`, is CommonJS and loads it with `require()` as a
@@ -142,11 +145,10 @@ to `main`/`develop`. The gate lives in `scripts/audit-gate.mjs` and enforces the
 baseline:
 
 - **critical ≤ 0** — a new critical finding always fails CI.
-- **high ≤ 1** — the single accepted `decode-uri-component` finding; any
-  additional high finding fails CI.
+- **high ≤ 0** — a new high finding always fails CI.
 
-Raising either baseline requires a matching entry (owner + expiry) in the table
-above.
+Raising either baseline requires explicit maintainer approval and a matching
+entry (owner + expiry) in the table above.
 
 The gate also fails when `pnpm audit` itself does not succeed: a registry error,
 non-JSON output, or a payload without `metadata.vulnerabilities` is treated as
