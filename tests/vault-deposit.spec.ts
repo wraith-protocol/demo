@@ -109,7 +109,7 @@ async function connectVault(page: Page) {
   await page.goto('/vault');
   await page.getByLabel('Chain').selectOption('stellar');
   await page.getByRole('button', { name: 'Connect Freighter' }).click();
-  await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible();
+  await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible({ timeout: 15000 });
 }
 
 async function fillDepositForm(page: Page, values: { amount?: string } = {}) {

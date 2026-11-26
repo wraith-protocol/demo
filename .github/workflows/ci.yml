@@ -36,6 +36,63 @@ jobs:
       # production dependency finding appears. See docs/SECURITY_AUDIT.md.
       - run: pnpm audit:gate
 
+  # Wave 11: Playwright wallet and transaction matrix CI
+  # Runs send, receive, wallet connect/disconnect, vault claim/refund, and
+  # failure-path matrix across all supported engines (Chromium, Firefox, WebKit).
+  # All wallet connections and network calls are mocked deterministically.
+  # Traces, screenshots, and videos upload only on retry or final failure.
+  # No live key, wallet extension, or public RPC is required.
+  playwright-matrix-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      # Run the matrix of Playwright tests across all browsers.
+      # Each browser project uses the same test files but with browser-specific
+      # configuration. Wallet mocks and network intercepts are deterministic.
+      - name: Run Playwright matrix tests
+        run: pnpm test:e2e
+        env:
+          # Enable trace and video only on failure to keep artifact size bounded
+          PLAYWRIGHT_trace: on-first-retry
+          PLAYWRIGHT_video: retain-on-failure
+          PLAYWRIGHT_screenshot: only-on-failure
+
+      # Upload test artifacts only on final failure across any browser
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-matrix-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-matrix-results
+          path: test-results/
+          if-no-files-found: ignore
+
   unit-tests:
     runs-on: ubuntu-latest
 

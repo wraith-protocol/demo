@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Vault Refund Flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/vault');
+    await page.getByLabel('Chain').selectOption('stellar');
+    await page.waitForSelector('text=Stellar Testnet', { timeout: 15000 });
   });
 
   test('displays status tab', async ({ page }) => {
