@@ -37,6 +37,7 @@ import { NetworkMismatchModal } from '@/components/NetworkMismatchModal';
 import { useStealthLabels } from '@/hooks/useStealthLabels';
 import { StellarBatchWithdrawModal } from '@/components/StellarBatchWithdrawModal';
 import { createStellarQrUri } from '@/utils/qr';
+import { useWalletSession } from '@/wallets/useWalletSession';
 
 interface StellarMatchCardContainerProps {
   match: MatchedAnnouncement;
@@ -121,8 +122,14 @@ function StellarMatchCardContainer({
 
 export function StellarReceive() {
   const { t } = useTranslation();
-  const { address, isConnected, signMessage, signTransaction, isNetworkMismatch } =
-    useStellarWallet();
+  const {
+    address,
+    isConnected,
+    signMessage,
+    signTransaction,
+    isNetworkMismatch,
+    freighterNetwork,
+  } = useStellarWallet();
   const { stellarKeys, stellarMetaAddress, setStellarKeys, setStellarMetaAddress } =
     useStealthKeys();
   const { strategy: scanStrategy } = useScanStrategy();
@@ -130,12 +137,30 @@ export function StellarReceive() {
   const updateActivity = useActivityStore((state) => state.updateStatus);
   const notifications = useStellarNotifications();
 
+  const walletSession = useWalletSession(
+    isConnected && address
+      ? {
+          chain: 'stellar',
+          provider: 'freighter',
+          account: address,
+          network: freighterNetwork ?? STELLAR_NETWORK.name,
+        }
+      : null,
+  );
+
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+
   const [error, setError] = useState('');
   const [retryStatus, setRetryStatus] = useState('');
 
-  const scanner = useStellarScanner({ stellarKeys, address, strategy: scanStrategy, t });
+  const scanner = useStellarScanner({
+    stellarKeys,
+    address,
+    strategy: scanStrategy,
+    t,
+    session: walletSession,
+  });
   const matched = scanner.matched;
   const isScanning = scanner.isScanning;
   const hasScanned = scanner.hasScanned;

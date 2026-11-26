@@ -20,6 +20,7 @@ import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
+import { useWalletSession } from '@/wallets/useWalletSession';
 
 function SolanaStealthRow({
   match,
@@ -216,14 +217,35 @@ function SolanaStealthRow({
 export function SolanaReceive() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { connected, signMessage } = useWallet();
+  const { connected, signMessage, publicKey, wallet } = useWallet();
   const { solanaKeys, solanaMetaAddress, setSolanaKeys, setSolanaMetaAddress } = useStealthKeys();
+
+  const walletSession = useWalletSession(
+    connected && publicKey
+      ? {
+          chain: 'solana',
+          provider: `phantom:${wallet?.adapter.name ?? 'wallet'}`,
+          account: publicKey.toBase58(),
+          network: 'solana-devnet',
+        }
+      : null,
+  );
 
   const [isDerivingKeys, setIsDerivingKeys] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [hasScanned, setHasScanned] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setMatched([]);
+        setHasScanned(false);
+        setError('');
+      }),
+    [walletSession],
+  );
 
   const deriveKeys = useCallback(async () => {
     if (!signMessage) {
@@ -232,9 +254,11 @@ export function SolanaReceive() {
     }
     setIsDerivingKeys(true);
     setError('');
+    const operation = walletSession.begin('solana-derive-stealth-keys');
     try {
       const msgBytes = new TextEncoder().encode(STEALTH_SIGNING_MESSAGE);
       const signature = await signMessage(msgBytes);
+      operation.assertActive();
       const derived = deriveStealthKeys(signature);
       setSolanaKeys(derived);
       const meta = encodeStealthMetaAddress(derived.spendingPubKey, derived.viewingPubKey);
@@ -242,16 +266,19 @@ export function SolanaReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.keyDerivationFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsDerivingKeys(false);
     }
-  }, [signMessage, setSolanaKeys, setSolanaMetaAddress, t]);
+  }, [signMessage, setSolanaKeys, setSolanaMetaAddress, t, walletSession]);
 
   const scanPayments = useCallback(async () => {
     if (!solanaKeys) return;
     setIsScanning(true);
     setError('');
+    const operation = walletSession.begin('solana-scan-announcements');
     try {
       const announcements = await fetchAnnouncements('solana');
+      operation.assertActive();
       const results = scanAnnouncements(
         announcements,
         solanaKeys.viewingKey,
@@ -264,9 +291,10 @@ export function SolanaReceive() {
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.scanFailed'));
     } finally {
+      walletSession.finish(operation);
       setIsScanning(false);
     }
-  }, [solanaKeys, t]);
+  }, [solanaKeys, t, walletSession]);
 
   if (!connected) {
     return (

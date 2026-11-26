@@ -1,7 +1,7 @@
 import { useSendDraft } from '@/hooks/useSendDraft';
 import { useTransactionActivity } from '@/hooks/useTransactionActivity';
 import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString, BuildSendStealthResult } from '@wraith-protocol/sdk/chains/evm';
@@ -10,21 +10,44 @@ import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
 import { trackEvent } from '@/lib/telemetry';
+import { useWalletSession } from '@/wallets/useWalletSession';
 
 export function HorizenSend() {
   const { t } = useTranslation();
-  const { isConnected, address } = useAccount();
+  const { isConnected, address, connector, chainId } = useAccount();
   const { data: balanceData } = useBalance({ address });
+
+  const walletSession = useWalletSession(
+    isConnected && address
+      ? {
+          chain: 'horizen',
+          provider: `evm:${connector?.uid ?? connector?.name ?? 'unknown'}`,
+          account: address,
+          network: String(chainId ?? horizenTestnet.id),
+        }
+      : null,
+  );
 
   const [recipient, setRecipient] = useSendDraft<string>('horizen:recipient', '');
   const [amount, setAmount] = useSendDraft<string>('horizen:amount', '');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<BuildSendStealthResult | null>(null);
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
 
-  const { sendTransactionAsync: sendTransaction, data: txHash, isPending } = useSendTransaction();
+  const { sendTransactionAsync, isPending } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useTransactionActivity(isPending || isConfirming);
+
+  useEffect(
+    () =>
+      walletSession.subscribe(() => {
+        setStealthResult(null);
+        setTxHash(undefined);
+        setError('');
+      }),
+    [walletSession],
+  );
 
   const isMetaAddress = recipient.startsWith('st:eth:');
   const cleanedName = recipient.replace(/\.wraith$/i, '').toLowerCase();
@@ -39,6 +62,7 @@ export function HorizenSend() {
     setError('');
 
     const finishTransaction = beginTransactionActivity('signing');
+    const operation = walletSession.begin('horizen-send-stealth-payment');
     let metaAddress = recipient;
 
     try {
@@ -55,6 +79,7 @@ export function HorizenSend() {
           }),
         });
         const json = await response.json();
+        operation.assertActive();
         if (!json.result || json.result === '0x' || json.result.length <= 66) {
           setError(t('common.nameNotFound'));
           return;
@@ -74,17 +99,22 @@ export function HorizenSend() {
         chain: 'horizen',
       });
 
+      operation.assertActive();
       setStealthResult(result);
       trackEvent('send_submitted');
 
-      await sendTransaction({
+      const hash = await sendTransactionAsync({
         to: result.transaction.to as `0x${string}`,
         data: result.transaction.data as `0x${string}`,
         value: result.transaction.value,
       });
+
+      operation.assertActive();
+      setTxHash(hash);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
+      walletSession.finish(operation);
       finishTransaction();
     }
   };
@@ -93,6 +123,7 @@ export function HorizenSend() {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setTxHash(undefined);
     setError('');
   };
 

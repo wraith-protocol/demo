@@ -17,6 +17,7 @@ import {
   type StellarScannerRequest,
 } from '@/lib/stellar/scannerMessages';
 import type { ScanStrategy } from '@/workers/stellarScanDispatch';
+import type { WalletOperation, WalletSession } from '@/wallets/session';
 
 type ScanAnnouncementsMock = (
   announcements: Announcement[],
@@ -35,6 +36,8 @@ interface UseStellarScannerOptions {
   address: string | null;
   strategy: ScanStrategy;
   t: TFunction;
+  /** Guards the scan so a wallet transition drops results from a stale context. */
+  session?: WalletSession;
 }
 
 export interface StellarScannerState {
@@ -53,6 +56,7 @@ export function useStellarScanner({
   address,
   strategy,
   t,
+  session,
 }: UseStellarScannerOptions): StellarScannerState {
   const [matched, setMatched] = useState<MatchedAnnouncement[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -60,18 +64,40 @@ export function useStellarScanner({
   const [error, setError] = useState('');
   const [retentionGap, setRetentionGap] = useState<RetentionGap | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  const operationRef = useRef<WalletOperation | null>(null);
 
   const terminateActiveWorker = useCallback(() => {
     workerRef.current?.terminate();
     workerRef.current = null;
   }, []);
 
+  const finishOperation = useCallback(() => {
+    const operation = operationRef.current;
+    if (!operation) return;
+    session?.finish(operation);
+    operationRef.current = null;
+  }, [session]);
+
   const cancel = useCallback(() => {
+    finishOperation();
     terminateActiveWorker();
     setIsScanning(false);
-  }, [terminateActiveWorker]);
+  }, [finishOperation, terminateActiveWorker]);
 
   useEffect(() => cancel, [cancel]);
+
+  useEffect(() => {
+    if (!session) return;
+    return session.subscribe(() => {
+      finishOperation();
+      terminateActiveWorker();
+      setIsScanning(false);
+      setMatched([]);
+      setHasScanned(false);
+      setRetentionGap(null);
+      setError('');
+    });
+  }, [finishOperation, session, terminateActiveWorker]);
 
   const scan = useCallback(
     async (recoveryStartLedger?: number) => {
@@ -88,6 +114,10 @@ export function useStellarScanner({
         return;
       }
 
+      const operation = session?.begin('stellar-scan-announcements') ?? null;
+      operationRef.current = operation;
+      const stale = () => operation !== null && !operation.active;
+
       const mockScan = getScanAnnouncementsMock();
       if (mockScan) {
         try {
@@ -95,18 +125,25 @@ export function useStellarScanner({
             STELLAR_NETWORK.rpcUrl,
             announcerContract,
           );
+          // A transition while the announcements were in flight must not hand a
+          // stale inbox to the replacement wallet context.
+          if (stale()) return;
           const results = mockScan(
             announcements,
             stellarKeys.viewingKey,
             stellarKeys.spendingPubKey,
             stellarKeys.spendingScalar,
           );
+          if (stale()) return;
           setMatched(results);
           setHasScanned(true);
           trackEvent('scan_triggered');
         } catch (err) {
-          setError(err instanceof Error ? err.message : t('common.scanFailed'));
+          if (!stale()) {
+            setError(err instanceof Error ? err.message : t('common.scanFailed'));
+          }
         } finally {
+          finishOperation();
           setIsScanning(false);
         }
         return;
@@ -122,9 +159,14 @@ export function useStellarScanner({
         worker.terminate();
         if (workerRef.current === worker) workerRef.current = null;
         setIsScanning(false);
+        finishOperation();
       };
 
       worker.onmessage = (event: MessageEvent<unknown>) => {
+        if (stale()) {
+          finish();
+          return;
+        }
         const message = event.data;
         if (!isStellarScannerMessage(message)) {
           setError(t('common.scanFailed'));
@@ -182,7 +224,7 @@ export function useStellarScanner({
       };
       worker.postMessage(request);
     },
-    [address, cancel, stellarKeys, strategy, t, terminateActiveWorker],
+    [address, cancel, finishOperation, session, stellarKeys, strategy, t, terminateActiveWorker],
   );
 
   useEffect(() => {
