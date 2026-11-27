@@ -1,8 +1,6 @@
 import {
   Component,
-  createContext,
   lazy,
-  useContext,
   type ComponentType,
   type ErrorInfo,
   type LazyExoticComponent,
@@ -15,36 +13,33 @@ interface RouteErrorBoundaryProps {
 
 interface RouteErrorBoundaryState {
   error: Error | null;
-  retryAttempt: number;
 }
 
 export type PageLoader = () => Promise<{ default: ComponentType }>;
 
-const retryAttemptContext = createContext(0);
-const lazyPageCache = new WeakMap<PageLoader, Map<number, LazyExoticComponent<ComponentType>>>();
+const lazyPages = new Map<PageLoader, LazyExoticComponent<ComponentType>>();
 
-function getLazyPage(loader: PageLoader, attempt: number) {
-  let attempts = lazyPageCache.get(loader);
-  if (!attempts) {
-    attempts = new Map();
-    lazyPageCache.set(loader, attempts);
+function getLazyPage(loader: PageLoader) {
+  let Page = lazyPages.get(loader);
+  if (!Page) {
+    Page = lazy(loader);
+    lazyPages.set(loader, Page);
   }
+  return Page;
+}
 
-  let page = attempts.get(attempt);
-  if (!page) {
-    page = lazy(loader);
-    attempts.set(attempt, page);
-  }
-  return page;
+function resetLazyPages() {
+  lazyPages.clear();
 }
 
 /**
- * Keep each lazy component stable across Suspense retries. React discards
- * useMemo caches when a component suspends during its initial render.
+ * Renders a lazy-loaded page. The lazy() component is cached per loader at
+ * module scope so React can settle the import on the first render. When a
+ * chunk load fails, RouteErrorBoundary clears the cache before retrying (see
+ * below), so the retry gets a fresh lazy component and a fresh import().
  */
 export function LazyPage({ loader }: { loader: PageLoader }) {
-  const attempt = useContext(retryAttemptContext);
-  const Page = getLazyPage(loader, attempt);
+  const Page = getLazyPage(loader);
   return <Page />;
 }
 
@@ -66,18 +61,19 @@ export class RouteErrorBoundary extends Component<
   RouteErrorBoundaryProps,
   RouteErrorBoundaryState
 > {
-  state: RouteErrorBoundaryState = { error: null, retryAttempt: 0 };
+  state: RouteErrorBoundaryState = { error: null };
 
-  static getDerivedStateFromError(error: Error): Partial<RouteErrorBoundaryState> {
+  static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
     return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    resetLazyPages();
     console.error('Route chunk failed to load', error, info.componentStack);
   }
 
   private retry = () => {
-    this.setState((state) => ({ error: null, retryAttempt: state.retryAttempt + 1 }));
+    this.setState({ error: null });
   };
 
   render() {
@@ -114,10 +110,6 @@ export class RouteErrorBoundary extends Component<
       );
     }
 
-    return (
-      <retryAttemptContext.Provider value={this.state.retryAttempt ?? 0}>
-        {this.props.children}
-      </retryAttemptContext.Provider>
-    );
+    return this.props.children;
   }
 }

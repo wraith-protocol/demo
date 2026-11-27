@@ -2,6 +2,7 @@ import { Buffer } from 'buffer';
 (window as unknown as Record<string, unknown>).Buffer = Buffer;
 
 import '@/i18n';
+import { installConsoleSecretGuard } from '@/lib/secretScan';
 import { StrictMode, useState, useMemo, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -96,6 +97,8 @@ function Providers({ children }: { children: React.ReactNode }) {
     </ThemeProvider>
   );
 }
+installConsoleSecretGuard();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

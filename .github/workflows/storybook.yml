@@ -54,8 +54,19 @@ jobs:
             git push
           fi
 
+      - name: Scan visual-test artifacts for seeded secrets
+        id: secret_scan
+        if: always()
+        run: |
+          if pnpm secrets:gate; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
       - name: Upload snapshot diffs on failure
-        if: failure()
+        if: failure() && steps.secret_scan.outputs.clean == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: image-snapshot-diffs
