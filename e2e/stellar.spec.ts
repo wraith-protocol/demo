@@ -139,7 +139,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await page.getByPlaceholder('0.0').fill('10');
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
-    await expect(page.getByText('Enter a valid Stellar meta-address (st:xlm:...)')).toBeVisible();
+    await expect(page.getByText('Not a valid Stellar stealth meta-address')).toBeVisible();
   });
 
   test('Send - 8. Successfully executes payment to a new stealth address (creating the account)', async ({
@@ -306,8 +306,8 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
 
-    await expect(page.getByText('No transfers found')).toBeVisible();
-    await expect(page.getByText('No stealth transfers matched your keys.')).toBeVisible();
+    await expect(page.getByText('0 transfers found')).toBeVisible();
+    await expect(page.getByText('No transfers yet')).toBeVisible();
   });
 
   test('Receive - 14. Successfully scans, displays matched payment transfers, and reveals keys', async ({
