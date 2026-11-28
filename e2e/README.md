@@ -124,15 +124,14 @@ await horizon.mock({
 
 4. **Register or run**: Playwright automatically finds any files ending in `.spec.ts` in the `e2e/` folder.
 
+---
+
+## Deterministic vs. live checks
+
+`e2e/stellar.spec.ts` is a **required, deterministic** suite. ...
+... never part of this required job.
+
 ## Transaction-aware PWA updates
 
-Run `pnpm build && pnpm test:pwa` for the production worker tests. The update
-suite starts an isolated server on port 5178, builds `fixtures/pwa-update` under
-`dist/`, and uses the production update prompt, draft persistence, submission
-idempotency and service worker. Wallet/RPC lifecycle boundaries are deterministic;
-no real funds or wallet extensions are used. Deployments change the served worker
-bytes so tests exercise actual installation, waiting, activation and reload.
-
-Coverage includes idle, simulation, signing, submission, reconciliation, offline
-updates, busy sibling tabs, cache cleanup, draft preservation, duplicate submission
-prevention and incompatible API/persisted schema recovery.
+Run `pnpm build && pnpm test:pwa` for the production worker tests. ...
+... incompatible API/persisted schema recovery.

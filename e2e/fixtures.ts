@@ -1,5 +1,12 @@
 import { test as base } from '@playwright/test';
-import { xdr, Address, nativeToScVal } from '@stellar/stellar-sdk';
+import {
+  xdr,
+  Address,
+  nativeToScVal,
+  Keypair,
+  Networks,
+  TransactionBuilder,
+} from '@stellar/stellar-sdk';
 
 export interface FreighterMockConfig {
   isConnected: boolean;
@@ -43,6 +50,17 @@ export const test = base.extend<{
 }>({
   freighter: async ({ page }, use) => {
     const mock = async (config: Partial<FreighterMockConfig>) => {
+      // Sign in Node (where the SDK is available) so the mock wallet returns a
+      // genuinely signed transaction, like a real wallet would.
+      try {
+        await page.exposeFunction('__signXdr', (xdrString: string) => {
+          const tx = TransactionBuilder.fromXDR(xdrString, Networks.TESTNET);
+          tx.sign(Keypair.random());
+          return tx.toXDR();
+        });
+      } catch {
+        // already exposed on this page
+      }
       await page.addInitScript((cfg) => {
         (window as any).freighterMock = {
           isConnected: async () => ({ isConnected: cfg.isConnected !== false }),
@@ -82,7 +100,7 @@ export const test = base.extend<{
               throw new Error('User rejected transaction signing');
             }
             return {
-              signedTxXdr: cfg.signedTxXdr || xdrString,
+              signedTxXdr: cfg.signedTxXdr || (await (window as any).__signXdr(xdrString)),
             };
           },
         };

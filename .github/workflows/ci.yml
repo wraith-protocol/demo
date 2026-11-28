@@ -193,3 +193,59 @@ jobs:
             reports/secret-scan/
             test-results/
           if-no-files-found: ignore
+
+  stellar-e2e:
+    name: Stellar E2E (deterministic - mocked Freighter + Horizon, no credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (installs pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+          pnpm --version
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      # Required check: runs fully offline against the mocked Freighter wallet and
+      # mocked Horizon / Soroban RPC from e2e/fixtures.ts. No contributor
+      # credentials or live network are needed.
+      - name: Run deterministic Stellar E2E
+        run: pnpm test:e2e:stellar
+        env:
+          CI: true
+          PLAYWRIGHT_JSON_OUTPUT_NAME: reports/stellar-e2e.json
+
+      - name: Fail if any Stellar E2E test was skipped
+        run: |
+          node -e '
+            const s = require("./reports/stellar-e2e.json").stats;
+            console.log(`Stellar E2E: expected=${s.expected} skipped=${s.skipped} flaky=${s.flaky} unexpected=${s.unexpected}`);
+            if (s.skipped > 0) {
+              console.error("Stellar E2E must never skip: " + s.skipped + " test(s) were skipped. Remove the test.skip()/conditional or provide the missing fixture in e2e/fixtures.ts.");
+              process.exit(1);
+            }
+          '
+
+      - name: Upload Stellar E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-e2e-report
+          path: |
+            playwright-report/
+            reports/stellar-e2e.json
+            test-results/
+          if-no-files-found: ignore

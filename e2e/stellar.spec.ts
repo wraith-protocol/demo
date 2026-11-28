@@ -24,7 +24,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
   }) => {
     await freighter.mock({ isConnected: false });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
 
     // Verify correct page state when disconnected
     await expect(page.locator('h1')).toHaveText('Send');
@@ -41,7 +41,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     // Mock wallet NOT installed
     await freighter.mock({ isConnected: false });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
 
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
@@ -55,7 +55,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     // Mock installed, but connection will fail
     await freighter.mock({ isConnected: true, shouldFailConnect: true });
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
 
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
@@ -74,14 +74,14 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Header should show connected wallet address (truncated: GCDU...2XHX)
-    await expect(page.getByRole('button', { name: 'GCDU...2XHX' })).toBeVisible();
+    await expect(page.getByText('GCDU...2XHX').first()).toBeVisible();
 
     // Send form should now be visible since wallet is connected
-    await expect(page.getByLabel('Recipient Meta-Address')).toBeVisible();
+    await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible();
   });
 
   test('Wallet - 5. Disconnects wallet correctly when address button is clicked', async ({
@@ -92,11 +92,11 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click on the connected button (displays address) to disconnect
-    await page.getByRole('button', { name: 'GCDU...2XHX' }).click();
+    await page.getByRole('button', { name: 'Disconnect Stellar wallet' }).click();
 
     // Should return to disconnected state
     await expect(page.getByRole('button', { name: 'Connect Freighter' })).toBeVisible();
@@ -110,7 +110,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     const sendBtn = page.getByRole('button', { name: 'Send Privately' });
@@ -131,7 +131,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await freighter.mock({ isConnected: true, address: mockAddress });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Enter wrong prefix
@@ -139,7 +139,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await page.getByPlaceholder('0.0').fill('10');
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
-    await expect(page.getByText('Enter a valid Stellar meta-address (st:xlm:...)')).toBeVisible();
+    await expect(page.getByText('Not a valid Stellar stealth meta-address')).toBeVisible();
   });
 
   test('Send - 8. Successfully executes payment to a new stealth address (creating the account)', async ({
@@ -160,11 +160,12 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
     await page.getByPlaceholder('0.0').fill('50');
+    await expect(page.getByTestId('intent-confirmation')).toBeVisible();
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
     // Success screen details
@@ -192,11 +193,12 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/send');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
     await page.getByPlaceholder('0.0').fill('5');
+    await expect(page.getByTestId('intent-confirmation')).toBeVisible();
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
     await expect(page.getByText('Transfer Complete')).toBeVisible();
@@ -213,7 +215,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({});
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Verify stealth meta-address card is visible
@@ -227,27 +229,46 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     page,
     freighter,
     horizon,
-    browserName,
   }) => {
-    // Clipboard reading via navigator.clipboard API is only standard/supported on Chromium in headless E2E
-    if (browserName !== 'chromium') {
-      test.skip();
-    }
+    // Deterministic on every browser: stub the Clipboard API in the page and record
+    // what the app writes, instead of reading the real clipboard (Chromium-only).
+    await page.addInitScript(() => {
+      const w = window as unknown as { __copied: string[] };
+      w.__copied = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            w.__copied.push(text);
+          },
+          readText: async () => w.__copied[w.__copied.length - 1] ?? '',
+        },
+      });
+    });
 
     const mockAddress = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
     await freighter.mock({ isConnected: true, address: mockAddress });
     await horizon.mock({});
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click the copy button
-    await page.getByRole('button', { name: 'Copy' }).first().click();
+    await page
+      .getByRole('button', { name: /^Copy st:xlm:/ })
+      .first()
+      .click();
 
-    // Verify clipboard content
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clipboardText).toContain('st:xlm:');
+    // Verify what the app copied (recorded by the clipboard stub above)
+    const copied = await page.evaluate(
+      () => (window as unknown as { __copied: string[] }).__copied,
+    );
+    expect(
+      copied.length,
+      'Copy button never called navigator.clipboard.writeText (clipboard stub recorded nothing)',
+    ).toBeGreaterThan(0);
+    expect(copied[copied.length - 1]).toContain('st:xlm:');
   });
 
   test('Receive - 12. Registers derived stealth keys on-chain', async ({
@@ -261,7 +282,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({ accountExists: true, txSuccess: true, txHash: 'tx_register_hash' });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click Register On-Chain
@@ -282,13 +303,13 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await horizon.mock({ sorobanEvents: [] });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
 
-    await expect(page.getByText('No transfers found')).toBeVisible();
-    await expect(page.getByText('No stealth transfers matched your keys.')).toBeVisible();
+    await expect(page.getByText('0 transfers found')).toBeVisible();
+    await expect(page.getByText('No transfers yet')).toBeVisible();
   });
 
   test('Receive - 14. Successfully scans, displays matched payment transfers, and reveals keys', async ({
@@ -318,7 +339,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
@@ -359,7 +380,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     });
 
     await page.goto('/receive');
-    await page.selectOption('select', 'stellar');
+    await page.locator('select[aria-label="Chain"]:visible').selectOption('stellar');
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     await page.getByRole('button', { name: 'Scan for Payments' }).click();
