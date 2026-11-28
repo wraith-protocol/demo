@@ -3,9 +3,25 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
-const isPwaOnly =
-  process.argv.some((arg) => arg.includes('pwa-chromium') || arg.includes('pwa-')) ||
-  Boolean(process.env.PWA_TEST_ONLY);
+const args = process.argv.slice(2);
+const requestedProjects = args
+  .flatMap((arg, index) => {
+    if (arg === '--project') return [args[index + 1] ?? ''];
+    if (arg.startsWith('--project=')) return [arg.slice('--project='.length)];
+    return [];
+  })
+  .filter(Boolean);
+
+const pwaOnly =
+  Boolean(process.env.PWA_TEST_ONLY) ||
+  (requestedProjects.length > 0 && requestedProjects.every((project) => project.includes('pwa')));
+const startDevServer =
+  !pwaOnly &&
+  (requestedProjects.length === 0 || requestedProjects.some((project) => !project.includes('pwa')));
+const startPreviewServer =
+  pwaOnly ||
+  requestedProjects.length === 0 ||
+  requestedProjects.some((project) => project.includes('pwa'));
 
 export default defineConfig({
   testDir: '.',
@@ -49,43 +65,34 @@ export default defineConfig({
       testMatch: ['**/e2e/pwa-*.spec.ts'],
     },
   ],
-  webServer: isPwaOnly
-    ? [
-        {
-          // The pwa-chromium project points at the preview server. The build must
-          // have run before `playwright test` is invoked (pnpm build && pnpm test).
-          command: 'pnpm preview --port 5174 --host 127.0.0.1',
-          url: 'http://127.0.0.1:5174',
-          reuseExistingServer: !process.env.CI,
-          timeout: 120_000,
-        },
-        {
-          command: 'node e2e/pwa-update-server.mjs',
-          url: 'http://127.0.0.1:5178',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-      ]
-    : [
-        {
-          command: 'pnpm dev',
-          url: 'http://127.0.0.1:5173',
-          reuseExistingServer: !process.env.CI,
-          timeout: 120_000,
-        },
-        {
-          // The pwa-chromium project points at the preview server. The build must
-          // have run before `playwright test` is invoked (pnpm build && pnpm test).
-          command: 'pnpm preview --port 5174 --host 127.0.0.1',
-          url: 'http://127.0.0.1:5174',
-          reuseExistingServer: !process.env.CI,
-          timeout: 120_000,
-        },
-        {
-          command: 'node e2e/pwa-update-server.mjs',
-          url: 'http://127.0.0.1:5178',
-          reuseExistingServer: false,
-          timeout: 120_000,
-        },
-      ],
+  webServer: [
+    ...(startDevServer
+      ? [
+          {
+            command: 'pnpm dev',
+            url: 'http://127.0.0.1:5173',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+          },
+        ]
+      : []),
+    ...(startPreviewServer
+      ? [
+          {
+            // The pwa-chromium project points at the preview server. The build must
+            // have run before `playwright test` is invoked (pnpm build && pnpm test).
+            command: 'pnpm preview --port 5174 --host 127.0.0.1',
+            url: 'http://127.0.0.1:5174',
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+          },
+          {
+            command: 'node e2e/pwa-update-server.mjs',
+            url: 'http://127.0.0.1:5178',
+            reuseExistingServer: false,
+            timeout: 120_000,
+          },
+        ]
+      : []),
+  ],
 });

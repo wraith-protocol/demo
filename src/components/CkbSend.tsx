@@ -1,5 +1,3 @@
-import { useSendDraft } from '@/hooks/useSendDraft';
-import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
@@ -8,8 +6,12 @@ import {
   getDeployment,
 } from '@wraith-protocol/sdk/chains/ckb';
 import { useTranslation } from 'react-i18next';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
 import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
+import { buildCkbSendIntent, type TransactionIntent } from '@/lib/txIntent';
 import { trackEvent } from '@/lib/telemetry';
 import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
 import { useActivityStore } from '@/stores/activityStore';
@@ -29,6 +31,15 @@ import {
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
 const CKB_SUBMISSION_NETWORK = 'testnet';
+const CKB_INTENT_NETWORK = 'ckb:testnet';
+
+function outputSummary(tx: ccc.Transaction) {
+  return tx.outputs.map((output) => ({
+    capacity: output.capacity.toString(),
+    codeHash: output.lock.codeHash,
+    args: output.lock.args,
+  }));
+}
 
 function ckbStatusClient(client: ccc.Client): CkbStatusClient {
   return {
@@ -38,6 +49,14 @@ function ckbStatusClient(client: ccc.Client): CkbStatusClient {
     sendSignedTransaction: (signedTx) =>
       client.sendTransaction(ccc.Transaction.from(JSON.parse(signedTx))),
   };
+}
+
+interface ReviewedCkbCell {
+  intent: TransactionIntent;
+  transaction: ccc.Transaction;
+  draft: string;
+  operationId: string;
+  stealth: { stealthPubKey: string; lockArgs: string };
 }
 
 export function CkbSend() {
@@ -55,6 +74,7 @@ export function CkbSend() {
     stealthPubKey: string;
     lockArgs: string;
   } | null>(null);
+  const [pendingCell, setPendingCell] = useState<ReviewedCkbCell | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +110,7 @@ export function CkbSend() {
       setError(blocked);
       return;
     }
-    if (!signer || !scope || !adapter) {
+    if (!signer || !scope) {
       setError(t('ckb.connectWalletFirst'));
       return;
     }
@@ -105,61 +125,125 @@ export function CkbSend() {
 
     setError('');
     setIsPending(true);
-    const finishTransaction = beginTransactionActivity('submitting');
-    const draft = JSON.stringify({
-      chain: 'ckb',
-      network: scope.network,
-      wallet: scope.account,
-      recipient: recipient.trim(),
-      amount: amount.trim(),
-    });
-    let operationId = '';
+    const finishTransaction = beginTransactionActivity('simulating');
 
     try {
-      operationId = await reserveSubmissionOperationId(draft);
+      const draft = JSON.stringify({
+        chain: 'ckb',
+        network: scope.network,
+        wallet: scope.account,
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+      });
+      const operationId = await reserveSubmissionOperationId(draft);
+
+      const decoded = decodeStealthMetaAddress(recipient);
+      const stealth = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
+      const capacityShannons = ccc.fixedPointFrom(amount);
+
+      const tx = ccc.Transaction.from({
+        outputs: [
+          {
+            lock: {
+              codeHash: STEALTH_LOCK_CODE_HASH,
+              hashType: 'data2',
+              args: stealth.lockArgs,
+            },
+            capacity: capacityShannons,
+          },
+        ],
+        outputsData: ['0x'],
+      });
+
+      await tx.completeInputsByCapacity(signer);
+      await tx.completeFeeBy(signer, 1000);
+
+      const fee = await tx.getFee(signer.client);
+      const intent = buildCkbSendIntent({
+        network: CKB_INTENT_NETWORK,
+        account: scope.account,
+        stealthPubKey: stealth.stealthPubKey,
+        lockArgs: stealth.lockArgs,
+        lockCodeHash: STEALTH_LOCK_CODE_HASH,
+        capacityShannons,
+        feeShannons: fee,
+        txHash: tx.hash(),
+      });
+
+      const summary = { stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs };
+      setStealthInfo(summary);
+      setPendingCell({ intent, transaction: tx, draft, operationId, stealth: summary });
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      finishTransaction();
+      setIsPending(false);
+    }
+  }, [isPending, pending, signer, scope, recipient, amount, t]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!signer || !pendingCell || !scope || !adapter || isPending || pending.blocked) return;
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
+
+    setError('');
+    setIsPending(true);
+    const finishTransaction = beginTransactionActivity('submitting');
+    const { intent, transaction, draft, operationId, stealth } = pendingCell;
+
+    try {
+      const currentAccount = await signer.getRecommendedAddress();
+      if (currentAccount !== intent.account || currentAccount !== scope.account) {
+        setPendingCell(null);
+        setStealthInfo(null);
+        throw new Error(
+          'The wallet account changed since this cell was reviewed. Review it again.',
+        );
+      }
+
       const result = await submitChainTransactionOnce({
         operationId,
         scope,
         adapter,
         prepare: async () => {
-          const decoded = decodeStealthMetaAddress(recipient);
-          const stealth = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
-          setStealthInfo({ stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs });
-
-          const tx = ccc.Transaction.from({
-            outputs: [
-              {
-                lock: {
-                  codeHash: STEALTH_LOCK_CODE_HASH,
-                  hashType: 'data2',
-                  args: stealth.lockArgs,
-                },
-                capacity: ccc.fixedPointFrom(amount),
-              },
-            ],
-            outputsData: ['0x'],
-          });
-          await tx.completeInputsByCapacity(signer);
-          await tx.completeFeeBy(signer, 1000);
-
-          const signed = await signer.signTransaction(tx);
-          const signedHash = signed.hash();
+          const signed = await signer.signTransaction(transaction);
+          const expectedOutputs = outputSummary(transaction);
+          const signedOutputs = outputSummary(signed);
+          const outputsMatch =
+            expectedOutputs.length === signedOutputs.length &&
+            expectedOutputs.every(
+              (output, index) =>
+                output.capacity === signedOutputs[index].capacity &&
+                output.codeHash === signedOutputs[index].codeHash &&
+                output.args === signedOutputs[index].args,
+            );
+          const signedFee = await signed.getFee(signer.client);
+          if (!outputsMatch || signedFee.toString() !== intent.fee) {
+            throw new Error(
+              'Your wallet signed a cell that does not match the confirmed intent. Nothing was submitted. Review and confirm again.',
+            );
+          }
           trackEvent('send_submitted');
           return {
             identity: {
               kind: 'ckb',
               network: CKB_SUBMISSION_NETWORK,
               from: scope.account,
-              txHash: signedHash,
+              txHash: signed.hash(),
               signedTx: ccc.stringify(signed),
               inputs: signed.inputs.map((input) => formatOutPoint(input.previousOutput)),
             },
-            metadata: { stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs },
+            metadata: { ...stealth },
             broadcast: () => signer.client.sendTransaction(signed),
           };
         },
       });
 
+      setPendingCell(null);
       const { metadata } = result.record;
       if (typeof metadata?.stealthPubKey === 'string' && typeof metadata.lockArgs === 'string') {
         setStealthInfo({ stealthPubKey: metadata.stealthPubKey, lockArgs: metadata.lockArgs });
@@ -183,6 +267,7 @@ export function CkbSend() {
       });
       await releaseSubmissionDraft(draft, operationId);
     } catch (err) {
+      setPendingCell(null);
       if (!isAmbiguousSubmissionError(err)) setStealthInfo(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
       if (err instanceof SubmissionNeedsReviewError) void pending.check();
@@ -191,12 +276,13 @@ export function CkbSend() {
       setIsPending(false);
       pending.refresh();
     }
-  }, [isPending, pending, signer, scope, adapter, recipient, amount, addActivity, t]);
+  }, [signer, pendingCell, scope, adapter, isPending, pending, amount, recipient, addActivity, t]);
 
   const reset = () => {
     setRecipient('');
     setAmount('');
     setStealthInfo(null);
+    setPendingCell(null);
     setTxHash(null);
     setError('');
   };
@@ -247,7 +333,7 @@ export function CkbSend() {
         txUrl={(hash) => `${deployment.explorerUrl}/transaction/${hash}`}
       />
 
-      {!txHash && (
+      {!stealthInfo && (
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-1.5">
             <label className="font-mono text-[10px] uppercase tracking-widest text-outline">
@@ -314,12 +400,12 @@ export function CkbSend() {
             disabled={!recipient || !amount || isPending || pending.blocked}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review stealth cell
           </button>
         </div>
       )}
 
-      {txHash && stealthInfo && (
+      {stealthInfo && (
         <div className="flex flex-col gap-5 border border-outline-variant bg-surface-container p-5 sm:p-6">
           <div className="flex items-center gap-2">
             <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
@@ -341,30 +427,68 @@ export function CkbSend() {
               </div>
             </div>
 
-            <div>
-              <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                {t('common.transactionHash')}
-              </span>
-              <div className="mt-0.5 flex items-center gap-2">
-                <a
-                  href={`${deployment.explorerUrl}/transaction/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate font-mono text-xs text-primary underline"
-                >
-                  {txHash}
-                </a>
-                <CopyButton text={txHash} />
+            {txHash && (
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
+                  {t('common.transactionHash')}
+                </span>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <a
+                    href={`${deployment.explorerUrl}/transaction/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block truncate font-mono text-xs text-primary underline"
+                  >
+                    {txHash}
+                  </a>
+                  <CopyButton text={txHash} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          <button
-            onClick={reset}
-            className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
-          >
-            {t('common.newTransfer')}
-          </button>
+          {pendingCell && !txHash && (
+            <>
+              <IntentSummary intent={pendingCell.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending || pending.blocked}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {!pendingCell && error && <p className="text-sm text-error">{error}</p>}
+
+          {!txHash && !pendingCell && !pending.blocked && error && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              Start over
+            </button>
+          )}
+
+          {txHash && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              {t('common.newTransfer')}
+            </button>
+          )}
         </div>
       )}
     </section>

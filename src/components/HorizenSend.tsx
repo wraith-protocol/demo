@@ -1,20 +1,22 @@
-import { useSendDraft } from '@/hooks/useSendDraft';
-import { useTransactionActivity } from '@/hooks/useTransactionActivity';
-import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useEffect, useMemo, useState } from 'react';
 import {
   useAccount,
   useBalance,
   usePublicClient,
-  useSendTransaction,
   useWaitForTransactionReceipt,
+  useWalletClient,
 } from 'wagmi';
+import type { Hex } from 'viem';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { useTransactionActivity } from '@/hooks/useTransactionActivity';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { buildSendStealth, buildResolveName } from '@wraith-protocol/sdk/chains/evm';
 import type { HexString } from '@wraith-protocol/sdk/chains/evm';
 import { useTranslation } from 'react-i18next';
 import { horizenTxUrl, horizenAddrUrl } from '@/lib/explorer';
 import { horizenTestnet } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
 import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
 import { trackEvent } from '@/lib/telemetry';
 import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
@@ -22,9 +24,16 @@ import { useActivityStore } from '@/stores/activityStore';
 import {
   createEvmSubmissionAdapter,
   evmSubmissionScope,
+  prepareEvmSend,
   resolveEvmNonce,
+  signVerifiedEvmTransaction,
+  type EvmFeeClient,
+  type EvmSigner,
+  type EvmSignRequest,
 } from '@/lib/evmSubmission';
+import type { TransactionIntent } from '@/lib/txIntent';
 import {
+  getSubmissionRecord,
   isAmbiguousSubmissionError,
   releaseSubmissionDraft,
   reserveSubmissionOperationId,
@@ -36,11 +45,21 @@ interface StealthSummary {
   ephemeralPubKey: string;
 }
 
+interface ReviewedEvmTransfer {
+  intent: TransactionIntent;
+  request: EvmSignRequest;
+  draft: string;
+  operationId: string;
+  metaAddress: string;
+  stealth: StealthSummary;
+}
+
 export function HorizenSend() {
   const { t } = useTranslation();
   const { isConnected, address, chainId } = useAccount();
   const { data: balanceData } = useBalance({ address });
   const publicClient = usePublicClient({ chainId: horizenTestnet.id });
+  const walletClient = useWalletClient({ chainId: horizenTestnet.id }).data;
   const addActivity = useActivityStore((state) => state.addEntry);
   const updateActivity = useActivityStore((state) => state.updateStatus);
 
@@ -48,10 +67,10 @@ export function HorizenSend() {
   const [amount, setAmount] = useSendDraft<string>('horizen:amount', '');
   const [error, setError] = useState('');
   const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [pendingIntent, setPendingIntent] = useState<ReviewedEvmTransfer | null>(null);
+  const [txHash, setTxHash] = useState<Hex | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { sendTransactionAsync } = useSendTransaction();
   const {
     data: receipt,
     error: receiptError,
@@ -101,8 +120,12 @@ export function HorizenSend() {
       setError(blocked);
       return;
     }
-    if (!address || !scope || !adapter || !publicClient) {
+    if (!address || !scope || !adapter) {
       setError(t('common.walletNotConnected'));
+      return;
+    }
+    if (!publicClient) {
+      setError('Transaction verification is unavailable. Nothing was submitted.');
       return;
     }
     if (chainId !== horizenTestnet.id) {
@@ -112,10 +135,8 @@ export function HorizenSend() {
 
     setError('');
     setIsSubmitting(true);
-    const finishTransaction = beginTransactionActivity('signing');
+    const finishTransaction = beginTransactionActivity('simulating');
     let metaAddress = recipient;
-    let draft = '';
-    let operationId = '';
 
     try {
       if (isWraithName) {
@@ -144,49 +165,113 @@ export function HorizenSend() {
         return;
       }
 
-      draft = JSON.stringify({
+      const draft = JSON.stringify({
         chain: 'evm',
         network: scope.network,
         wallet: scope.account,
         recipient: metaAddress,
         amount: amount.trim(),
       });
-      operationId = await reserveSubmissionOperationId(draft);
+      const operationId = await reserveSubmissionOperationId(draft);
+      const nonce = await resolveEvmNonce(
+        publicClient,
+        address,
+        getSubmissionRecord(operationId)?.pinnedNonce,
+      );
 
+      const result = buildSendStealth({
+        recipientMetaAddress: metaAddress,
+        amount,
+        chain: 'horizen',
+      });
+
+      // The reviewed intent freezes the nonce, so a rebuild after a proven
+      // drop reuses the pinned nonce instead of a fresh pending count.
+      const feeClient: EvmFeeClient = {
+        estimateGas: (request) => publicClient.estimateGas(request),
+        estimateFeesPerGas: () => publicClient.estimateFeesPerGas(),
+        getTransactionCount: async () => nonce,
+      };
+      const { intent, request } = await prepareEvmSend(feeClient, {
+        chainId: horizenTestnet.id,
+        account: address as Hex,
+        to: result.transaction.to as Hex,
+        data: result.transaction.data as Hex,
+        value: result.transaction.value ?? 0n,
+        stealthAddress: result.stealthAddress,
+      });
+
+      const stealth = {
+        stealthAddress: result.stealthAddress,
+        ephemeralPubKey: result.ephemeralPubKey,
+      };
+      setStealthResult(stealth);
+      setPendingIntent({ intent, request, draft, operationId, metaAddress, stealth });
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      finishTransaction();
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!pendingIntent || isSubmitting || pending.blocked) return;
+    if (!address || !scope || pendingIntent.intent.account !== address.toLowerCase()) {
+      setPendingIntent(null);
+      setStealthResult(null);
+      setError('The wallet account changed since this transfer was reviewed. Review it again.');
+      return;
+    }
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
+    if (!adapter || !publicClient) {
+      setError('Transaction verification is unavailable. Nothing was submitted.');
+      return;
+    }
+
+    setError('');
+    setIsSubmitting(true);
+    const finishTransaction = beginTransactionActivity('submitting');
+    const { intent, request, draft, operationId, metaAddress, stealth } = pendingIntent;
+
+    try {
       const result = await submitChainTransactionOnce({
         operationId,
         scope,
         adapter,
         prepare: async ({ pinnedNonce }) => {
-          const nonce = await resolveEvmNonce(publicClient, address, pinnedNonce);
-          const built = buildSendStealth({
-            recipientMetaAddress: metaAddress,
-            amount,
-            chain: 'horizen',
-          });
-          setStealthResult({
-            stealthAddress: built.stealthAddress,
-            ephemeralPubKey: built.ephemeralPubKey,
-          });
+          if (pinnedNonce !== undefined && pinnedNonce !== request.nonce) {
+            throw new Error(
+              `The previous attempt was dropped. Review the transfer again so it reuses nonce ${pinnedNonce}.`,
+            );
+          }
+          const signed = await signVerifiedEvmTransaction(
+            walletClient as EvmSigner | undefined,
+            intent,
+            request,
+          );
           trackEvent('send_submitted');
           return {
-            identity: { kind: 'evm', chainId: horizenTestnet.id, from: scope.account, nonce },
-            metadata: {
-              stealthAddress: built.stealthAddress,
-              ephemeralPubKey: built.ephemeralPubKey,
+            identity: {
+              kind: 'evm',
+              chainId: horizenTestnet.id,
+              from: scope.account,
+              nonce: request.nonce,
+              txHash: signed.hash,
             },
+            metadata: { ...stealth },
             broadcast: () =>
-              sendTransactionAsync({
-                to: built.transaction.to as `0x${string}`,
-                data: built.transaction.data as `0x${string}`,
-                value: built.transaction.value,
-                nonce,
-                chainId: horizenTestnet.id,
-              }),
+              publicClient.sendRawTransaction({ serializedTransaction: signed.serialized }),
           };
         },
       });
 
+      setPendingIntent(null);
       const { metadata } = result.record;
       if (typeof metadata?.stealthAddress === 'string') {
         setStealthResult({
@@ -200,7 +285,7 @@ export function HorizenSend() {
         await releaseSubmissionDraft(draft, operationId);
         return;
       }
-      setTxHash(result.txHash as `0x${string}`);
+      setTxHash(result.txHash as Hex);
       addActivity({
         id: result.txHash,
         chain: 'horizen',
@@ -214,6 +299,7 @@ export function HorizenSend() {
       });
       await releaseSubmissionDraft(draft, operationId);
     } catch (err) {
+      setPendingIntent(null);
       if (!isAmbiguousSubmissionError(err)) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
@@ -227,6 +313,7 @@ export function HorizenSend() {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setPendingIntent(null);
     setTxHash(undefined);
     setError('');
   };
@@ -371,7 +458,7 @@ export function HorizenSend() {
             disabled={!recipient || !amount || isPending}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isSubmitting ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review transfer
           </button>
         </div>
       )}
@@ -440,9 +527,32 @@ export function HorizenSend() {
             </div>
           </div>
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          {pendingIntent && !txHash && (
+            <>
+              <IntentSummary intent={pendingIntent.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
 
-          {(isSuccess || (!isSubmitting && !pending.blocked)) && (
+          {!pendingIntent && error && <p className="text-sm text-error">{error}</p>}
+
+          {(isSuccess || (!pendingIntent && !isSubmitting && !pending.blocked)) && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"

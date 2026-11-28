@@ -1,5 +1,3 @@
-import { useSendDraft } from '@/hooks/useSendDraft';
-import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Connection,
@@ -12,10 +10,18 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import bs58 from 'bs58';
 import { buildSendSol, bytesToHex } from '@wraith-protocol/sdk/chains/solana';
 import { useTranslation } from 'react-i18next';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { solanaTxUrl, solanaAddrUrl } from '@/lib/explorer';
 import { SOLANA_NETWORK } from '@/config';
 import { CopyButton } from '@/components/CopyButton';
+import { IntentSummary } from '@/components/IntentSummary';
 import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
+import {
+  buildSolanaSendIntent,
+  verifySolanaSignedTransaction,
+  type TransactionIntent,
+} from '@/lib/txIntent';
 import { trackEvent } from '@/lib/telemetry';
 import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
 import { useActivityStore } from '@/stores/activityStore';
@@ -32,10 +38,21 @@ import {
 } from '@/lib/submissionIdempotency';
 
 const SOLANA_CLUSTER = 'devnet';
+const SOLANA_INTENT_NETWORK = 'solana:devnet';
 
 interface StealthSummary {
   stealthAddress: string;
   ephemeralPubKey: string;
+}
+
+interface ReviewedSolanaTransfer {
+  intent: TransactionIntent;
+  transaction: Transaction;
+  blockhash: string;
+  lastValidBlockHeight: number;
+  draft: string;
+  operationId: string;
+  stealth: StealthSummary;
 }
 
 export function SolanaSend() {
@@ -49,6 +66,7 @@ export function SolanaSend() {
   const [stealthResult, setStealthResult] = useState<StealthSummary | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<ReviewedSolanaTransfer | null>(null);
 
   const connection = useMemo(() => new Connection(SOLANA_NETWORK.rpcUrl, 'confirmed'), []);
   const adapter = useMemo(() => createSolanaSubmissionAdapter(connection), [connection]);
@@ -66,7 +84,7 @@ export function SolanaSend() {
       setError(blocked);
       return;
     }
-    if (!connected || !publicKey || !scope || !signTransaction) {
+    if (!connected || !publicKey || !scope) {
       setError(t('common.walletNotConnected'));
       return;
     }
@@ -77,68 +95,124 @@ export function SolanaSend() {
 
     setError('');
     setIsPending(true);
-    const finishTransaction = beginTransactionActivity('submitting');
-    const draft = JSON.stringify({
-      chain: 'solana',
-      network: scope.network,
-      wallet: scope.account,
-      recipient: recipient.trim(),
-      amount: amount.trim(),
-    });
-    let operationId = '';
+    const finishTransaction = beginTransactionActivity('simulating');
 
     try {
-      operationId = await reserveSubmissionOperationId(draft);
-      const lamports = BigInt(Math.round(parseFloat(amount) * LAMPORTS_PER_SOL));
+      const draft = JSON.stringify({
+        chain: 'solana',
+        network: scope.network,
+        wallet: scope.account,
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+      });
+      const operationId = await reserveSubmissionOperationId(draft);
 
+      const lamports = BigInt(Math.round(parseFloat(amount) * LAMPORTS_PER_SOL));
+      const result = buildSendSol({
+        recipientMetaAddress: recipient,
+        amount: lamports,
+        senderPubkey: publicKey.toBase58(),
+      });
+      const stealth = {
+        stealthAddress: result.stealthAddress,
+        ephemeralPubKey: bytesToHex(result.ephemeralPubKey),
+      };
+
+      const ix = result.instruction;
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const tx = new Transaction({ feePayer: publicKey, blockhash, lastValidBlockHeight }).add(
+        new TransactionInstruction({
+          programId: new PublicKey(ix.programId),
+          keys: ix.keys.map((k) => ({
+            pubkey: new PublicKey(k.pubkey),
+            isSigner: k.isSigner,
+            isWritable: k.isWritable,
+          })),
+          data: Buffer.from(ix.data),
+        }),
+      );
+
+      const intent = buildSolanaSendIntent({
+        network: SOLANA_INTENT_NETWORK,
+        account: publicKey.toBase58(),
+        stealthAddress: result.stealthAddress,
+        lamports,
+        recentBlockhash: blockhash,
+        programId: ix.programId,
+        instructionData: Buffer.from(ix.data).toString('hex'),
+      });
+
+      setStealthResult(stealth);
+      setPendingTransfer({
+        intent,
+        transaction: tx,
+        blockhash,
+        lastValidBlockHeight,
+        draft,
+        operationId,
+        stealth,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+    } finally {
+      finishTransaction();
+      setIsPending(false);
+    }
+  }, [isPending, pending, connected, publicKey, scope, recipient, amount, connection, t]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!publicKey || !pendingTransfer || !scope || isPending || pending.blocked) return;
+    if (pendingTransfer.intent.account !== publicKey.toBase58()) {
+      setPendingTransfer(null);
+      setStealthResult(null);
+      setError('The wallet account changed since this transfer was reviewed. Review it again.');
+      return;
+    }
+    if (!signTransaction) {
+      setError('This wallet cannot sign transactions. Use a wallet that supports signing.');
+      return;
+    }
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
+
+    setError('');
+    setIsPending(true);
+    const finishTransaction = beginTransactionActivity('submitting');
+    const { intent, transaction, blockhash, lastValidBlockHeight, draft, operationId, stealth } =
+      pendingTransfer;
+
+    try {
       const result = await submitChainTransactionOnce({
         operationId,
         scope,
         adapter,
         prepare: async () => {
-          const built = buildSendSol({
-            recipientMetaAddress: recipient,
-            amount: lamports,
-            senderPubkey: publicKey.toBase58(),
-          });
-          const ephemeralPubKey = bytesToHex(built.ephemeralPubKey);
-          setStealthResult({ stealthAddress: built.stealthAddress, ephemeralPubKey });
-
-          const ix = built.instruction;
-          const { blockhash, lastValidBlockHeight } =
-            await connection.getLatestBlockhash('confirmed');
-          const tx = new Transaction({
-            feePayer: publicKey,
-            blockhash,
-            lastValidBlockHeight,
-          }).add(
-            new TransactionInstruction({
-              programId: new PublicKey(ix.programId),
-              keys: ix.keys.map((k) => ({
-                pubkey: new PublicKey(k.pubkey),
-                isSigner: k.isSigner,
-                isWritable: k.isWritable,
-              })),
-              data: Buffer.from(ix.data),
-            }),
-          );
-
-          const signed = await signTransaction(tx);
+          const signed = await signTransaction(transaction);
+          const verification = verifySolanaSignedTransaction(transaction, signed);
+          if (!verification.ok) {
+            throw new Error(
+              `Your wallet signed a transaction that does not match the confirmed intent (${verification.mismatches
+                .map((mismatch) => mismatch.field)
+                .join(', ')}). Nothing was submitted. Review and confirm again.`,
+            );
+          }
           if (!signed.signature) throw new Error('The wallet did not sign the transaction.');
           const raw = signed.serialize();
-          const signature = bs58.encode(signed.signature);
           trackEvent('send_submitted');
           return {
             identity: {
               kind: 'solana',
               cluster: SOLANA_CLUSTER,
               from: publicKey.toBase58(),
-              signature,
+              signature: bs58.encode(signed.signature),
               blockhash,
               lastValidBlockHeight,
               signedTx: encodeSignedTransaction(raw),
             },
-            metadata: { stealthAddress: built.stealthAddress, ephemeralPubKey },
+            metadata: { ...stealth },
             broadcast: () =>
               connection.sendRawTransaction(raw, {
                 skipPreflight: false,
@@ -148,6 +222,7 @@ export function SolanaSend() {
         },
       });
 
+      setPendingTransfer(null);
       const { metadata } = result.record;
       if (typeof metadata?.stealthAddress === 'string') {
         setStealthResult({
@@ -176,15 +251,13 @@ export function SolanaSend() {
       await releaseSubmissionDraft(draft, operationId);
 
       if (result.status === 'submitted') {
+        const identity = result.record.identity;
         await connection.confirmTransaction(
           {
             signature: result.txHash,
-            blockhash:
-              result.record.identity?.kind === 'solana' ? result.record.identity.blockhash : '',
+            blockhash: identity?.kind === 'solana' ? identity.blockhash : blockhash,
             lastValidBlockHeight:
-              result.record.identity?.kind === 'solana'
-                ? result.record.identity.lastValidBlockHeight
-                : 0,
+              identity?.kind === 'solana' ? identity.lastValidBlockHeight : lastValidBlockHeight,
           },
           'confirmed',
         );
@@ -193,6 +266,7 @@ export function SolanaSend() {
       setIsSuccess(true);
       useActivityStore.getState().updateStatus(result.txHash, 'confirmed');
     } catch (err) {
+      setPendingTransfer(null);
       if (!isAmbiguousSubmissionError(err) && !txHash) setStealthResult(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
     } finally {
@@ -201,17 +275,17 @@ export function SolanaSend() {
       pending.refresh();
     }
   }, [
+    publicKey,
+    pendingTransfer,
+    scope,
     isPending,
     pending,
-    connected,
-    publicKey,
-    scope,
     signTransaction,
-    recipient,
-    amount,
     adapter,
     connection,
     addActivity,
+    amount,
+    recipient,
     txHash,
     t,
   ]);
@@ -220,6 +294,7 @@ export function SolanaSend() {
     setRecipient('');
     setAmount('');
     setStealthResult(null);
+    setPendingTransfer(null);
     setTxHash(null);
     setIsSuccess(false);
     setError('');
@@ -325,7 +400,7 @@ export function SolanaSend() {
             disabled={!recipient || !amount || isPending || pending.blocked}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
-            {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
+            Review transfer
           </button>
         </div>
       )}
@@ -390,9 +465,41 @@ export function SolanaSend() {
             )}
           </div>
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          {pendingTransfer && !txHash && (
+            <>
+              <IntentSummary intent={pendingTransfer.intent} />
+              {error && <p className="text-sm text-error">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  disabled={isPending}
+                  className="h-11 flex-1 border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright disabled:opacity-30"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isPending || pending.blocked}
+                  className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
+                >
+                  {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
+                </button>
+              </div>
+            </>
+          )}
 
-          {(isSuccess || (!isPending && !pending.blocked)) && (
+          {!pendingTransfer && error && <p className="text-sm text-error">{error}</p>}
+
+          {!isSuccess && !txHash && !pendingTransfer && !pending.blocked && error && (
+            <button
+              onClick={reset}
+              className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
+            >
+              Start over
+            </button>
+          )}
+
+          {(isSuccess || (txHash && !isPending && !pending.blocked)) && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"
