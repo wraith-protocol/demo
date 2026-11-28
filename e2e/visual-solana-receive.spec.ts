@@ -30,7 +30,7 @@ for (const theme of ['light', 'dark'] as const) {
     if ((await connectButton.count()) > 0 && (await connectButton.isVisible())) {
       await connectButton.click();
     }
-    await expect(page.getByRole('button', { name: /GyGK/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /GmaD/i })).toBeVisible();
     await closeVisualMobileMenu(page);
     await expect(page.getByText('Your Stealth Meta-Address')).toBeVisible();
     await page.getByRole('button', { name: 'Scan for Payments' }).click();

@@ -29,7 +29,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('button', { name: /ckt1qy/i })).toBeVisible();
     await closeVisualMobileMenu(page);
     await expect(page.getByPlaceholder('st:ckb:...')).toBeVisible();
-    await expect(page.getByRole('button', { name: /send privately/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /review stealth cell/i })).toBeVisible();
     await captureVisual(page, `ckb-send-connected-form-${theme}`);
   });
 }

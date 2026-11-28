@@ -2,17 +2,25 @@ import { test as base, expect } from './fixtures';
 import type { Locator, Page, TestInfo } from '@playwright/test';
 import { SorobanDataBuilder, TransactionBuilder, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import bs58 from 'bs58';
+import { Keypair, Transaction } from '@solana/web3.js';
+import { privateKeyToAccount } from 'viem/accounts';
 
 export const FROZEN_TIME = new Date('2025-01-15T12:00:00.000Z');
 export const MOCK_WALLET = 'GCDURJMLJBNVUVWXZ7UBXEIAEC4ONEWPWK6KDUUSDTUJJGXCSMBC2XHX';
 export const MOCK_TX_HASH = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 export const DEPOSIT_ID = 'ab'.repeat(32);
-export const MOCK_EVM_ACCOUNT = '0x0000000000000000000000000000000000000001';
+// Public Hardhat test key: the app recovers the signer from the signature, so the mock needs a real key.
+const EVM_TEST_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+export const MOCK_EVM_ACCOUNT = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
 export const MOCK_EVM_SIGNING_ACCOUNT = '0x7e5f4552091a69125d5dfcb7b8c2659029395bdf';
 export const MOCK_EVM_TX_HASH = `0x${'ab'.repeat(32)}`;
 export const RECIPIENT_EVM_META =
   'st:eth:0x031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f024d4b6cd1361032ca9bd2aeb9d900aa4d45d9ead80ac9423374c451a7254d0766';
-export const MOCK_SOLANA_PUBLIC_KEY = '7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E=';
+// Fixed test keypair: web3.js verifies signatures on serialize(), so the mock must sign for real.
+const SOL_KEYPAIR = Keypair.fromSeed(new Uint8Array(32).fill(7));
+export const MOCK_SOLANA_PUBLIC_KEY = Buffer.from(SOL_KEYPAIR.publicKey.toBytes()).toString(
+  'base64',
+);
 export const RECIPIENT_SOLANA_META =
   'st:sol:8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394';
 export const MOCK_SOLANA_SIGNATURE = bs58.encode(new Uint8Array(64).fill(0xab));
@@ -116,6 +124,35 @@ export const test = base.extend<{ frozenEnvironment: void }>({
       await page.addInitScript(() => {
         localStorage.setItem('wraith-telemetry-consent', 'declined');
         localStorage.setItem('wraith-theme', 'light');
+      });
+      // Service worker: stub the API so upstream's update hook stays idle (no "Update failed" alert).
+      await page.addInitScript(() => {
+        const noopRegistration = {
+          installing: null,
+          waiting: null,
+          active: null,
+          scope: '/',
+          addEventListener() {},
+          removeEventListener() {},
+          update: async () => undefined,
+          unregister: async () => true,
+        };
+        try {
+          Object.defineProperty(navigator, 'serviceWorker', {
+            configurable: true,
+            value: {
+              controller: null,
+              ready: Promise.resolve(noopRegistration),
+              register: async () => noopRegistration,
+              getRegistration: async () => noopRegistration,
+              getRegistrations: async () => [],
+              addEventListener() {},
+              removeEventListener() {},
+            },
+          });
+        } catch {
+          /* keep the browser default */
+        }
       });
       await page.addInitScript(() => {
         const disableMotion = () => {
@@ -317,6 +354,20 @@ export async function installHorizenWalletMock(
   mode: 'pending' | 'success' | 'failure',
   account = MOCK_EVM_ACCOUNT,
 ) {
+  await page.exposeFunction('__wraithSignEvm', async (p: Record<string, string>) => {
+    const signer = privateKeyToAccount(EVM_TEST_KEY);
+    return signer.signTransaction({
+      type: 'eip1559',
+      chainId: Number(p.chainId),
+      to: p.to as `0x${string}`,
+      data: (p.data ?? p.input ?? '0x') as `0x${string}`,
+      value: BigInt(p.value ?? '0x0'),
+      gas: BigInt(p.gas),
+      maxFeePerGas: BigInt(p.maxFeePerGas),
+      maxPriorityFeePerGas: BigInt(p.maxPriorityFeePerGas),
+      nonce: Number(p.nonce),
+    });
+  });
   await page.addInitScript(
     (cfg) => {
       const listeners = new Map<string, Set<(value: unknown) => void>>();
@@ -326,8 +377,14 @@ export async function installHorizenWalletMock(
       };
       const provider = {
         isRainbow: true,
-        request: async ({ method }: { method: string }) => {
+        request: async ({ method, params }: { method: string; params?: unknown[] }) => {
           if (method === 'eth_chainId') return '0x28751c';
+          if (method === 'eth_signTransaction') {
+            if (cfg.mode === 'failure') throw new Error('User rejected transaction signing');
+            return (
+              window as unknown as { __wraithSignEvm: (p: unknown) => Promise<string> }
+            ).__wraithSignEvm(params?.[0]);
+          }
           if (method === 'eth_accounts') return authorized ? [cfg.account] : [];
           if (method === 'eth_requestAccounts') {
             authorized = true;
@@ -394,6 +451,34 @@ export async function installHorizenWalletMock(
               type: '0x2',
             }
           : null;
+    } else if (request.method === 'eth_sendRawTransaction') {
+      result = MOCK_EVM_TX_HASH;
+    } else if (request.method === 'eth_getTransactionCount') {
+      result = '0x0';
+    } else if (request.method === 'eth_estimateGas') {
+      result = '0x5208';
+    } else if (request.method === 'eth_gasPrice') {
+      result = '0x3b9aca00';
+    } else if (request.method === 'eth_maxPriorityFeePerGas') {
+      result = '0x3b9aca00';
+    } else if (request.method === 'eth_feeHistory') {
+      result = {
+        oldestBlock: '0x1',
+        baseFeePerGas: ['0x3b9aca00', '0x3b9aca00'],
+        gasUsedRatio: [0.5],
+        reward: [['0x3b9aca00']],
+      };
+    } else if (request.method === 'eth_getBlockByNumber') {
+      result = {
+        number: '0x2',
+        hash: `0x${'11'.repeat(32)}`,
+        parentHash: `0x${'00'.repeat(32)}`,
+        timestamp: '0x65a0c9a0',
+        baseFeePerGas: '0x3b9aca00',
+        gasLimit: '0x1c9c380',
+        gasUsed: '0x0',
+        transactions: [],
+      };
     } else {
       await route.fulfill({
         status: 501,
@@ -424,6 +509,12 @@ export async function installHorizenWalletMock(
 }
 
 export async function installSolanaWalletMock(page: Page, mode: 'pending' | 'success' | 'failure') {
+  await page.exposeFunction('__wraithSignSol', async (unsignedBase64: string) => {
+    const transaction = Transaction.from(Buffer.from(unsignedBase64, 'base64'));
+    transaction.partialSign(SOL_KEYPAIR);
+    const entry = transaction.signatures.find((s) => s.publicKey.equals(SOL_KEYPAIR.publicKey));
+    return Buffer.from(entry!.signature!).toString('base64');
+  });
   await page.addInitScript(
     (cfg) => {
       const publicKeyBytes = Uint8Array.from(atob(cfg.publicKeyBytes), (character) =>
@@ -453,6 +544,31 @@ export async function installSolanaWalletMock(page: Page, mode: 'pending' | 'suc
         },
         off: (event: string, listener: (...args: unknown[]) => void) => {
           listeners.get(event)?.delete(listener);
+        },
+        signTransaction: async (tx: {
+          feePayer?: unknown;
+          signatures: { publicKey: unknown; signature: Uint8Array | null }[];
+        }) => {
+          if (cfg.mode === 'pending') return new Promise(() => {});
+          if (cfg.mode === 'failure') {
+            throw new Error('User rejected transaction signing');
+          }
+          const raw = (tx as unknown as { serialize: (o: object) => Uint8Array }).serialize({
+            requireAllSignatures: false,
+            verifySignatures: false,
+          });
+          let bin = '';
+          for (const b of raw) bin += String.fromCharCode(b);
+          const signedBase64 = await (
+            window as unknown as { __wraithSignSol: (m: string) => Promise<string> }
+          ).__wraithSignSol(btoa(bin));
+          const sig = Uint8Array.from(atob(signedBase64), (c) => c.charCodeAt(0));
+          if (tx.signatures.length === 0) {
+            tx.signatures.push({ publicKey: tx.feePayer, signature: sig });
+          } else {
+            tx.signatures[0].signature = sig;
+          }
+          return tx;
         },
         signAndSendTransaction: async () => {
           if (cfg.mode === 'pending') return new Promise(() => {});
@@ -526,6 +642,8 @@ export async function installSolanaWalletMock(page: Page, mode: 'pending' | 'suc
             ? [{ slot: 2, confirmations: 1, err: null, confirmationStatus: 'confirmed' }]
             : [null],
       };
+    } else if (request.method === 'sendTransaction') {
+      result = MOCK_SOLANA_SIGNATURE;
     } else if (request.method === 'getBlockHeight') {
       result = 2;
     } else {

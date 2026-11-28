@@ -27,15 +27,16 @@ for (const theme of ['light', 'dark'] as const) {
       await openVisualMobileMenu(page);
       await page.getByRole('button', { name: 'Connect Wallet' }).click();
       await page.getByRole('button', { name: 'Rainbow' }).click();
-      await expect(page.getByRole('button', { name: /0x00.*0001/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /0xf3.*2266/i })).toBeVisible();
       await closeVisualMobileMenu(page);
 
       await page.getByPlaceholder('st:eth:0x...').fill(RECIPIENT_EVM_META);
       await page.getByPlaceholder('0.0').fill('0.01');
-      await page.getByRole('button', { name: 'Send Privately' }).click();
+      await page.getByRole('button', { name: 'Review transfer' }).click();
+      await page.getByRole('button', { name: 'Confirm & send' }).click();
 
       if (mode === 'pending') {
-        await expect(page.getByText('Pending', { exact: true })).toBeVisible();
+        await expect(page.getByText('Confirming...', { exact: true })).toBeVisible();
       } else if (mode === 'success') {
         await expect(page.getByText('Transfer Complete', { exact: true })).toBeVisible();
         await expect(page.locator(`a[href*="${MOCK_EVM_TX_HASH}"]`)).toBeVisible();

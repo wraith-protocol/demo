@@ -19,12 +19,14 @@ if (visualSpec && !/^e2e\/visual-[a-z0-9-]+\.spec\.ts$/.test(visualSpec)) {
   throw new Error(`Not a visual spec path: ${visualSpec}`);
 }
 
+const pwIndex = process.argv.indexOf('--pw');
+const pwArgs = pwIndex >= 0 ? process.argv[pwIndex + 1] : '';
 const image = `mcr.microsoft.com/playwright:v${playwrightVersion}-jammy`;
 const volume = 'wraith-demo-visual-node-modules';
 const projectArgs =
   '--project=chromium-desktop --project=chromium-mobile --project=chromium-tablet';
 const testCommand = visualSpec
-  ? `pnpm exec playwright test ${projectArgs} ${visualSpec}${updateSnapshots ? ' --update-snapshots' : ''}`
+  ? `pnpm exec playwright test ${projectArgs} ${visualSpec}${pwArgs ? ' ' + pwArgs : ''}${updateSnapshots ? ' --update-snapshots' : ''}`
   : updateSnapshots
     ? 'pnpm test:visual:update'
     : 'pnpm test:visual';

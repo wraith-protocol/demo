@@ -92,7 +92,27 @@ export const test = base.extend<{
               return new Promise(() => {});
             }
             return {
-              signedTxXdr: cfg.signedTxXdr || xdrString,
+              signedTxXdr:
+                cfg.signedTxXdr ||
+                ((xdr: string) => {
+                  const raw = Uint8Array.from(atob(xdr), (c) => c.charCodeAt(0));
+                  const tail = raw.slice(raw.length - 4);
+                  if (tail.some((b) => b !== 0)) return xdr;
+                  const out = new Uint8Array(raw.length + 72);
+                  out.set(raw.subarray(0, raw.length - 4));
+                  const view = new DataView(out.buffer);
+                  let o = raw.length - 4;
+                  view.setUint32(o, 1);
+                  o += 4;
+                  out.set([1, 2, 3, 4], o);
+                  o += 4;
+                  view.setUint32(o, 64);
+                  o += 4;
+                  out.fill(7, o, o + 64);
+                  let bin = '';
+                  for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+                  return btoa(bin);
+                })(xdrString),
             };
           },
         };

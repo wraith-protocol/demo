@@ -169,6 +169,14 @@ for (const theme of ['light', 'dark'] as const) {
     await balanceResponse;
     await page.getByRole('button', { name: 'Send Privately' }).click();
     await expect(page.getByRole('heading', { name: 'Network Mismatch' })).toBeVisible();
+    // The app scrolls the review card into view asynchronously; pin the scroll position
+    // and wait for two identical readings so the backdrop is deterministic.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect
+      .poll(async () => page.evaluate(() => Math.round(window.scrollY)), { intervals: [200] })
+      .toBe(0);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await captureVisual(page, `stellar-wrong-network-${theme}`);
   });
 }

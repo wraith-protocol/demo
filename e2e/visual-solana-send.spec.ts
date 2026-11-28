@@ -34,12 +34,13 @@ for (const theme of ['light', 'dark'] as const) {
       if ((await connectButton.count()) > 0 && (await connectButton.isVisible())) {
         await connectButton.click();
       }
-      await expect(page.getByRole('button', { name: /GyGK/i })).toBeVisible();
+      await expect(page.getByRole('button', { name: /GmaD/i })).toBeVisible();
       await closeVisualMobileMenu(page);
 
       await page.getByPlaceholder('st:sol:...').fill(RECIPIENT_SOLANA_META);
       await page.getByPlaceholder('0.0').fill('0.1');
-      await page.getByRole('button', { name: 'Send Privately' }).click();
+      await page.getByRole('button', { name: 'Review transfer' }).click();
+      await page.getByRole('button', { name: 'Confirm & send' }).click();
 
       if (mode === 'pending') {
         await expect(page.getByText('Pending', { exact: true })).toBeVisible();
