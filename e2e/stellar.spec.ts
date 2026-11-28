@@ -81,7 +81,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await expect(page.getByText('GCDU...2XHX').first()).toBeVisible();
 
     // Send form should now be visible since wallet is connected
-    await expect(page.getByLabel('Recipient Meta-Address')).toBeVisible();
+    await expect(page.getByPlaceholder('st:xlm:...')).toBeVisible();
   });
 
   test('Wallet - 5. Disconnects wallet correctly when address button is clicked', async ({
@@ -165,6 +165,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
     await page.getByPlaceholder('0.0').fill('50');
+    await expect(page.getByTestId('intent-confirmation')).toBeVisible();
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
     // Success screen details
@@ -197,6 +198,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
 
     await page.getByPlaceholder('st:xlm:...').fill(recipientMetaAddress);
     await page.getByPlaceholder('0.0').fill('5');
+    await expect(page.getByTestId('intent-confirmation')).toBeVisible();
     await page.getByRole('button', { name: 'Send Privately' }).click();
 
     await expect(page.getByText('Transfer Complete')).toBeVisible();
