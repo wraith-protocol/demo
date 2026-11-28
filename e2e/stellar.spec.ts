@@ -253,7 +253,10 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click the copy button
-    await page.getByRole('button', { name: /^Copy st:xlm:/ }).first().click();
+    await page
+      .getByRole('button', { name: /^Copy st:xlm:/ })
+      .first()
+      .click();
 
     // Verify what the app copied (recorded by the clipboard stub above)
     const copied = await page.evaluate(
