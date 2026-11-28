@@ -602,7 +602,7 @@ export default function NamesAuctions() {
                 className="h-10 w-full border border-outline-variant bg-surface px-3 font-mono text-sm text-primary focus:border-primary"
               />
             </div>
-            {status !== 'empty' && (
+            {status !== 'locked' && (
               <div className="flex-1">
                 <label className="block font-mono text-[10px] uppercase tracking-widest text-outline mb-1">
                   Confirm passphrase

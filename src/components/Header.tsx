@@ -65,7 +65,7 @@ export function Header() {
 
   return (
     <header className="border-b border-outline-variant bg-surface">
-      <div className="mx-auto flex max-w-[720px] items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+      <div className="mx-auto flex max-w-[1280px] items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-4">
           <Link to="/send" className="flex items-center gap-2">
             <img src="/logo.png" alt="Wraith" className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -82,7 +82,7 @@ export function Header() {
             )}
           </Link>
 
-          <nav className="hidden gap-0 sm:flex">
+          <nav className="hidden gap-0 xl:flex">
             {navLinks.map((link) => (
               <Link
                 key={link.to}
@@ -143,7 +143,7 @@ export function Header() {
               </svg>
             )}
           </button>
-          <div className="hidden sm:flex sm:items-center sm:gap-3">
+          <div className="hidden xl:flex xl:items-center xl:gap-3">
             <ChainSwitcher />
             <PrivacyPostureChip />
             <NetworkChip />
@@ -151,7 +151,7 @@ export function Header() {
           </div>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant sm:hidden"
+            className="flex h-8 w-8 items-center justify-center text-outline transition-colors hover:text-on-surface-variant xl:hidden"
             aria-label={t('header.menuLabel')}
           >
             <svg
@@ -179,7 +179,7 @@ export function Header() {
       </div>
 
       {mobileMenuOpen && (
-        <div className="border-t border-outline-variant/30 px-4 pb-4 sm:hidden">
+        <div className="border-t border-outline-variant/30 px-4 pb-4 xl:hidden">
           <nav className="flex flex-col gap-0">
             {navLinks.map((link) => (
               <Link

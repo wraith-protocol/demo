@@ -282,7 +282,11 @@ export function SolanaSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? t('common.transferComplete') : t('common.pending')}
+              {error
+                ? t('common.transactionFailed')
+                : isSuccess
+                  ? t('common.transferComplete')
+                  : t('common.pending')}
             </span>
           </div>
 
@@ -333,10 +337,15 @@ export function SolanaSend() {
             )}
           </div>
 
+          {error && (
+            <p role="alert" className="min-w-0 break-words text-sm text-error">
+              {error}
+            </p>
+          )}
+
           {pendingTransfer && !txHash && (
             <>
               <IntentSummary intent={pendingTransfer.intent} />
-              {error && <p className="text-sm text-error">{error}</p>}
               <div className="flex gap-2">
                 <button
                   onClick={reset}
@@ -355,8 +364,6 @@ export function SolanaSend() {
               </div>
             </>
           )}
-
-          {txHash && error && <p className="text-sm text-error">{error}</p>}
 
           {!isSuccess && !txHash && !pendingTransfer && error && (
             <button

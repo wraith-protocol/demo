@@ -300,7 +300,11 @@ export function HorizenSend() {
             </div>
           </div>
 
-          {error && <p className="text-sm text-error">{error}</p>}
+          {error && (
+            <p role="alert" className="min-w-0 break-words text-sm text-error">
+              {error}
+            </p>
+          )}
 
           <button
             onClick={handleSend}
@@ -321,11 +325,13 @@ export function HorizenSend() {
               <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isConfirming
-                ? t('common.confirming')
-                : isSuccess
-                  ? t('common.transferComplete')
-                  : t('common.pending')}
+              {error
+                ? t('common.transactionFailed')
+                : isConfirming
+                  ? t('common.confirming')
+                  : isSuccess
+                    ? t('common.transferComplete')
+                    : t('common.pending')}
             </span>
           </div>
 
@@ -399,8 +405,11 @@ export function HorizenSend() {
             </>
           )}
 
-          {txHash && error && <p className="text-sm text-error">{error}</p>}
-
+          {txHash && error && (
+            <p role="alert" className="min-w-0 break-words text-sm text-error">
+              {error}
+            </p>
+          )}
           {isSuccess && (
             <button
               onClick={reset}

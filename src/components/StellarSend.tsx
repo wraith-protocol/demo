@@ -900,7 +900,22 @@ export function StellarSend() {
       finishTransaction();
       setIsPending(false);
     }
-  }, [address, recipient, amount, assetKey, memo, simulation, signTransaction, t]);
+  }, [
+    address,
+    recipient,
+    amount,
+    assetKey,
+    memo,
+    simulation,
+    signTransaction,
+    t,
+    paramExp,
+    canSubmit,
+    isNetworkMismatch,
+    isPending,
+    isExpired,
+    validationError,
+  ]);
 
   const reset = () => {
     const currentSubmission = submissionDraftRef.current;
@@ -1181,7 +1196,7 @@ export function StellarSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!canSubmit}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             {isPending ? t('common.confirmInWallet') : t('common.sendPrivately')}
@@ -1195,12 +1210,26 @@ export function StellarSend() {
             {isSuccess ? (
               <span className="inline-block h-1.5 w-1.5 bg-tertiary"></span>
             ) : (
-              <span className="inline-block h-1.5 w-1.5 animate-pulse bg-primary"></span>
+              <span
+                className={`inline-block h-1.5 w-1.5 ${
+                  error ? 'bg-error' : 'animate-pulse bg-primary'
+                }`}
+              ></span>
             )}
             <span className="font-heading text-xs font-semibold uppercase tracking-widest text-on-surface">
-              {isSuccess ? t('common.transferComplete') : t('common.pending')}
+              {error
+                ? t('common.transactionFailed')
+                : isSuccess
+                  ? t('common.transferComplete')
+                  : t('common.pending')}
             </span>
           </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-error">
+              {error}
+            </p>
+          )}
 
           <div className="flex flex-col gap-3">
             <div>
