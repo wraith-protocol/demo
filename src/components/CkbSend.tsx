@@ -1,6 +1,4 @@
-import { useSendDraft } from '@/hooks/useSendDraft';
-import { transactionBlockReason, beginTransactionActivity } from '@/lib/transactionActivity';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { ccc } from '@ckb-ccc/connector-react';
 import {
   generateStealthAddress,
@@ -8,13 +6,31 @@ import {
   getDeployment,
 } from '@wraith-protocol/sdk/chains/ckb';
 import { useTranslation } from 'react-i18next';
+import { useSendDraft } from '@/hooks/useSendDraft';
+import { beginTransactionActivity, transactionBlockReason } from '@/lib/transactionActivity';
 import { CopyButton } from '@/components/CopyButton';
 import { IntentSummary } from '@/components/IntentSummary';
+import { PendingSubmissionNotice } from '@/components/PendingSubmissionNotice';
 import { buildCkbSendIntent, type TransactionIntent } from '@/lib/txIntent';
-import { CKB_NETWORK } from '@/config';
 import { trackEvent } from '@/lib/telemetry';
+import { usePendingChainSubmission } from '@/hooks/usePendingChainSubmission';
+import { useActivityStore } from '@/stores/activityStore';
+import {
+  ckbSubmissionScope,
+  createCkbSubmissionAdapter,
+  formatOutPoint,
+  type CkbStatusClient,
+} from '@/lib/ckbSubmission';
+import {
+  isAmbiguousSubmissionError,
+  releaseSubmissionDraft,
+  reserveSubmissionOperationId,
+  submitChainTransactionOnce,
+  SubmissionNeedsReviewError,
+} from '@/lib/submissionIdempotency';
 
 const STEALTH_LOCK_CODE_HASH = getDeployment('ckb').contracts.stealthLockCodeHash;
+const CKB_SUBMISSION_NETWORK = 'testnet';
 const CKB_INTENT_NETWORK = 'ckb:testnet';
 
 function outputSummary(tx: ccc.Transaction) {
@@ -25,57 +41,104 @@ function outputSummary(tx: ccc.Transaction) {
   }));
 }
 
+function ckbStatusClient(client: ccc.Client): CkbStatusClient {
+  return {
+    getTransactionStatus: async (txHash) => (await client.getTransaction(txHash))?.status,
+    isCellLive: async (outPoint) =>
+      (await client.getCellLive(outPoint, false, false)) !== undefined,
+    sendSignedTransaction: (signedTx) =>
+      client.sendTransaction(ccc.Transaction.from(JSON.parse(signedTx))),
+  };
+}
+
+interface ReviewedCkbCell {
+  intent: TransactionIntent;
+  transaction: ccc.Transaction;
+  draft: string;
+  operationId: string;
+  stealth: { stealthPubKey: string; lockArgs: string };
+}
+
 export function CkbSend() {
   const { t } = useTranslation();
   const { wallet } = ccc.useCcc();
   const signer = ccc.useSigner();
+  const addActivity = useActivityStore((state) => state.addEntry);
   const [recipient, setRecipient] = useSendDraft<string>('ckb:recipient', '');
   const [amount, setAmount] = useSendDraft<string>('ckb:amount', '');
   const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [account, setAccount] = useState<string | null>(null);
   const [stealthInfo, setStealthInfo] = useState<{
     stealthPubKey: string;
     lockArgs: string;
   } | null>(null);
-  const [pendingCell, setPendingCell] = useState<{
-    intent: TransactionIntent;
-    transaction: ccc.Transaction;
-  } | null>(null);
+  const [pendingCell, setPendingCell] = useState<ReviewedCkbCell | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAccount(null);
+    if (!signer) return;
+    signer
+      .getRecommendedAddress()
+      .then((address) => {
+        if (!cancelled) setAccount(address);
+      })
+      .catch(() => {
+        if (!cancelled) setAccount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signer]);
+
+  const adapter = useMemo(
+    () => (signer ? createCkbSubmissionAdapter(ckbStatusClient(signer.client)) : null),
+    [signer],
+  );
+  const scope = useMemo(
+    () => (account ? ckbSubmissionScope(CKB_SUBMISSION_NETWORK, account) : null),
+    [account],
+  );
+  const pending = usePendingChainSubmission(scope, adapter);
 
   const handleSend = useCallback(async () => {
+    if (isPending || pending.blocked) return;
     const blocked = transactionBlockReason();
     if (blocked) {
       setError(blocked);
       return;
     }
-    if (!signer) {
+    if (!signer || !scope) {
       setError(t('ckb.connectWalletFirst'));
+      return;
+    }
+    if (!recipient.startsWith('st:ckb:')) {
+      setError(t('ckb.validMetaAddressError'));
+      return;
+    }
+    if (parseFloat(amount) < 95) {
+      setError(t('ckb.minAmountError'));
       return;
     }
 
     setError('');
-    const finishTransaction = beginTransactionActivity('submitting');
     setIsPending(true);
+    const finishTransaction = beginTransactionActivity('simulating');
 
     try {
-      if (!recipient.startsWith('st:ckb:')) {
-        setError(t('ckb.validMetaAddressError'));
-        setIsPending(false);
-        return;
-      }
-
-      const parsed = parseFloat(amount);
-      if (parsed < 95) {
-        setError(t('ckb.minAmountError'));
-        setIsPending(false);
-        return;
-      }
+      const draft = JSON.stringify({
+        chain: 'ckb',
+        network: scope.network,
+        wallet: scope.account,
+        recipient: recipient.trim(),
+        amount: amount.trim(),
+      });
+      const operationId = await reserveSubmissionOperationId(draft);
 
       const decoded = decodeStealthMetaAddress(recipient);
       const stealth = generateStealthAddress(decoded.spendingPubKey, decoded.viewingPubKey);
-      setStealthInfo({ stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs });
-
       const capacityShannons = ccc.fixedPointFrom(amount);
 
       const tx = ccc.Transaction.from({
@@ -95,11 +158,10 @@ export function CkbSend() {
       await tx.completeInputsByCapacity(signer);
       await tx.completeFeeBy(signer, 1000);
 
-      const account = await signer.getRecommendedAddress();
       const fee = await tx.getFee(signer.client);
       const intent = buildCkbSendIntent({
         network: CKB_INTENT_NETWORK,
-        account,
+        account: scope.account,
         stealthPubKey: stealth.stealthPubKey,
         lockArgs: stealth.lockArgs,
         lockCodeHash: STEALTH_LOCK_CODE_HASH,
@@ -108,7 +170,9 @@ export function CkbSend() {
         txHash: tx.hash(),
       });
 
-      setPendingCell({ intent, transaction: tx });
+      const summary = { stealthPubKey: stealth.stealthPubKey, lockArgs: stealth.lockArgs };
+      setStealthInfo(summary);
+      setPendingCell({ intent, transaction: tx, draft, operationId, stealth: summary });
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
@@ -116,18 +180,24 @@ export function CkbSend() {
       finishTransaction();
       setIsPending(false);
     }
-  }, [signer, recipient, amount, t]);
+  }, [isPending, pending, signer, scope, recipient, amount, t]);
 
   const handleConfirm = useCallback(async () => {
-    if (!signer || !pendingCell) return;
+    if (!signer || !pendingCell || !scope || !adapter || isPending || pending.blocked) return;
+    const blocked = transactionBlockReason();
+    if (blocked) {
+      setError(blocked);
+      return;
+    }
 
     setError('');
     setIsPending(true);
-    trackEvent('send_submitted');
+    const finishTransaction = beginTransactionActivity('submitting');
+    const { intent, transaction, draft, operationId, stealth } = pendingCell;
 
     try {
-      const account = await signer.getRecommendedAddress();
-      if (account !== pendingCell.intent.account) {
+      const currentAccount = await signer.getRecommendedAddress();
+      if (currentAccount !== intent.account || currentAccount !== scope.account) {
         setPendingCell(null);
         setStealthInfo(null);
         throw new Error(
@@ -135,36 +205,78 @@ export function CkbSend() {
         );
       }
 
-      const signed = await signer.signTransaction(pendingCell.transaction);
-      const expectedOutputs = outputSummary(pendingCell.transaction);
-      const signedOutputs = outputSummary(signed);
-      const outputsMatch =
-        expectedOutputs.length === signedOutputs.length &&
-        expectedOutputs.every(
-          (output, index) =>
-            output.capacity === signedOutputs[index].capacity &&
-            output.codeHash === signedOutputs[index].codeHash &&
-            output.args === signedOutputs[index].args,
-        );
+      const result = await submitChainTransactionOnce({
+        operationId,
+        scope,
+        adapter,
+        prepare: async () => {
+          const signed = await signer.signTransaction(transaction);
+          const expectedOutputs = outputSummary(transaction);
+          const signedOutputs = outputSummary(signed);
+          const outputsMatch =
+            expectedOutputs.length === signedOutputs.length &&
+            expectedOutputs.every(
+              (output, index) =>
+                output.capacity === signedOutputs[index].capacity &&
+                output.codeHash === signedOutputs[index].codeHash &&
+                output.args === signedOutputs[index].args,
+            );
+          const signedFee = await signed.getFee(signer.client);
+          if (!outputsMatch || signedFee.toString() !== intent.fee) {
+            throw new Error(
+              'Your wallet signed a cell that does not match the confirmed intent. Nothing was submitted. Review and confirm again.',
+            );
+          }
+          trackEvent('send_submitted');
+          return {
+            identity: {
+              kind: 'ckb',
+              network: CKB_SUBMISSION_NETWORK,
+              from: scope.account,
+              txHash: signed.hash(),
+              signedTx: ccc.stringify(signed),
+              inputs: signed.inputs.map((input) => formatOutPoint(input.previousOutput)),
+            },
+            metadata: { ...stealth },
+            broadcast: () => signer.client.sendTransaction(signed),
+          };
+        },
+      });
 
-      const signedFee = await signed.getFee(signer.client);
-      const feeMatches = signedFee.toString() === pendingCell.intent.fee;
-
-      if (!outputsMatch || !feeMatches) {
-        setPendingCell(null);
-        throw new Error(
-          'Your wallet signed a cell that does not match the confirmed intent. Nothing was submitted. Review and confirm again.',
-        );
+      setPendingCell(null);
+      const { metadata } = result.record;
+      if (typeof metadata?.stealthPubKey === 'string' && typeof metadata.lockArgs === 'string') {
+        setStealthInfo({ stealthPubKey: metadata.stealthPubKey, lockArgs: metadata.lockArgs });
       }
-
-      const hash = await signer.client.sendTransaction(signed);
-      setTxHash(hash);
+      if (result.status === 'failed') {
+        setError(t('submission.failedOnChain'));
+        await releaseSubmissionDraft(draft, operationId);
+        return;
+      }
+      setTxHash(result.txHash);
+      addActivity({
+        id: result.txHash,
+        chain: 'ckb',
+        wallet: scope.account,
+        kind: 'stealth-send',
+        direction: 'out',
+        status: result.status === 'confirmed' ? 'confirmed' : 'pending',
+        amount: amount.trim(),
+        recipient: recipient.trim(),
+        timestamp: Date.now(),
+      });
+      await releaseSubmissionDraft(draft, operationId);
     } catch (err) {
+      setPendingCell(null);
+      if (!isAmbiguousSubmissionError(err)) setStealthInfo(null);
       setError(err instanceof Error ? err.message : t('common.transactionFailed'));
+      if (err instanceof SubmissionNeedsReviewError) void pending.check();
     } finally {
+      finishTransaction();
       setIsPending(false);
+      pending.refresh();
     }
-  }, [pendingCell, signer, t]);
+  }, [signer, pendingCell, scope, adapter, isPending, pending, amount, recipient, addActivity, t]);
 
   const reset = () => {
     setRecipient('');
@@ -215,6 +327,11 @@ export function CkbSend() {
           {t('ckb.sendDescription')}
         </p>
       </div>
+
+      <PendingSubmissionNotice
+        pending={pending}
+        txUrl={(hash) => `${deployment.explorerUrl}/transaction/${hash}`}
+      />
 
       {!stealthInfo && (
         <div className="flex flex-col gap-6">
@@ -280,7 +397,7 @@ export function CkbSend() {
 
           <button
             onClick={handleSend}
-            disabled={!recipient || !amount || isPending}
+            disabled={!recipient || !amount || isPending || pending.blocked}
             className="h-12 w-full bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
           >
             Review stealth cell
@@ -344,7 +461,7 @@ export function CkbSend() {
                 </button>
                 <button
                   onClick={handleConfirm}
-                  disabled={isPending}
+                  disabled={isPending || pending.blocked}
                   className="h-11 flex-1 bg-primary font-heading text-[13px] font-semibold uppercase tracking-widest text-surface transition-colors hover:brightness-110 disabled:opacity-30"
                 >
                   {isPending ? t('common.confirmInWallet') : 'Confirm & send'}
@@ -353,9 +470,9 @@ export function CkbSend() {
             </>
           )}
 
-          {txHash && error && <p className="text-sm text-error">{error}</p>}
+          {!pendingCell && error && <p className="text-sm text-error">{error}</p>}
 
-          {!txHash && !pendingCell && error && (
+          {!txHash && !pendingCell && !pending.blocked && error && (
             <button
               onClick={reset}
               className="h-11 w-full border border-outline-variant font-heading text-[13px] font-semibold uppercase tracking-widest text-primary transition-colors hover:bg-surface-bright"

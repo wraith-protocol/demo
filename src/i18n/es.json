@@ -156,5 +156,20 @@
     "deriveStealthKeys": "Derivar claves sigilosas",
     "cellsFound_one": "{{count}} celda encontrada",
     "cellsFound_other": "{{count}} celdas encontradas"
+  },
+  "submission": {
+    "pendingTitle": "Transferencia anterior pendiente de confirmación",
+    "pendingBody": "Es posible que una transferencia desde esta billetera ya se haya transmitido. Las nuevas transferencias quedan en pausa hasta que la red informe el resultado, para que nada se envíe dos veces.",
+    "status": "Estado",
+    "statusPending": "Transmitida — esperando confirmación",
+    "statusUnacknowledged": "Resultado desconocido — consultando la red",
+    "statusUnknown": "Estado no disponible — inténtalo de nuevo en breve",
+    "statusReplaced": "Reemplazada por otra transacción — requiere revisión",
+    "checkStatus": "Consultar estado",
+    "checking": "Consultando...",
+    "stopTracking": "Dejar de seguir (revisada)",
+    "foreignNotice_one": "{{count}} transferencia sin resolver pertenece a otra cuenta o red. Vuelve a ella para consultarla.",
+    "foreignNotice_other": "{{count}} transferencias sin resolver pertenecen a otra cuenta o red. Vuelve a ellas para consultarlas.",
+    "failedOnChain": "La transacción se incluyó pero falló en la cadena. No se transfirieron fondos."
   }
 }
