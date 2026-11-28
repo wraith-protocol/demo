@@ -78,7 +78,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Header should show connected wallet address (truncated: GCDU...2XHX)
-    await expect(page.getByRole('button', { name: 'GCDU...2XHX' })).toBeVisible();
+    await expect(page.getByText('GCDU...2XHX').first()).toBeVisible();
 
     // Send form should now be visible since wallet is connected
     await expect(page.getByLabel('Recipient Meta-Address')).toBeVisible();
@@ -96,7 +96,7 @@ test.describe('Stellar Stealth Payments E2E Suite', () => {
     await page.getByRole('button', { name: 'Connect Freighter' }).click();
 
     // Click on the connected button (displays address) to disconnect
-    await page.getByRole('button', { name: 'GCDU...2XHX' }).click();
+    await page.getByRole('button', { name: 'Disconnect Stellar wallet' }).click();
 
     // Should return to disconnected state
     await expect(page.getByRole('button', { name: 'Connect Freighter' })).toBeVisible();

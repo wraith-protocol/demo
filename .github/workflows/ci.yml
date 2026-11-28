@@ -247,4 +247,5 @@ jobs:
           path: |
             playwright-report/
             reports/stellar-e2e.json
+            test-results/
           if-no-files-found: ignore
